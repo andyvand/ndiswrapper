@@ -151,7 +151,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	FILE *config;
 	char setting_name[MAX_SETTING_NAME_LEN];
 	char setting_value[MAX_SETTING_VALUE_LEN];
-	int ret, nr_settings;
+	int ret, num_settings;
 	int vendor, device, subvendor, subdevice, bus;
 
 	if (lstat(conf_file_name, &statbuf)) {
@@ -172,8 +172,8 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		return -EINVAL;
 	}
 
-	nr_settings = 0;
-	driver->nr_settings = 0;
+	num_settings = 0;
+	driver->num_settings = 0;
 
 	if ((config = fopen(conf_file_name, "r")) == NULL) {
 		ERROR("unable to open config file: %s", strerror(errno));
@@ -190,12 +190,12 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		if (ret < 0)
 			return -EINVAL;
 
-		setting = &driver->settings[nr_settings];
+		setting = &driver->settings[num_settings];
 		strncpy(setting->name, setting_name, MAX_SETTING_NAME_LEN);
 		strncpy(setting->value, setting_value, MAX_SETTING_VALUE_LEN);
 
-		nr_settings++;
-		if (nr_settings >= MAX_DEVICE_SETTINGS) {
+		num_settings++;
+		if (num_settings >= MAX_DEVICE_SETTINGS) {
 			ERROR("too many settings");
 			return -EINVAL;
 		}
@@ -204,7 +204,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 
 	fclose(config);
 
-	driver->nr_settings = nr_settings;
+	driver->num_settings = num_settings;
 	return 0;
 }
 
@@ -245,12 +245,12 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 	int i;
 	struct dirent *dirent;
 	struct load_driver *driver;
-	int nr_sys_files, nr_bin_files;
+	int num_sys_files, num_bin_files;
 	DIR *driver_dir;
 
 	driver_dir = NULL;
-	nr_sys_files = 0;
-	nr_bin_files = 0;
+	num_sys_files = 0;
+	num_bin_files = 0;
 
 	DBG("loading driver %s", driver_name);
 	if (chdir(confdir) || chdir(driver_name)) {
@@ -272,7 +272,7 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 	strncpy(driver->name, driver_name, MAX_DRIVER_NAME_LEN);
 
 	if (read_conf_file(conf_file_name, driver) ||
-	    driver->nr_settings == 0) {
+	    driver->num_settings == 0) {
 		ERROR("couldn't read conf file %s for driver %s",
 		      conf_file_name, driver_name);
 		goto err;
@@ -301,44 +301,44 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 
 		if (len > 4 && strcasecmp(&dirent->d_name[len-4], ".sys") == 0) {
 			if (load_file(dirent->d_name,
-				      &driver->sys_files[nr_sys_files])) {
+				      &driver->sys_files[num_sys_files])) {
 				ERROR("couldn't load .sys file %s",
 				      dirent->d_name);
 				goto err;
 			} else
-				nr_sys_files++;
+				num_sys_files++;
 		} else if (len > 4 &&
 			   ((strcasecmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			    (strcasecmp(&dirent->d_name[len-4], ".out") == 0))) {
-			strcpy(driver->bin_files[nr_bin_files].name,
+			strcpy(driver->bin_files[num_bin_files].name,
 			       dirent->d_name);
-			strcpy(driver->bin_files[nr_bin_files].driver_name,
+			strcpy(driver->bin_files[num_bin_files].driver_name,
 			       driver_name);
-			driver->bin_files[nr_bin_files].size = 0;
-			driver->bin_files[nr_bin_files].data = NULL;
-			nr_bin_files++;
+			driver->bin_files[num_bin_files].size = 0;
+			driver->bin_files[num_bin_files].data = NULL;
+			num_bin_files++;
 		} else
 			ERROR("file %s is ignored", dirent->d_name);
 
-		if (nr_sys_files == MAX_DRIVER_PE_IMAGES) {
+		if (num_sys_files == MAX_DRIVER_PE_IMAGES) {
 			ERROR("too many .sys files for driver %s",
 			      driver_name);
 			goto err;
 		}
-		if (nr_bin_files == MAX_DRIVER_BIN_FILES) {
+		if (num_bin_files == MAX_DRIVER_BIN_FILES) {
 			ERROR("too many .bin files for driver %s",
 			      driver_name);
 			goto err;
 		}
 	}
 
-	if (nr_sys_files == 0) {
+	if (num_sys_files == 0) {
 		ERROR("coudln't find valid drivers files for driver %s",
 		      driver_name);
 		goto err;
 	}
-	driver->nr_sys_files = nr_sys_files;
-	driver->nr_bin_files = nr_bin_files;
+	driver->num_sys_files = num_sys_files;
+	driver->num_bin_files = num_bin_files;
 	strncpy(driver->conf_file_name, conf_file_name,
 		sizeof(driver->conf_file_name));
 	if (ioctl(ioctl_device, WRAP_IOCTL_LOAD_DRIVER, driver))
@@ -351,9 +351,9 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 err:
 	if (driver_dir)
 		closedir(driver_dir);
-	for (i = 0; i < nr_sys_files; i++)
+	for (i = 0; i < num_sys_files; i++)
 		munmap(driver->sys_files[i].data, driver->sys_files[i].size);
-	for (i = 0; i < nr_bin_files; i++)
+	for (i = 0; i < num_bin_files; i++)
 		munmap(driver->bin_files[i].data, driver->bin_files[i].size);
 	ERROR("couldn't load driver %s", driver_name);
 	free(driver);

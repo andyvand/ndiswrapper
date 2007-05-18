@@ -120,7 +120,7 @@ NDIS_STATUS miniport_request(enum ndis_request_type request,
 			       buflen, written, needed);
 		break;
 	default:
-		WARNING("request %d not implemented", request);
+		WARNING("invalid request %d", request);
 		res = NDIS_STATUS_NOT_SUPPORTED;
 		break;
 	}
