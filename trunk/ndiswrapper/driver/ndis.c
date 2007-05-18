@@ -1041,6 +1041,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	NdisMAllocateSharedMemory(wnd->nmb, alloc_shared_mem->size,
 				  alloc_shared_mem->cached, &virt, &phys);
 	irql = serialize_lock_irql(wnd);
+	assert(current_irql() == DISPATCH_LEVEL);
 	LIN2WIN5(miniport->alloc_complete, wnd->nmb, virt,
 		 &phys, alloc_shared_mem->size, alloc_shared_mem->ctx);
 	serialize_unlock_irql(wnd, irql);
@@ -1170,7 +1171,7 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		buffer->pool = NULL;
 		free_mdl(buffer);
 	} else
-		atomic_insert_list_head(pool->free_descr, buffer, buffer->next);
+		atomic_insert_list_head(buffer->next, pool->free_descr, buffer);
 	EXIT4(return);
 }
 
@@ -1472,8 +1473,8 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		atomic_dec_var(pool->num_allocated_descr);
 		kfree(packet);
 	} else
-		atomic_insert_list_head(pool->free_descr, packet,
-					packet->reserved[0]);
+		atomic_insert_list_head(packet->reserved[0], pool->free_descr,
+					packet);
 	EXIT4(return);
 }
 
@@ -1597,6 +1598,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		irql = serialize_lock_irql(wnd);
+		assert(current_irql() == DISPATCH_LEVEL);
 		LIN2WIN3(miniport->send_packets, wnd->nmb->mp_ctx, &packet, 1);
 		serialize_unlock_irql(wnd, irql);
 		if (deserialized_driver(wnd))
@@ -1622,6 +1624,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 		}
 	} else {
 		irql = serialize_lock_irql(wnd);
+		assert(current_irql() == DISPATCH_LEVEL);
 		*status = LIN2WIN3(miniport->send, wnd->nmb->mp_ctx, packet, 0);
 		serialize_unlock_irql(wnd, irql);
 		switch (*status) {
@@ -1642,15 +1645,13 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	EXIT3(return);
 }
 
-wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
-				  void *arg2)
+wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 {
 	struct ndis_miniport_timer *timer;
 	struct ndis_miniport_block *nmb;
 
 	timer = ctx;
-	TIMERENTER("timer: %p, func: %p, ctx: %p, nmb: %p",
-		   timer, timer->func, timer->ctx, timer->nmb);
+	TIMERENTER("%p, %p, %p, %p", timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	assert(current_irql() == DISPATCH_LEVEL);
 	if (!deserialized_driver(nmb->wnd))
@@ -1660,31 +1661,29 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 		serialize_unlock(nmb->wnd);
 	TIMEREXIT(return);
 }
-WIN_FUNC_DECL(wrap_miniport_timer,4)
+WIN_FUNC_DECL(mp_timer_dpc,4)
 
 wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
 	 DPC func, void *ctx)
 {
-	TIMERENTER("timer: %p, func: %p, ctx: %p, nmb: %p",
-		   timer, func, ctx, nmb);
+	TIMERENTER("%p, %p, %p, %p", timer, func, ctx, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
 //	KeInitializeDpc(&timer->kdpc, func, ctx);
-	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
-			timer);
-	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, nmb);
+	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4), timer);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb);
 	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 	(struct ndis_miniport_timer *timer, UINT period_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
+	unsigned long expires = MSEC_TO_HZ(period_ms);
 
 	TIMERENTER("%p, %u, %ld", timer, period_ms, expires);
-	wrap_set_timer(&timer->nt_timer, expires, expires, NULL);
+	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
 	TIMEREXIT(return);
 }
 
@@ -1693,7 +1692,8 @@ wstdcall void WIN_FUNC(NdisMCancelTimer,2)
 {
 	TIMERENTER("%p", timer);
 	*canceled = KeCancelTimer(&timer->nt_timer);
-	TIMEREXIT(return);
+	TIMERTRACE("%d", *canceled);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisInitializeTimer,3)
@@ -1701,7 +1701,7 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 {
 	TIMERENTER("%p, %p, %p", timer, func, ctx);
 	KeInitializeDpc(&timer->kdpc, func, ctx);
-	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, NULL);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, NULL);
 	TIMEREXIT(return);
 }
 
@@ -1711,12 +1711,12 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 wstdcall void WIN_FUNC(NdisSetTimer,2)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
+	unsigned long expires = MSEC_TO_HZ(duetime_ms);
 
-	TIMERENTER("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
+	TRACE1("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
 		   duetime_ms, expires);
-	wrap_set_timer(&timer->nt_timer, expires, 0, NULL);
-	TIMEREXIT(return);
+	wrap_set_timer(&timer->nt_timer, expires, 0, &timer->kdpc);
+	EXIT1(return);
 }
 
 wstdcall void WIN_FUNC(NdisCancelTimer,2)
@@ -1805,6 +1805,7 @@ wstdcall void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	struct miniport_char *miniport = arg2;
 
 	TRACE6("%p", irq_handler);
+	assert(current_irql() == DISPATCH_LEVEL);
 	LIN2WIN1(irq_handler, wnd->nmb->mp_ctx);
 	if (miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->mp_ctx);
@@ -1819,6 +1820,7 @@ wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	ndis_interrupt_handler irq_handler = arg1;
 
 	TRACE6("%p", irq_handler);
+	assert(current_irql() == DISPATCH_LEVEL);
 	serialize_lock(wnd);
 	LIN2WIN1(irq_handler, arg2);
 	serialize_unlock(wnd);
@@ -1833,6 +1835,7 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 	BOOLEAN recognized, queue_handler;
 
 	TRACE6("%p", wnd);
+	assert(current_irql() == DIRQL);
 	if (mp_interrupt->shared)
 		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
 			 wnd->nmb->mp_ctx);
@@ -2132,6 +2135,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	ENTER4("%p, %p", wnd, packet);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	irql = serialize_lock_irql(wnd);
+	assert(current_irql() == DISPATCH_LEVEL);
 	LIN2WIN2(miniport->return_packet, wnd->nmb->mp_ctx, packet);
 	serialize_unlock_irql(wnd, irql);
 	EXIT4(return);
@@ -2261,6 +2265,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		irql = serialize_lock_irql(wnd);
+		assert(current_irql() == DISPATCH_LEVEL);
 		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed, nmb,
 			       rx_ctx, look_ahead_size, packet_size);
 		serialize_unlock_irql(wnd, irql);
@@ -2818,7 +2823,7 @@ int ndis_init_device(struct wrap_ndis_device *wnd)
 
 	KeInitializeSpinLock(&nmb->lock);
 	wnd->mp_interrupt = NULL;
-	InitializeListHead(&wnd->wrap_timer_list);
+	wnd->wrap_timer_slist.next = NULL;
 	if (wnd->wd->driver->ndis_driver)
 		wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
 

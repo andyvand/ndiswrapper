@@ -453,7 +453,7 @@ struct pe_image {
 struct ndis_miniport_block;
 
 struct wrap_timer {
-	struct nt_list list;
+	struct nt_slist slist;
 	struct timer_list timer;
 	struct nt_timer *nt_timer;
 	long repeat;
@@ -820,7 +820,7 @@ do {									\
 	warp_preempt_enable();						\
 } while (0)
 
-#define atomic_insert_list_head(head, newhead, oldhead)			\
+#define atomic_insert_list_head(oldhead, head, newhead)			\
 do {									\
 	oldhead = (typeof(oldhead))head;				\
 } while (cmpxchg(&(head), oldhead, newhead) != (typeof(head))oldhead)
@@ -967,7 +967,7 @@ struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2);
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct kdpc *kdpc, struct ndis_miniport_block *nmb);
+		     struct ndis_miniport_block *nmb);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 

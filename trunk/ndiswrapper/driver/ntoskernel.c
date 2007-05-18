@@ -69,8 +69,7 @@ static struct nt_thread *ntos_worker_thread;
 NT_SPIN_LOCK irp_cancel_lock;
 
 extern struct nt_list wrap_drivers;
-static struct nt_list wrap_timer_list;
-NT_SPIN_LOCK timer_lock;
+static struct nt_slist wrap_timer_slist;
 
 /* compute ticks (100ns) since 1601 until when system booted into
  * wrap_ticks_to_boot */
@@ -435,10 +434,9 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct kdpc *kdpc, struct ndis_miniport_block *nmb)
+		     struct ndis_miniport_block *nmb)
 {
 	struct wrap_timer *wrap_timer;
-	KIRQL irql;
 
 	/* TODO: if a timer is initialized more than once, we allocate
 	 * memory for wrap_timer more than once for the same nt_timer,
@@ -468,16 +466,18 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 #endif
 	nt_timer->wrap_timer = wrap_timer;
-	nt_timer->kdpc = kdpc;
+	nt_timer->kdpc = NULL;
 	initialize_object(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (nmb)
-		InsertTailList(&nmb->wnd->wrap_timer_list, &wrap_timer->list);
-	else
-		InsertTailList(&wrap_timer_list, &wrap_timer->list);
-	nt_spin_unlock_irql(&timer_lock, irql);
 	TIMERTRACE("timer %p (%p)", wrap_timer, nt_timer);
+	if (nmb)
+		atomic_insert_list_head(wrap_timer->slist.next,
+					nmb->wnd->wrap_timer_slist.next,
+					&wrap_timer->slist);
+	else
+		atomic_insert_list_head(wrap_timer->slist.next,
+					wrap_timer_slist.next,
+					&wrap_timer->slist);
 	TIMEREXIT(return);
 }
 
@@ -485,14 +485,14 @@ wstdcall void WIN_FUNC(KeInitializeTimerEx,2)
 	(struct nt_timer *nt_timer, enum timer_type type)
 {
 	TIMERENTER("%p", nt_timer);
-	wrap_init_timer(nt_timer, type, NULL, NULL);
+	wrap_init_timer(nt_timer, type, NULL);
 }
 
 wstdcall void WIN_FUNC(KeInitializeTimer,1)
 	(struct nt_timer *nt_timer)
 {
 	TIMERENTER("%p", nt_timer);
-	wrap_init_timer(nt_timer, NotificationTimer, NULL, NULL);
+	wrap_init_timer(nt_timer, NotificationTimer, NULL);
 }
 
 /* expires and repeat are in HZ */
@@ -522,8 +522,7 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 	}
 #endif
 	KeClearEvent((struct nt_event *)nt_timer);
-	if (kdpc)
-		nt_timer->kdpc = kdpc;
+	nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
 		TIMEREXIT(return TRUE);
@@ -538,7 +537,7 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
 	unsigned long expires_hz, repeat_hz;
 
 	TIMERENTER("%p, %Ld, %d", nt_timer, duetime_ticks, period_ms);
-	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks) + 1;
+	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat_hz = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(nt_timer, expires_hz, repeat_hz, kdpc);
 }
@@ -1127,7 +1126,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	if (timeout == NULL)
 		wait_hz = 0;
 	else
-		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
+		wait_hz = SYSTEM_TIME_TO_HZ(*timeout);
 
 	assert(current_irql() < DISPATCH_LEVEL);
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
@@ -1350,7 +1349,7 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 	if (wait_mode != 0)
 		ERROR("invalid wait_mode %d", wait_mode);
 
-	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
+	timeout = SYSTEM_TIME_TO_HZ(*interval);
 	EVENTTRACE("%p, %Ld, %ld", current, *interval, timeout);
 	if (timeout <= 0)
 		EVENTEXIT(return STATUS_SUCCESS);
@@ -2519,8 +2518,7 @@ int ntoskernel_init(void)
 
 	initialize_work(&kdpc_work, kdpc_worker, NULL);
 	initialize_work(&ntos_work, ntos_work_worker, NULL);
-	nt_spin_lock_init(&timer_lock);
-	InitializeListHead(&wrap_timer_list);
+	wrap_timer_slist.next = NULL;
 
 	do_gettimeofday(&now);
 	wrap_ticks_to_boot = TICKS_1601_TO_1970;
@@ -2597,14 +2595,14 @@ void ntoskernel_exit(void)
 	TRACE2("freeing timers");
 	while (1) {
 		struct wrap_timer *wrap_timer;
-		KIRQL irql;
+		struct nt_slist *slist;
 
-		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-		cur = RemoveTailList(&wrap_timer_list);
-		nt_spin_unlock_irql(&timer_lock, irql);
-		if (!cur)
+		slist = atomic_remove_list_head(wrap_timer_slist.next,
+						oldhead->next);
+		TIMERTRACE("%p", slist);
+		if (!slist)
 			break;
-		wrap_timer = container_of(cur, struct wrap_timer, list);
+		wrap_timer = container_of(slist, struct wrap_timer, slist);
 		if (del_timer_sync(&wrap_timer->timer))
 			WARNING("Buggy Windows driver left timer %p running",
 				wrap_timer->nt_timer);
