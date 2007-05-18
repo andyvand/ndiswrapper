@@ -48,9 +48,9 @@ struct load_devices {
 struct load_driver {
 	char name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
-	unsigned int nr_sys_files;
+	unsigned int num_sys_files;
 	struct load_driver_file sys_files[MAX_DRIVER_PE_IMAGES];
-	unsigned int nr_settings;
+	unsigned int num_settings;
 	struct load_device_setting settings[MAX_DEVICE_SETTINGS];
 	unsigned int num_bin_files;
 	struct load_driver_file bin_files[MAX_DRIVER_BIN_FILES];

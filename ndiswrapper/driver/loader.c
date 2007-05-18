@@ -145,14 +145,14 @@ static int load_sys_files(struct wrap_driver *driver,
 {
 	int i, err;
 
-	TRACE1("num_pe_images = %d", load_driver->nr_sys_files);
+	TRACE1("num_pe_images = %d", load_driver->num_sys_files);
 	TRACE1("loading driver: %s", load_driver->name);
 	strncpy(driver->name, load_driver->name, sizeof(driver->name));
 	driver->name[sizeof(driver->name)-1] = 0;
 	TRACE1("driver: %s", driver->name);
 	err = 0;
 	driver->num_pe_images = 0;
-	for (i = 0; i < load_driver->nr_sys_files; i++) {
+	for (i = 0; i < load_driver->num_sys_files; i++) {
 		struct pe_image *pe_image;
 		pe_image = &driver->pe_images[driver->num_pe_images];
 
@@ -217,7 +217,7 @@ static int load_sys_files(struct wrap_driver *driver,
 		err = -EINVAL;
 	}
 
-	if (driver->num_pe_images < load_driver->nr_sys_files || err) {
+	if (driver->num_pe_images < load_driver->num_sys_files || err) {
 		for (i = 0; i < driver->num_pe_images; i++)
 			if (driver->pe_images[i].image)
 				vfree(driver->pe_images[i].image);
@@ -379,12 +379,12 @@ static int load_bin_files_info(struct wrap_driver *driver,
 static int load_settings(struct wrap_driver *wrap_driver,
 			 struct load_driver *load_driver)
 {
-	int i, nr_settings;
+	int i, num_settings;
 
 	ENTER1("%p, %p", wrap_driver, load_driver);
 
-	nr_settings = 0;
-	for (i = 0; i < load_driver->nr_settings; i++) {
+	num_settings = 0;
+	for (i = 0; i < load_driver->num_settings; i++) {
 		struct load_device_setting *load_setting =
 			&load_driver->settings[i];
 		struct wrap_device_setting *setting;
@@ -417,10 +417,10 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			}
 		}
 		InsertTailList(&wrap_driver->settings, &setting->list);
-		nr_settings++;
+		num_settings++;
 	}
 	/* it is not a fatal error if some settings couldn't be loaded */
-	if (nr_settings > 0)
+	if (num_settings > 0)
 		EXIT1(return 0);
 	else
 		EXIT1(return -EINVAL);
