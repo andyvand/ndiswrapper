@@ -63,6 +63,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	WARNING("%s is being reset", wnd->net_dev->name);
 	irql = serialize_lock_irql(wnd);
+	assert(current_irql() == DISPATCH_LEVEL);
 	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->mp_ctx);
 	serialize_unlock_irql(wnd, irql);
 
@@ -108,6 +109,7 @@ NDIS_STATUS miniport_request(enum ndis_request_type request,
 	TRACE2("%p, %08X", miniport->query, oid);
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
+	assert(current_irql() == DISPATCH_LEVEL);
 	switch (request) {
 	case NdisRequestQueryInformation:
 		res = LIN2WIN6(miniport->query, wnd->nmb->mp_ctx, oid, buf,
@@ -137,7 +139,7 @@ NDIS_STATUS miniport_request(enum ndis_request_type request,
 	up(&wnd->ndis_comm_mutex);
 	DBG_BLOCK(2) {
 		if (res || needed)
-			TRACE2("%08X, %d, %d, %d", res, bufsize, *written,
+			TRACE2("%08X, %d, %d, %d", res, buflen, *written,
 			       *needed);
 	}
 	EXIT3(return res);
@@ -315,16 +317,16 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 		/* cancel any timers left by bugyy windows driver; also free
 		 * the memory for timers */
 		while (1) {
-			struct nt_list *ent;
+			struct nt_slist *slist;
 			struct wrap_timer *wrap_timer;
-			KIRQL irql;
 
-			irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-			ent = RemoveHeadList(&wnd->wrap_timer_list);
-			nt_spin_unlock_irql(&timer_lock, irql);
-			if (!ent)
+			slist = atomic_remove_list_head(wnd->wrap_timer_slist.next,
+							oldhead->next);
+			TIMERTRACE("%p", slist);
+			if (!slist)
 				break;
-			wrap_timer = container_of(ent, struct wrap_timer, list);
+			wrap_timer = container_of(slist, struct wrap_timer,
+						  slist);
 			wrap_timer->repeat = 0;
 			/* ktimer that this wrap_timer is associated to can't
 			 * be touched, as it may have been freed by the driver

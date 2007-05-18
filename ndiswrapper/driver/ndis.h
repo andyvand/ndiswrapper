@@ -72,10 +72,10 @@ struct ndis_phy_addr_unit {
 typedef struct mdl ndis_buffer;
 
 struct ndis_buffer_pool {
-	int max_descr;
-	int num_allocated_descr;
 	ndis_buffer *free_descr;
 	NT_SPIN_LOCK lock;
+	UINT max_descr;
+	UINT num_allocated_descr;
 };
 
 #define NDIS_PROTOCOL_ID_DEFAULT	0x00
@@ -292,13 +292,12 @@ struct ndis_packet_oob_data {
 					(packet)->private.oob_offset)
 
 struct ndis_packet_pool {
+	struct ndis_packet *free_descr;
+	NT_SPIN_LOCK lock;
 	UINT max_descr;
 	UINT num_allocated_descr;
 	UINT num_used_descr;
-	struct ndis_packet *free_descr;
-	NT_SPIN_LOCK lock;
 	UINT proto_rsvd_length;
-	struct nt_list list;
 };
 
 enum ndis_device_pnp_event {
@@ -888,7 +887,7 @@ struct wrap_ndis_device {
 	struct v4_checksum tx_csum;
 	enum ndis_physical_medium physical_medium;
 	ULONG ndis_wolopts;
-	struct nt_list wrap_timer_list;
+	struct nt_slist wrap_timer_slist;
 	char netdev_name[IFNAMSIZ];
 	int drv_ndis_version;
 	struct ndis_pnp_capabilities pnp_capa;

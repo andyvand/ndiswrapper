@@ -351,22 +351,26 @@ static int load_bin_files_info(struct wrap_driver *driver,
 	struct wrap_bin_file *bin_files;
 	int i;
 
-	ENTER1("loading bin files for driver %s", load_driver->name);
-	bin_files = kmalloc(load_driver->nr_bin_files * sizeof(*bin_files),
+	ENTER1("%s, %d", load_driver->name, load_driver->num_bin_files);
+	driver->num_bin_files = 0;
+	driver->bin_files = NULL;
+	if (load_driver->num_bin_files == 0)
+		EXIT1(return 0);
+	bin_files = kmalloc(load_driver->num_bin_files * sizeof(*bin_files),
 			    GFP_KERNEL);
 	if (!bin_files) {
 		ERROR("couldn't allocate memory");
 		EXIT1(return -ENOMEM);
 	}
-	memset(bin_files, 0, load_driver->nr_bin_files * sizeof(*bin_files));
+	memset(bin_files, 0, load_driver->num_bin_files * sizeof(*bin_files));
 
-	for (i = 0; i < load_driver->nr_bin_files; i++) {
+	for (i = 0; i < load_driver->num_bin_files; i++) {
 		strncpy(bin_files[i].name, load_driver->bin_files[i].name,
 			sizeof(bin_files[i].name));
 		bin_files[i].name[sizeof(bin_files[i].name)-1] = 0;
 		TRACE2("loaded bin file %s", bin_files[i].name);
 	}
-	driver->num_bin_files = load_driver->nr_bin_files;
+	driver->num_bin_files = load_driver->num_bin_files;
 	driver->bin_files = bin_files;
 	EXIT1(return 0);
 }

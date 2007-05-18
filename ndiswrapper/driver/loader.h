@@ -52,7 +52,7 @@ struct load_driver {
 	struct load_driver_file sys_files[MAX_DRIVER_PE_IMAGES];
 	unsigned int nr_settings;
 	struct load_device_setting settings[MAX_DEVICE_SETTINGS];
-	unsigned int nr_bin_files;
+	unsigned int num_bin_files;
 	struct load_driver_file bin_files[MAX_DRIVER_BIN_FILES];
 };
 
