@@ -63,7 +63,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	WARNING("%s is being reset", wnd->net_dev->name);
 	irql = serialize_lock_irql(wnd);
-	assert(current_irql() == DISPATCH_LEVEL);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->mp_ctx);
 	serialize_unlock_irql(wnd, irql);
 
@@ -109,7 +109,7 @@ NDIS_STATUS miniport_request(enum ndis_request_type request,
 	TRACE2("%p, %08X", miniport->query, oid);
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
-	assert(current_irql() == DISPATCH_LEVEL);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	switch (request) {
 	case NdisRequestQueryInformation:
 		res = LIN2WIN6(miniport->query, wnd->nmb->mp_ctx, oid, buf,
@@ -120,7 +120,7 @@ NDIS_STATUS miniport_request(enum ndis_request_type request,
 			       buflen, written, needed);
 		break;
 	default:
-		WARNING("invalid request %d", request);
+		WARNING("invalid request %d, %08X", request, oid);
 		res = NDIS_STATUS_NOT_SUPPORTED;
 		break;
 	}
@@ -599,6 +599,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	struct ndis_packet_oob_data *oob_data;
 
 	ENTER3("%p, %08X", packet, status);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	if (status == NDIS_STATUS_SUCCESS) {
 		pre_atomic_add(wnd->net_stats.tx_bytes, packet->private.len);
 		atomic_inc_var(wnd->net_stats.tx_packets);

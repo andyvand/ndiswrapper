@@ -160,6 +160,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateMemoryWithTag,3)
 {
 	void *addr;
 
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	addr = ExAllocatePoolWithTag(NonPagedPool, length, tag);
 	TRACE4("%p", addr);
 	if (addr) {
@@ -807,7 +808,8 @@ wstdcall void WIN_FUNC(NdisFreeSpinLock,1)
 wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	TRACE6("lock %p, %lu", lock, lock->klock);
+	ENTER6("lock %p, %lu", lock, lock->klock);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	lock->irql = nt_spin_lock_irql(&lock->klock, DISPATCH_LEVEL);
 	EXIT6(return);
 }
@@ -815,7 +817,7 @@ wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
 wstdcall void WIN_FUNC(NdisReleaseSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	TRACE6("lock %p, %lu", lock, lock->klock);
+	ENTER6("lock %p, %lu", lock, lock->klock);
 	nt_spin_unlock_irql(&lock->klock, lock->irql);
 	EXIT6(return);
 }
@@ -824,6 +826,7 @@ wstdcall void WIN_FUNC(NdisDprAcquireSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	ENTER6("lock %p", lock);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_lock(&lock->klock);
 	EXIT6(return);
 }
@@ -832,6 +835,7 @@ wstdcall void WIN_FUNC(NdisDprReleaseSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	ENTER6("lock %p", lock);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock(&lock->klock);
 	EXIT6(return);
 }
@@ -1041,7 +1045,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	NdisMAllocateSharedMemory(wnd->nmb, alloc_shared_mem->size,
 				  alloc_shared_mem->cached, &virt, &phys);
 	irql = serialize_lock_irql(wnd);
-	assert(current_irql() == DISPATCH_LEVEL);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	LIN2WIN5(miniport->alloc_complete, wnd->nmb, virt,
 		 &phys, alloc_shared_mem->size, alloc_shared_mem->ctx);
 	serialize_unlock_irql(wnd, irql);
@@ -1114,6 +1118,9 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	ndis_buffer *descr;
 
 	ENTER4("pool: %p, allocated: %d", pool, pool->num_allocated_descr);
+	/* NDIS drivers should call this at DISPATCH_LEVEL, but
+	 * alloc_tx_packet calls at SOFT_IRQL */
+	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
 	if (!pool) {
 		*status = NDIS_STATUS_FAILURE;
 		EXIT4(return);
@@ -1410,6 +1417,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	int packet_length;
 
 	ENTER4("pool: %p", pool);
+	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT4(return);
@@ -1598,7 +1606,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		irql = serialize_lock_irql(wnd);
-		assert(current_irql() == DISPATCH_LEVEL);
+		assert_irql(_irql_ == DISPATCH_LEVEL);
 		LIN2WIN3(miniport->send_packets, wnd->nmb->mp_ctx, &packet, 1);
 		serialize_unlock_irql(wnd, irql);
 		if (deserialized_driver(wnd))
@@ -1624,7 +1632,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 		}
 	} else {
 		irql = serialize_lock_irql(wnd);
-		assert(current_irql() == DISPATCH_LEVEL);
+		assert_irql(_irql_ == DISPATCH_LEVEL);
 		*status = LIN2WIN3(miniport->send, wnd->nmb->mp_ctx, packet, 0);
 		serialize_unlock_irql(wnd, irql);
 		switch (*status) {
@@ -1652,8 +1660,8 @@ wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 
 	timer = ctx;
 	TIMERENTER("%p, %p, %p, %p", timer, timer->func, timer->ctx, timer->nmb);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nmb = timer->nmb;
-	assert(current_irql() == DISPATCH_LEVEL);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
 	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
@@ -1668,6 +1676,7 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	 DPC func, void *ctx)
 {
 	TIMERENTER("%p, %p, %p, %p", timer, func, ctx, nmb);
+	assert_irql(_irql_ == PASSIVE_LEVEL);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
@@ -1683,6 +1692,7 @@ wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 	unsigned long expires = MSEC_TO_HZ(period_ms);
 
 	TIMERENTER("%p, %u, %ld", timer, period_ms, expires);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
 	TIMEREXIT(return);
 }
@@ -1691,6 +1701,7 @@ wstdcall void WIN_FUNC(NdisMCancelTimer,2)
 	(struct ndis_miniport_timer *timer, BOOLEAN *canceled)
 {
 	TIMERENTER("%p", timer);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	*canceled = KeCancelTimer(&timer->nt_timer);
 	TIMERTRACE("%d", *canceled);
 	return;
@@ -1700,6 +1711,7 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 	(struct ndis_timer *timer, void *func, void *ctx)
 {
 	TIMERENTER("%p, %p, %p", timer, func, ctx);
+	assert_irql(_irql_ == PASSIVE_LEVEL);
 	KeInitializeDpc(&timer->kdpc, func, ctx);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, NULL);
 	TIMEREXIT(return);
@@ -1713,16 +1725,18 @@ wstdcall void WIN_FUNC(NdisSetTimer,2)
 {
 	unsigned long expires = MSEC_TO_HZ(duetime_ms);
 
-	TRACE1("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
+	TIMERENTER("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
 		   duetime_ms, expires);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	wrap_set_timer(&timer->nt_timer, expires, 0, &timer->kdpc);
-	EXIT1(return);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisCancelTimer,2)
 	(struct ndis_timer *timer, BOOLEAN *canceled)
 {
 	TIMERENTER("%p", timer);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	*canceled = KeCancelTimer(&timer->nt_timer);
 	TIMEREXIT(return);
 }
@@ -1805,7 +1819,7 @@ wstdcall void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	struct miniport_char *miniport = arg2;
 
 	TRACE6("%p", irq_handler);
-	assert(current_irql() == DISPATCH_LEVEL);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	LIN2WIN1(irq_handler, wnd->nmb->mp_ctx);
 	if (miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->mp_ctx);
@@ -1820,7 +1834,7 @@ wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	ndis_interrupt_handler irq_handler = arg1;
 
 	TRACE6("%p", irq_handler);
-	assert(current_irql() == DISPATCH_LEVEL);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	serialize_lock(wnd);
 	LIN2WIN1(irq_handler, arg2);
 	serialize_unlock(wnd);
@@ -1835,7 +1849,9 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 	BOOLEAN recognized, queue_handler;
 
 	TRACE6("%p", wnd);
-	assert(current_irql() == DIRQL);
+	/* kernel may call ISR when registering interrupt, in
+	 * the same context if DEBUG_SHIRQ is enabled */
+	assert_irql(_irql_ == DIRQL || _irql_ == PASSIVE_LEVEL);
 	if (mp_interrupt->shared)
 		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
 			 wnd->nmb->mp_ctx);
@@ -2083,6 +2099,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER4("%p, %08X", packet, status);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	if (deserialized_driver(wnd))
 		free_tx_packet(wnd, packet, status);
 	else {
@@ -2135,7 +2152,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	ENTER4("%p, %p", wnd, packet);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	irql = serialize_lock_irql(wnd);
-	assert(current_irql() == DISPATCH_LEVEL);
+	assert_irql(_irql_ == DISPATCH_LEVEL);
 	LIN2WIN2(miniport->return_packet, wnd->nmb->mp_ctx, packet);
 	serialize_unlock_irql(wnd, irql);
 	EXIT4(return);
@@ -2157,6 +2174,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	struct ndis_tcp_ip_checksum_packet_info csum;
 
 	ENTER3("%p, %d", nmb, nr_packets);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	wnd = nmb->wnd;
 	for (i = 0; i < nr_packets; i++) {
 		packet = packets[i];
@@ -2265,7 +2283,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		irql = serialize_lock_irql(wnd);
-		assert(current_irql() == DISPATCH_LEVEL);
+		assert_irql(_irql_ == DISPATCH_LEVEL);
 		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed, nmb,
 			       rx_ctx, look_ahead_size, packet_size);
 		serialize_unlock_irql(wnd, irql);
