@@ -89,8 +89,11 @@ WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 workqueue_struct_t *ntos_wq;
 #endif
 
-#ifdef WARP_PREEMPT
+#if defined(WARP_PREEMPT)
 int warp_preempt_count;
+#elif defined(CONFIG_PREEMPT_RT)
+DEFINE_PER_CPU(int, warp_preempt_count);
+DEFINE_PER_CPU(spinlock_t, warp_preempt_lock);
 #endif
 
 #if defined(CONFIG_X86_64)
@@ -616,10 +619,12 @@ static void kdpc_worker(worker_param_t dummy)
 		nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
 		if (!kdpc)
 			break;
-		irql = raise_irql(DISPATCH_LEVEL);
 		WORKTRACE("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
+		irql = raise_irql(DISPATCH_LEVEL);
+		assert_irql(_irql_ == DISPATCH_LEVEL);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		assert_irql(_irql_ == DISPATCH_LEVEL);
 		lower_irql(irql);
 	}
 	WORKEXIT(return);
@@ -808,6 +813,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	void *addr;
 
 	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type, size, tag);
+	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	if (size < PAGE_SIZE)
 		addr = kmalloc(size, irql_gfp());
 	else {
@@ -2528,6 +2534,15 @@ int ntoskernel_init(void)
 	TRACE2("%Lu", wrap_ticks_to_boot);
 #ifdef WARP_PREEMPT
 	warp_preempt_count = 0;
+#endif
+#ifdef CONFIG_PREEMPT_RT
+	do {
+		int i;
+		for (i = 0; i < NR_CPUS; i++) {
+			spin_lock_init(&per_cpu(warp_preempt_lock, i));
+			per_cpu(warp_preempt_count, i) = 0;
+		}
+	} while (0);
 #endif
 
 #ifdef USE_NTOS_WQ
