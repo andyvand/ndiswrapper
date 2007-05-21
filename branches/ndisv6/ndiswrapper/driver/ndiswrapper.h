@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2006-2007 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
 #ifndef _NDISWRAPPER_H_
 #define _NDISWRAPPER_H_
 
-#define DRIVER_VERSION "1.60"
+#define DRIVER_VERSION "1.99alpha"
 #define UTILS_VERSION "1.9"
 
 #define DRIVER_NAME "ndiswrapper"
@@ -81,18 +81,15 @@
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
-
-#define INFOEXIT(stmt) do { INFO("Exit"); stmt; } while(0)
-
 #define TODO() ERROR("not fully implemented (yet)")
 
-#define DBGTRACE(fmt, ...) do { } while (0)
-#define DBGTRACE1(fmt, ...) do { } while (0)
-#define DBGTRACE2(fmt, ...) do { } while (0)
-#define DBGTRACE3(fmt, ...) do { }  while (0)
-#define DBGTRACE4(fmt, ...) do { } while (0)
-#define DBGTRACE5(fmt, ...) do { } while (0)
-#define DBGTRACE6(fmt, ...) do { } while (0)
+#define TRACE(fmt, ...) do { } while (0)
+#define TRACE1(fmt, ...) do { } while (0)
+#define TRACE2(fmt, ...) do { } while (0)
+#define TRACE3(fmt, ...) do { }  while (0)
+#define TRACE4(fmt, ...) do { } while (0)
+#define TRACE5(fmt, ...) do { } while (0)
+#define TRACE6(fmt, ...) do { } while (0)
 
 /* for a block of code */
 #define DBG_BLOCK(level) while (0)
@@ -100,8 +97,8 @@
 extern int debug;
 
 #if defined DEBUG
-#undef DBGTRACE
-#define DBGTRACE(level, fmt, ...)				       \
+#undef TRACE
+#define TRACE(level, fmt, ...)				       \
 do {								       \
 	if (debug >= level)					       \
 		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME, \
@@ -112,53 +109,53 @@ do {								       \
 #endif
 
 #if defined(DEBUG) && DEBUG >= 1
-#undef DBGTRACE1
-#define DBGTRACE1(fmt, ...) DBGTRACE(1, fmt , ## __VA_ARGS__)
+#undef TRACE1
+#define TRACE1(fmt, ...) TRACE(1, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 2
-#undef DBGTRACE2
-#define DBGTRACE2(fmt, ...) DBGTRACE(2, fmt , ## __VA_ARGS__)
+#undef TRACE2
+#define TRACE2(fmt, ...) TRACE(2, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 3
-#undef DBGTRACE3
-#define DBGTRACE3(fmt, ...) DBGTRACE(3, fmt , ## __VA_ARGS__)
+#undef TRACE3
+#define TRACE3(fmt, ...) TRACE(3, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 4
-#undef DBGTRACE4
-#define DBGTRACE4(fmt, ...) DBGTRACE(4, fmt , ## __VA_ARGS__)
+#undef TRACE4
+#define TRACE4(fmt, ...) TRACE(4, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 5
-#undef DBGTRACE5
-#define DBGTRACE5(fmt, ...) DBGTRACE(5, fmt , ## __VA_ARGS__)
+#undef TRACE5
+#define TRACE5(fmt, ...) TRACE(5, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 6
-#undef DBGTRACE6
-#define DBGTRACE6(fmt, ...) DBGTRACE(6, fmt , ## __VA_ARGS__)
+#undef TRACE6
+#define TRACE6(fmt, ...) TRACE(6, fmt , ## __VA_ARGS__)
 #endif
 
-#define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER6(fmt, ...) DBGTRACE6("Enter " fmt , ## __VA_ARGS__)
+#define ENTER1(fmt, ...) TRACE1("Enter " fmt , ## __VA_ARGS__)
+#define ENTER2(fmt, ...) TRACE2("Enter " fmt , ## __VA_ARGS__)
+#define ENTER3(fmt, ...) TRACE3("Enter " fmt , ## __VA_ARGS__)
+#define ENTER4(fmt, ...) TRACE4("Enter " fmt , ## __VA_ARGS__)
+#define ENTER5(fmt, ...) TRACE5("Enter " fmt , ## __VA_ARGS__)
+#define ENTER6(fmt, ...) TRACE6("Enter " fmt , ## __VA_ARGS__)
 
-#define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
-#define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
-#define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)
-#define TRACEEXIT4(stmt) do { DBGTRACE4("Exit"); stmt; } while(0)
-#define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
-#define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
+#define EXIT1(stmt) do { TRACE1("Exit"); stmt; } while(0)
+#define EXIT2(stmt) do { TRACE2("Exit"); stmt; } while(0)
+#define EXIT3(stmt) do { TRACE3("Exit"); stmt; } while(0)
+#define EXIT4(stmt) do { TRACE4("Exit"); stmt; } while(0)
+#define EXIT5(stmt) do { TRACE5("Exit"); stmt; } while(0)
+#define EXIT6(stmt) do { TRACE6("Exit"); stmt; } while(0)
 
 #if defined(USB_DEBUG)
-#define USBTRACE DBGTRACE1
-#define USBENTER TRACEENTER1
-#define USBEXIT TRACEEXIT1
+#define USBTRACE TRACE1
+#define USBENTER ENTER1
+#define USBEXIT EXIT1
 #else
 #define USBTRACE(fmt, ...)
 #define USBENTER(fmt, ...)
@@ -166,19 +163,29 @@ do {								       \
 #endif
 
 #if defined(EVENT_DEBUG)
-#define EVENTTRACE DBGTRACE1
-#define EVENTENTER TRACEENTER1
-#define EVENTEXIT TRACEEXIT1
+#define EVENTTRACE TRACE1
+#define EVENTENTER ENTER1
+#define EVENTEXIT EXIT1
 #else
 #define EVENTTRACE(fmt, ...)
 #define EVENTENTER(fmt, ...)
 #define EVENTEXIT(stmt) stmt
 #endif
 
+#if defined(TIMER_DEBUG)
+#define TIMERTRACE TRACE1
+#define TIMERENTER ENTER1
+#define TIMEREXIT EXIT1
+#else
+#define TIMERTRACE(fmt, ...)
+#define TIMERENTER(fmt, ...)
+#define TIMEREXIT(stmt) stmt
+#endif
+
 #if defined(IO_DEBUG)
-#define IOTRACE DBGTRACE1
-#define IOENTER TRACEENTER1
-#define IOEXIT TRACEEXIT1
+#define IOTRACE TRACE1
+#define IOENTER ENTER1
+#define IOEXIT EXIT1
 #else
 #define IOTRACE(fmt, ...)
 #define IOENTER(fmt, ...)
@@ -186,9 +193,9 @@ do {								       \
 #endif
 
 #if defined(WORK_DEBUG)
-#define WORKTRACE DBGTRACE1
-#define WORKENTER TRACEENTER1
-#define WORKEXIT TRACEEXIT1
+#define WORKTRACE TRACE1
+#define WORKENTER ENTER1
+#define WORKEXIT EXIT1
 #else
 #define WORKTRACE(fmt, ...)
 #define WORKENTER(fmt, ...)
@@ -198,28 +205,15 @@ do {								       \
 #if defined DEBUG
 #define assert(expr)							\
 do {									\
-	if (!(expr))							\
+	if (!(expr)) {							\
 		ERROR("assertion '%s' failed", #expr);			\
+		dump_stack();						\
+	}								\
 } while (0)
 #else
 #define assert(expr) do { } while (0)
 #endif
 
-#if defined(IO_DEBUG)
-#define DUMP_IRP(irp)							\
-do {									\
-	struct io_stack_location *irp_sl;				\
-	irp_sl = IoGetCurrentIrpStackLocation(irp);			\
-	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
-		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
-		irp, irp->stack_count, (irp)->current_location,		\
-		irp_sl, irp_sl->dev_obj, irp_sl->major_fn,		\
-		irp_sl->minor_fn, URB_FROM_IRP(irp),			\
-		(irp)->user_event);					\
-} while (0)
-#else
-#define DUMP_IRP(irp) do { } while (0)
-#endif
 #endif // __KERNEL__
 
 #endif // NDISWRAPPER_H

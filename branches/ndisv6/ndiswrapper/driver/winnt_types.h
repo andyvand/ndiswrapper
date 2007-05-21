@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,8 +20,13 @@
 #define FALSE				0
 
 #define PASSIVE_LEVEL			0
+#define APC_LEVEL			1
 #define DISPATCH_LEVEL			2
-#define DEVICE_LEVEL			(DISPATCH_LEVEL + 1)
+#define DEVICE_LEVEL_BASE		4
+
+/* soft interrupts / bottom-half's are disabled at SOFT_IRQL */
+#define SOFT_IRQL			(DEVICE_LEVEL_BASE + 1)
+#define DIRQL				(DEVICE_LEVEL_BASE + 2)
 
 #define STATUS_WAIT_0			0
 #define STATUS_SUCCESS                  0
@@ -232,19 +237,35 @@ struct nt_list {
 
 typedef ULONG_PTR NT_SPIN_LOCK;
 
+enum kdpc_importance {LowImportance, MediumImportance, HighImportance};
+
 struct kdpc;
 typedef void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 		    void *arg2) wstdcall;
 struct kdpc {
 	SHORT type;
-	UCHAR nr_cpu;
+	UCHAR num_cpu;
 	UCHAR importance;
 	struct nt_list list;
 	DPC func;
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	NT_SPIN_LOCK *lock;
+	union {
+		/* 'lock' is not used; 'queued' represents whether
+		 * kdpc is queued or not */
+		NT_SPIN_LOCK *lock;
+		int queued;
+	};
+};
+
+enum ex_pool_priority {
+	LowPoolPriority, LowPoolPrioritySpecialPoolOverrun = 8,
+	LowPoolPrioritySpecialPoolUnderrun = 9, NormalPoolPriority = 16,
+	NormalPoolPrioritySpecialPoolOverrun = 24,
+	NormalPoolPrioritySpecialPoolUnderrun = 25,
+	HighPoolPriority = 32, HighPoolPrioritySpecialPoolOverrun = 40,
+	HighPoolPrioritySpecialPoolUnderrun = 41
 };
 
 enum pool_type {
@@ -258,6 +279,10 @@ enum pool_type {
 	NonPagedPoolCacheAlignedSession = DontUseThisTypeSession + 1,
 	PagedPoolCacheAlignedSession = NonPagedPoolCacheAlignedSession + 1,
 	NonPagedPoolCacheAlignedMustSSession = PagedPoolCacheAlignedSession + 1
+};
+
+enum mm_page_priority {
+	LowPagePriority, NormalPagePriority = 16, HighPagePriority = 32
 };
 
 enum memory_caching_type_orig {
@@ -330,8 +355,8 @@ do {									\
 	(mdl)->byteoffset = BYTE_OFFSET(baseva);			\
 	(mdl)->bytecount = length;					\
 	(mdl)->mappedsystemva = baseva;					\
-	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
-		  (mdl)->byteoffset, length);				\
+	TRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,		\
+	       (mdl)->byteoffset, length);				\
 } while (0)
 
 struct kdevice_queue_entry {
@@ -362,7 +387,7 @@ struct wait_block {
 	struct nt_list list;
 	struct task_struct *thread;
 	void *object;
-	void *thread_waitq;
+	int *wait_done;
 	USHORT wait_key;
 	USHORT wait_type;
 };
@@ -464,15 +489,18 @@ struct nt_thread {
 	 * structure is opaque to drivers, we just define what we
 	 * need */
 	int pid;
+	NTSTATUS status;
 	struct task_struct *task;
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
 };
 
-#define set_dh_type(dh, type)		((dh)->type = (type))
-#define is_mutex_dh(dh)			((dh)->type == MutexObject)
-#define is_semaphore_dh(dh)		((dh)->type == SemaphoreObject)
-#define is_nt_thread_dh(dh)		((dh)->type == ThreadObject)
+#define set_object_type(dh, type)	((dh)->type = (type))
+#define is_notify_object(dh)		((dh)->type == NotificationObject)
+#define is_synch_object(dh)		((dh)->type == SynchronizationObject)
+#define is_mutex_object(dh)		((dh)->type == MutexObject)
+#define is_semaphore_object(dh)		((dh)->type == SemaphoreObject)
+#define is_nt_thread_object(dh)		((dh)->type == ThreadObject)
 
 #define IO_TYPE_ADAPTER				1
 #define IO_TYPE_CONTROLLER			2
@@ -1048,7 +1076,7 @@ struct irp {
 		LONG irp_count;
 		void *system_buffer;
 	} associated_irp;
-	struct nt_list threads;
+	struct nt_list thread_list;
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
 	BOOLEAN pending_returned;
@@ -1082,27 +1110,30 @@ struct irp {
 			struct {
 				struct nt_list list;
 				union {
-					struct io_stack_location *
-					current_stack_location;
+					struct io_stack_location *csl;
 					ULONG packet_type;
 				};
 			};
 			struct file_object *file_object;
 		} overlay;
-		struct kapc apc;
+		union {
+			struct kapc apc;
+			/* space for apc is used for ndiswrapper
+			 * specific fields */
+			struct {
+				struct wrap_urb *wrap_urb;
+				struct wrap_device *wrap_device;
+			};
+		};
 		void *completion_key;
 	} tail;
-
-	/* ndiswrapper extension */
-	struct wrap_urb *wrap_urb;
-	struct wrap_device *wd;
 };
 
 #define IoSizeOfIrp(stack_count)					\
-	((USHORT)(sizeof(struct irp) + ((stack_count) *			\
-					sizeof(struct io_stack_location))))
-#define IoGetCurrentIrpStackLocation(irp)		\
-	(irp)->tail.overlay.current_stack_location
+	((USHORT)(sizeof(struct irp) +					\
+		  ((stack_count) * sizeof(struct io_stack_location))))
+#define IoGetCurrentIrpStackLocation(irp)	\
+	(irp)->tail.overlay.csl
 #define IoGetNextIrpStackLocation(irp)		\
 	(IoGetCurrentIrpStackLocation(irp) - 1)
 #define IoGetPreviousIrpStackLocation(irp)	\
@@ -1110,14 +1141,20 @@ struct irp {
 
 #define IoSetNextIrpStackLocation(irp)				\
 do {								\
+	KIRQL _irql_;						\
+	IoAcquireCancelSpinLock(&_irql_);			\
 	(irp)->current_location--;				\
 	IoGetCurrentIrpStackLocation(irp)--;			\
+	IoReleaseCancelSpinLock(_irql_);			\
 } while (0)
 
 #define IoSkipCurrentIrpStackLocation(irp) 			\
 do {								\
+	KIRQL _irql_;						\
+	IoAcquireCancelSpinLock(&_irql_);			\
 	(irp)->current_location++;				\
 	IoGetCurrentIrpStackLocation(irp)++;			\
+	IoReleaseCancelSpinLock(_irql_);			\
 } while (0)
 
 static inline void
@@ -1154,6 +1191,12 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 #define IRP_SL(irp, n) (((struct io_stack_location *)((irp) + 1)) + (n))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 #define IoIrpThread(irp) ((irp)->tail.overlay.thread)
+
+#define IRP_URB(irp)							\
+	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
+
+#define IRP_WRAP_DEVICE(irp) (irp)->tail.wrap_device
+#define IRP_WRAP_URB(irp) (irp)->tail.wrap_urb
 
 struct wmi_guid_reg_info {
 	struct guid *guid;
@@ -1249,10 +1292,6 @@ struct io_workitem_entry {
 	struct io_workitem *io_workitem;
 };
 
-enum mm_page_priority {
-	LowPagePriority, NormalPagePriority = 16, HighPagePriority = 32
-};
-
 enum kinterrupt_mode {
 	LevelSensitive, Latched
 };
@@ -1334,18 +1373,18 @@ typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) wstdcall;
 
 struct kinterrupt {
 	ULONG vector;
-	KAFFINITY processor_enable_mask;
+	KAFFINITY cpu_mask;
 	NT_SPIN_LOCK lock;
 	NT_SPIN_LOCK *actual_lock;
-	BOOLEAN shareable;
-	BOOLEAN floating_save;
-	CHAR processor_number;
-	PKSERVICE_ROUTINE service_routine;
-	void *service_context;
+	BOOLEAN shared;
+	BOOLEAN save_fp;
+	CHAR num_cpu;
+	PKSERVICE_ROUTINE isr;
+	void *isr_ctx;
 	struct nt_list list;
 	KIRQL irql;
 	KIRQL synch_irql;
-	enum kinterrupt_mode interrupt_mode;
+	enum kinterrupt_mode mode;
 };
 
 enum kinterrupt_polarity {
@@ -1408,6 +1447,10 @@ struct callback_object {
 	struct nt_list callback_funcs;
 	BOOLEAN allow_multiple_callbacks;
 	struct object_attributes *attributes;
+};
+
+enum section_inherit {
+	ViewShare = 1, ViewUnmap = 2
 };
 
 struct ksystem_time {

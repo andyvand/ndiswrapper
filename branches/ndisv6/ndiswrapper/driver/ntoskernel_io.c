@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2006-2007 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,11 +39,10 @@ wstdcall int WIN_FUNC(IoIsWdmVersionAvailable,2)
 	(UCHAR major, UCHAR minor)
 {
 	IOENTER("%d, %x", major, minor);
-	if ((major == 6 && minor == 0x00) || // Vista
-	    (major == 1 &&
-	     (minor == 0x30 || // Windows 2003
-	      minor == 0x20 || // Windows XP
-	      minor == 0x10))) // Windows 2000
+	if (major == 1 &&
+	    (minor == 0x30 || // Windows 2003
+	     minor == 0x20 || // Windows XP
+	     minor == 0x10)) // Windows 2000
 		IOEXIT(return TRUE);
 	IOEXIT(return FALSE);
 }
@@ -61,7 +60,7 @@ wstdcall BOOLEAN WIN_FUNC(IoIs32bitProcess,1)
 wstdcall void WIN_FUNC(IoInitializeIrp,3)
 	(struct irp *irp, USHORT size, CCHAR stack_count)
 {
-	IOENTER("irp: %p, count: %d", irp, stack_count);
+	IOENTER("irp: %p, %d, %d", irp, size, stack_count);
 
 	memset(irp, 0, size);
 	irp->size = size;
@@ -95,11 +94,10 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	IOENTER("count: %d", stack_count);
 	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
-	irp = kmalloc(irp_size, gfp_irql());
-	if (irp) {
-		IOTRACE("allocated irp %p", irp);
+	irp = kmalloc(irp_size, irql_gfp());
+	if (irp)
 		IoInitializeIrp(irp, irp_size, stack_count);
-	}
+	IOTRACE("irp %p", irp);
 	IOEXIT(return irp);
 }
 
@@ -143,7 +141,7 @@ wstdcall void IoQueueThreadIrp(struct irp *irp)
 		IOTRACE("thread: %p, task: %p", thread, thread->task);
 		irp->flags |= IRP_SYNCHRONOUS_API;
 		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		InsertTailList(&thread->irps, &irp->threads);
+		InsertTailList(&thread->irps, &irp->thread_list);
 		IoIrpThread(irp) = thread;
 		nt_spin_unlock_irql(&thread->lock, irql);
 	} else
@@ -158,7 +156,7 @@ wstdcall void IoDequeueThreadIrp(struct irp *irp)
 	thread = IoIrpThread(irp);
 	if (thread) {
 		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		RemoveEntryList(&irp->threads);
+		RemoveEntryList(&irp->thread_list);
 		nt_spin_unlock_irql(&thread->lock, irql);
 	}
 }
@@ -343,23 +341,20 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
-	IOENTER("%p, %p", dev_obj, irp);
-	IoSetNextIrpStackLocation(irp);
-	DUMP_IRP(irp);
-#ifdef IO_DEBUG
-	if (irp->current_location < 0) {
+	IOTRACE("%p, %p, %p, %d, %d, %p", dev_obj, irp, dev_obj->drv_obj,
+		irp->current_location, irp->stack_count,
+		IoGetCurrentIrpStackLocation(irp));
+	if (irp->current_location <= 0) {
 		ERROR("invalid irp: %p, %d", irp, irp->current_location);
 		return STATUS_INVALID_PARAMETER;
 	}
-#endif
+	IoSetNextIrpStackLocation(irp);
+	DUMP_IRP(irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	IOTRACE("%p, %p", irp_sl, dev_obj);
 	drv_obj = dev_obj->drv_obj;
 	irp_sl->dev_obj = dev_obj;
-	IOTRACE("drv_obj: %p", drv_obj);
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
-	/* TODO: Linux functions must be called natively */
 	if (major_func)
 		status = LIN2WIN2(major_func, dev_obj, irp);
 	else {
@@ -497,7 +492,7 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 WIN_FUNC_DECL(IoSyncForwardIrp,2)
 
 wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
-				   struct irp *irp)
+				    struct irp *irp)
 {
 	NTSTATUS status;
 
@@ -508,7 +503,7 @@ wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 WIN_FUNC_DECL(IoAsyncForwardIrp,2)
 
 wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
-					struct irp *irp)
+					 struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -526,49 +521,54 @@ WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
 static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
 	struct kinterrupt *interrupt = data;
-	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
 
-	if (interrupt->actual_lock)
-		spinlock = interrupt->actual_lock;
-	else
-		spinlock = &interrupt->lock;
-	nt_spin_lock(spinlock);
-	ret = LIN2WIN2(interrupt->service_routine, interrupt,
-		       interrupt->service_context);
-	nt_spin_unlock(spinlock);
-
+	TRACE6("%p", interrupt);
+	/* use nt_spin_lock_warp_preempt so ISR runs at IRQL
+	 * DISPATCH_LEVEL */
+	nt_spin_lock_warp_preempt(interrupt->actual_lock);
+	ret = LIN2WIN2(interrupt->isr, interrupt, interrupt->isr_ctx);
+	nt_spin_unlock_warp_preempt(interrupt->actual_lock);
 	if (ret == TRUE)
-		return IRQ_HANDLED;
+		EXIT6(return IRQ_HANDLED);
 	else
-		return IRQ_NONE;
+		EXIT6(return IRQ_NONE);
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
-	(struct kinterrupt *interrupt, PKSERVICE_ROUTINE service_routine,
-	 void *service_context, NT_SPIN_LOCK *lock, ULONG vector,
-	 KIRQL irql, KIRQL synch_irql, enum kinterrupt_mode interrupt_mode,
-	 BOOLEAN shareable, KAFFINITY processor_enable_mask,
-	 BOOLEAN floating_save)
+	(struct kinterrupt **kinterrupt, PKSERVICE_ROUTINE isr, void *isr_ctx,
+	 NT_SPIN_LOCK *lock, ULONG vector, KIRQL irql, KIRQL synch_irql,
+	 enum kinterrupt_mode mode, BOOLEAN shared, KAFFINITY cpu_mask,
+	 BOOLEAN save_fp)
 {
+	struct kinterrupt *interrupt;
 	IOENTER("");
-
+	interrupt = kmalloc(sizeof(*interrupt), GFP_KERNEL);
+	if (!interrupt)
+		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
+	memset(interrupt, 0, sizeof(*interrupt));
 	interrupt->vector = vector;
-	interrupt->processor_enable_mask = processor_enable_mask;
-//	nt_spin_lock_init(&interrupt->lock);
-	interrupt->actual_lock = lock;
-	interrupt->shareable = shareable;
-	interrupt->floating_save = floating_save;
-	interrupt->service_routine = service_routine;
-	interrupt->service_context = service_context;
+	interrupt->cpu_mask = cpu_mask;
+	nt_spin_lock_init(&interrupt->lock);
+	if (lock)
+		interrupt->actual_lock = lock;
+	else
+		interrupt->actual_lock = &interrupt->lock;
+	interrupt->shared = shared;
+	interrupt->save_fp = save_fp;
+	interrupt->isr = isr;
+	interrupt->isr_ctx = isr_ctx;
 	InitializeListHead(&interrupt->list);
+	interrupt->irql = irql;
 	interrupt->synch_irql = synch_irql;
-	interrupt->interrupt_mode = interrupt_mode;
-	if (request_irq(vector, io_irq_isr, shareable ? SA_SHIRQ : 0,
-			"io_irq", interrupt)) {
+	interrupt->mode = mode;
+	if (request_irq(vector, io_irq_isr, shared ? IRQF_SHARED : 0,
+			"ndiswrapper", interrupt)) {
 		WARNING("request for irq %d failed", vector);
+		kfree(interrupt);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	}
+	*kinterrupt = interrupt;
 	IOEXIT(return STATUS_SUCCESS);
 }
 
@@ -576,6 +576,7 @@ wstdcall void WIN_FUNC(IoDisconnectInterrupt,1)
 	(struct kinterrupt *interrupt)
 {
 	free_irq(interrupt->vector, interrupt);
+	kfree(interrupt);
 }
 
 wstdcall struct mdl *WIN_FUNC(IoAllocateMdl,5)
@@ -597,14 +598,15 @@ wstdcall struct mdl *WIN_FUNC(IoAllocateMdl,5)
 		} else
 			irp->mdl = mdl;
 	}
+	IOTRACE("%p", mdl);
 	return mdl;
 }
 
 wstdcall void WIN_FUNC(IoFreeMdl,1)
 	(struct mdl *mdl)
 {
+	IOTRACE("%p", mdl);
 	free_mdl(mdl);
-	IOEXIT(return);
 }
 
 wstdcall struct io_workitem *WIN_FUNC(IoAllocateWorkItem,1)
@@ -613,7 +615,7 @@ wstdcall struct io_workitem *WIN_FUNC(IoAllocateWorkItem,1)
 	struct io_workitem *io_workitem;
 
 	IOENTER("%p", dev_obj);
-	io_workitem = kmalloc(sizeof(*io_workitem), gfp_irql());
+	io_workitem = kmalloc(sizeof(*io_workitem), irql_gfp());
 	if (!io_workitem)
 		IOEXIT(return NULL);
 	io_workitem->dev_obj = dev_obj;
@@ -654,7 +656,7 @@ wstdcall NTSTATUS WIN_FUNC(IoAllocateDriverObjectExtension,4)
 	KIRQL irql;
 
 	IOENTER("%p, %p", drv_obj, client_id);
-	ce = kmalloc(sizeof(*ce) + extlen, gfp_irql());
+	ce = kmalloc(sizeof(*ce) + extlen, irql_gfp());
 	if (ce == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -686,8 +688,8 @@ wstdcall void *WIN_FUNC(IoGetDriverObjectExtension,2)
 		}
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOENTER("ret: %p", ret);
-	IOEXIT(return ret);
+	IOTRACE("ret: %p", ret);
+	return ret;
 }
 
 wstdcall void WIN_FUNC(IoFreeDriverObjectExtension,2)
@@ -835,22 +837,22 @@ wstdcall void WIN_FUNC(IoDeleteDevice,1)
 }
 
 wstdcall void WIN_FUNC(IoDetachDevice,1)
-	(struct device_object *topdev)
+	(struct device_object *tgt)
 {
 	struct device_object *tail;
 	KIRQL irql;
 
-	IOENTER("%p", topdev);
-	if (!topdev)
+	IOENTER("%p", tgt);
+	if (!tgt)
 		IOEXIT(return);
-	tail = topdev->attached;
+	tail = tgt->attached;
 	if (!tail)
 		IOEXIT(return);
 	IOTRACE("tail: %p", tail);
 
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	topdev->attached = tail->attached;
-	IOTRACE("attached:%p", topdev->attached);
+	tgt->attached = tail->attached;
+	IOTRACE("attached:%p", tgt->attached);
 	for ( ; tail; tail = tail->attached) {
 		IOTRACE("tail:%p", tail);
 		tail->stack_count--;
@@ -862,31 +864,27 @@ wstdcall void WIN_FUNC(IoDetachDevice,1)
 wstdcall struct device_object *WIN_FUNC(IoGetAttachedDevice,1)
 	(struct device_object *dev)
 {
-	struct device_object *top_dev;
 	KIRQL irql;
 
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	top_dev = dev;
-	while (top_dev->attached)
-		top_dev = top_dev->attached;
+	while (dev->attached)
+		dev = dev->attached;
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOEXIT(return top_dev);
+	IOEXIT(return dev);
 }
 
 wstdcall struct device_object *WIN_FUNC(IoGetAttachedDeviceReference,1)
 	(struct device_object *dev)
 {
-	struct device_object *top_dev;
-
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
-	top_dev = IoGetAttachedDevice(dev);
-	ObReferenceObject(top_dev);
-	IOEXIT(return top_dev);
+	dev = IoGetAttachedDevice(dev);
+	ObReferenceObject(dev);
+	IOEXIT(return dev);
 }
 
 wstdcall struct device_object *WIN_FUNC(IoAttachDeviceToDeviceStack,2)
@@ -966,12 +964,12 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
 	file_obj = NULL;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(coh, &object_list, list) {
-		DBGTRACE5("header: %p, type: %d", coh, coh->type);
+		TRACE5("header: %p, type: %d", coh, coh->type);
 		if (coh->type != OBJECT_TYPE_DEVICE)
 			continue;
 		if (!RtlCompareUnicodeString(&coh->name, name, TRUE)) {
 			dev_obj = HEADER_TO_OBJECT(coh);
-			DBGTRACE5("dev_obj: %p", dev_obj);
+			TRACE5("dev_obj: %p", dev_obj);
 			break;
 		}
 	}
@@ -1005,8 +1003,7 @@ wstdcall NTSTATUS WIN_FUNC(PoRequestPowerIrp,6)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_count);
-	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
+	TRACE1("%p, %d, %p", dev_obj, dev_obj->stack_count, dev_obj->drv_obj);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (!irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -1043,8 +1040,8 @@ wstdcall void *WIN_FUNC(IoAllocateErrorLogEntry,2)
 {
 	/* not implemented fully */
 	void *ret = kmalloc(sizeof(struct io_error_log_packet) + entry_size,
-			    gfp_irql());
-	DBGTRACE2("%p", ret);
+			    irql_gfp());
+	TRACE2("%p", ret);
 	if (ret)
 		return ret + sizeof(struct io_error_log_packet);
 	else
@@ -1061,7 +1058,7 @@ wstdcall void WIN_FUNC(IoWriteErrorLogEntry,1)
 wstdcall void WIN_FUNC(IoFreeErrorLogEntry,1)
 	(void *entry)
 {
-	DBGTRACE2("%p", entry);
+	TRACE2("%p", entry);
 	kfree(entry - sizeof(struct io_error_log_packet));
 }
 
@@ -1088,16 +1085,15 @@ wstdcall NTSTATUS WIN_FUNC(IoRegisterDeviceInterface,4)
 
 	/* TODO: check if pdo is valid */
 	RtlInitAnsiString(&ansi, "ndis");
-	TRACEENTER1("pdo: %p, ref: %p, link: %p, %x, %x, %x",
-		    pdo, reference, link, guid_class->data1,
-		    guid_class->data2, guid_class->data3);
+	ENTER1("pdo: %p, ref: %p, link: %p, %x, %x, %x", pdo, reference, link,
+	       guid_class->data1, guid_class->data2, guid_class->data3);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoSetDeviceInterfaceState,2)
 	(struct unicode_string *link, BOOLEAN enable)
 {
-	TRACEENTER1("link: %p, enable: %d", link, enable);
+	ENTER1("link: %p, enable: %d", link, enable);
 	return STATUS_SUCCESS;
 }
 
@@ -1105,7 +1101,7 @@ wstdcall NTSTATUS WIN_FUNC(IoOpenDeviceRegistryKey,4)
 	(struct device_object *dev_obj, ULONG type, ACCESS_MASK mask,
 	 void **handle)
 {
-	TRACEENTER1("dev_obj: %p", dev_obj);
+	ENTER1("dev_obj: %p", dev_obj);
 	*handle = dev_obj;
 	return STATUS_SUCCESS;
 }
@@ -1113,8 +1109,8 @@ wstdcall NTSTATUS WIN_FUNC(IoOpenDeviceRegistryKey,4)
 wstdcall NTSTATUS WIN_FUNC(IoWMIRegistrationControl,2)
 	(struct device_object *dev_obj, ULONG action)
 {
-	TRACEENTER2("%p, %d", dev_obj, action);
-	TRACEEXIT2(return STATUS_SUCCESS);
+	ENTER2("%p, %d", dev_obj, action);
+	EXIT2(return STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(IoInvalidateDeviceRelations,2)

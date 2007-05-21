@@ -102,7 +102,7 @@ struct ndis_phy_addr_unit {
 
 struct wrap_ndis_device;
 
-struct ndis_sg_dma_handle {
+struct ndis_sg_dma {
 	struct wrap_ndis_device *wnd;
 	void (*sg_list_handler)(struct device_object *, void *,
 				struct ndis_sg_list *, void *) wstdcall;
@@ -1084,10 +1084,6 @@ struct auth_encr_capa {
 
 enum driver_type { DRIVER_WIRELESS = 1, DRIVER_ETHERNET, };
 
-enum hw_status {
-	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED,
-};
-
 struct ndis_rx_scale_capabilities {
 	struct ndis_object_header header;
 	ULONG flags;
@@ -1269,13 +1265,17 @@ struct wrap_ndis_device {
 	void *add_dev_ctx;
 	void *shutdown_ctx;
 	void *isr_ctx;
+	struct kinterrupt *kinterrupt;
+	struct kdpc irq_kdpc;
 	ULONG attribute_flags;
+
 	enum ndis_interface_type interface_type;
 	struct mp_general_attrs general_attrs;
 	struct mp_offload_attrs offload_attrs;
 	struct mp_native_802_11_attrs native_802_11_attrs;
 	struct mp_interrupt_characteristics interrupt_chars;
 	NT_SPIN_LOCK isr_lock;
+	struct ndis_sg_dma ndis_sg_dma;
 
 	struct nt_list pool_list;
 	NT_SPIN_LOCK lock;
@@ -1299,6 +1299,7 @@ struct wrap_ndis_device {
 	struct semaphore tx_buffer_list_mutex;
 	unsigned int max_tx_packets;
 	u8 tx_ok;
+	NT_SPIN_LOCK tx_ring_lock;
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
 	s8 ndis_comm_done;
@@ -1341,7 +1342,7 @@ struct wrap_ndis_device {
 	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
 	enum ndis_physical_medium physical_medium;
 	u32 ndis_wolopts;
-	struct nt_list timer_list;
+	struct nt_slist wrap_timer_slist;
 	char netdev_name[IFNAMSIZ];
 	ULONG frame_length;
 	int drv_ndis_version;
@@ -1456,10 +1457,10 @@ struct ndis_pmkid_candidate_list {
 	struct ndis_pmkid_candidate candidates[1];
 };
 
-irqreturn_t mp_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL);
-void init_nmb_functions(struct ndis_miniport_block *nmb);
+BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx) wstdcall;
 
 int ndis_init(void);
+int ndis_init_device(struct wrap_ndis_device *wnd);
 void ndis_exit_device(struct wrap_ndis_device *wnd);
 void ndis_exit(void);
 void insert_ndis_kdpc_work(struct kdpc *kdpc);

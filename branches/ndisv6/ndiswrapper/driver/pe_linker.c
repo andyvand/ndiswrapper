@@ -497,17 +497,51 @@ static int fix_pe_image(struct pe_image *pe)
 }
 
 #if defined(CONFIG_X86_64)
-void fix_user_shared_data_addr(char *driver, unsigned long length)
+static void fix_user_shared_data_addr(char *image, unsigned long length)
 {
-	unsigned long i, n, max_addr, *addr;
+	unsigned long i, max_addr, *addr;
 
-	n = length - sizeof(unsigned long);
+	if (length < sizeof(unsigned long))
+		return;
+	length -= sizeof(unsigned long);
 	max_addr = KI_USER_SHARED_DATA + sizeof(kuser_shared_data);
-	for (i = 0; i < n; i++) {
-		addr = (unsigned long *)(driver + i);
+	for (i = 0; i < length; i++) {
+		addr = (unsigned long *)(image + i);
 		if (*addr >= KI_USER_SHARED_DATA && *addr < max_addr) {
-			*addr -= KI_USER_SHARED_DATA;
-			*addr += (unsigned long)&kuser_shared_data;
+			*addr = *addr - KI_USER_SHARED_DATA +
+				(unsigned long)&kuser_shared_data;
+		}
+	}
+}
+#else
+static void fix_seh(char *image, unsigned long length)
+{
+	unsigned long i, *ul;
+
+	if (length < 7)
+		return;
+	length -= 7;
+	for (i = 0; i < length; i++) {
+		u16 *us;
+		ul = (unsigned long *)(image + i);
+		us = (u16 *)(ul + 1);
+		if (*ul == 0x0000a164 && *us == 0x0000) {
+			TRACE1("replacing %08lx%04x\n", *ul, *us);
+			*ul = 0x000000b8;
+			*us = 0x9090;
+		} else if (*ul == 0x0035ff64 && *us == 0x0000) {
+			TRACE1("replacing %08lx%04x\n", *ul, *us);
+			*ul = 0xc35d006a;
+			*us = 0x9090;
+		} else if (*ul == 0x0000a364 && *us == 0x0000) {
+			TRACE1("replacing %08lx%04x\n", *ul, *us);
+			memset(ul, 0x90, 6);
+		} else if (*ul == 0x000d8964 || *ul == 0x000d8964 ||
+			   *ul == 0x00258964 || *ul == 0x00058f64) {
+			if (memcmp(ul + 1, "\x00\x00\x00", 3) == 0) {
+				TRACE1("replacing %08lx\n", *ul);
+				memset(ul, 0x90, 7);
+			}
 		}
 	}
 }
@@ -537,7 +571,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 		dos_hdr = pe->image;
 
 		if (pe->size < sizeof(IMAGE_DOS_HEADER)) {
-			DBGTRACE1("image too small: %d", pe->size);
+			TRACE1("image too small: %d", pe->size);
 			return -EINVAL;
 		}
 
@@ -547,17 +581,17 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 
 		pe->type = check_nt_hdr(pe->nt_hdr);
 		if (pe->type <= 0) {
-			DBGTRACE1("type <= 0");
+			TRACE1("type <= 0");
 			return -EINVAL;
 		}
 
 		if (fix_pe_image(pe)) {
-			DBGTRACE1("bad PE image");
+			TRACE1("bad PE image");
 			return -EINVAL;
 		}
 
 		if (read_exports(pe)) {
-			DBGTRACE1("read exports failed");
+			TRACE1("read exports failed");
 			return -EINVAL;
 		}
 	}
@@ -566,23 +600,25 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 	        pe = &pe_image[i];
 
 		if (fixup_reloc(pe->image, pe->nt_hdr)) {
-			DBGTRACE1("fixup reloc failed");
+			TRACE1("fixup reloc failed");
 			return -EINVAL;
 		}
 		if (fixup_imports(pe->image, pe->nt_hdr)) {
-			DBGTRACE1("fixup imports failed");
+			TRACE1("fixup imports failed");
 			return -EINVAL;
 		}
 #if defined(CONFIG_X86_64)
 		INFO("fixing KI_USER_SHARED_DATA address in the driver");
 		fix_user_shared_data_addr(pe_image[i].image, pe_image[i].size);
+#else
+		fix_seh(pe_image[i].image, pe_image[i].size);
 #endif
 		flush_icache_range(pe->image, pe->size);
 
 		pe->entry =
 			RVA2VA(pe->image,
 			       pe->opt_hdr->AddressOfEntryPoint, void *);
-		DBGTRACE1("entry is at %p, rva at %08X", pe->entry,
+		TRACE1("entry is at %p, rva at %08X", pe->entry,
 			  pe->opt_hdr->AddressOfEntryPoint);
 	}
 
@@ -599,7 +635,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 			ustring.buf = (wchar_t *)buf;
 			dll_entry = (void *)get_dll_init(pe->name);
 
-			DBGTRACE1("calling dll_init at %p", dll_entry);
+			TRACE1("calling dll_init at %p", dll_entry);
 			if (!dll_entry || dll_entry(&ustring))
 				ERROR("DLL initialize failed for %s",
 				      pe->name);

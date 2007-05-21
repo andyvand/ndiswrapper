@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,17 +15,6 @@
 
 #include "ntoskernel.h"
 
-int crt_init(void)
-{
-	return 0;
-}
-
-/* called when module is being removed */
-void crt_exit(void)
-{
-	TRACEEXIT4(return);
-}
-
 noregparm INT WIN_FUNC(_win_sprintf,12)
 	(char *buf, const char *format, ...)
 {
@@ -34,7 +23,7 @@ noregparm INT WIN_FUNC(_win_sprintf,12)
 	va_start(args, format);
 	res = vsprintf(buf, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p: %s", buf, buf);
+	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -42,7 +31,7 @@ noregparm INT WIN_FUNC(swprintf,12)
 	(wchar_t *buf, const wchar_t *format, ...)
 {
 	TODO();
-	TRACEEXIT2(return 0);
+	EXIT2(return 0);
 }
 
 noregparm INT WIN_FUNC(_win_vsprintf,3)
@@ -50,21 +39,20 @@ noregparm INT WIN_FUNC(_win_vsprintf,3)
 {
 	INT i;
 	i = vsprintf(str, format, ap);
-	DBGTRACE2("str: %p: %s", str, str);
-	TRACEEXIT2(return i);
+	TRACE2("str: %p: %s", str, str);
+	EXIT2(return i);
 }
 
 noregparm INT WIN_FUNC(_win_snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
-	int res, n;
+	int res;
 
-	n = count > 9 ? 9 : count;
 	va_start(args, format);
-	res = vsnprintf(buf, n, format, args);
+	res = vsnprintf(buf, count, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p: %s", buf, buf);
+	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -72,13 +60,12 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
-	int res, n;
+	int res;
 
-	n = count > 9 ? 9 : count;
 	va_start(args, format);
-	res = vsnprintf(buf, n, format, args);
+	res = vsnprintf(buf, count, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p: %s", buf, buf);
+	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -87,8 +74,8 @@ noregparm INT WIN_FUNC(_win_vsnprintf,4)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p: %s", str, str);
-	TRACEEXIT2(return i);
+	TRACE2("str: %p: %s", str, str);
+	EXIT2(return i);
 }
 
 noregparm INT WIN_FUNC(_win__vsnprintf,4)
@@ -96,8 +83,8 @@ noregparm INT WIN_FUNC(_win__vsnprintf,4)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p: %s", str, str);
-	TRACEEXIT2(return i);
+	TRACE2("str: %p: %s", str, str);
+	EXIT2(return i);
 }
 
 noregparm char *WIN_FUNC(_win_strncpy,3)
@@ -372,30 +359,33 @@ int stricmp(const char *s1, const char *s2)
 	return *s1 - *s2;
 }
 
-void dump_stack(void)
-{
-	ULONG_PTR *sp;
-	int i;
-	get_sp(sp);
-	for (i = 0; i < 20; i++)
-		printk(KERN_DEBUG "sp[%d] = %p\n", i, (void *)sp[i]);
-}
-
 void dump_bytes(const char *ctx, const u8 *from, int len)
 {
-	int i;
-	u8 buf[16 * 3 + 1], *p;
+	int i, j;
+	u8 *buf;
 
-	i = 0;
-	p = buf;
-	while (i < len) {
-		p += sprintf(p, "%02x ", from[i++]);
-		if (i % 16 == 0) {
-			*p = 0;
-			printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
-			p = buf;
-		}
+	buf = kmalloc(len * 3 + 1, irql_gfp());
+	if (!buf) {
+		ERROR("couldn't allocate memory");
+		return;
 	}
+	for (i = j = 0; i < len; i++, j += 3) {
+		sprintf(&buf[j], "%02x ", from[i]);
+	}
+	buf[j] = 0;
+	printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
+	kfree(buf);
 }
 
 #include "crt_exports.h"
+
+int crt_init(void)
+{
+	return 0;
+}
+
+/* called when module is being removed */
+void crt_exit(void)
+{
+	EXIT4(return);
+}

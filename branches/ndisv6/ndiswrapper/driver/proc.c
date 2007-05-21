@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -220,7 +220,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 {
 	struct proc_dir_entry *procfs_entry;
 
-	TRACEENTER1("%p", wnd);
+	ENTER1("%p", wnd);
 	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
 
@@ -285,7 +285,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 		procfs_entry->read_proc = procfs_read_ndis_settings;
 		procfs_entry->write_proc = procfs_write_ndis_settings;
 	}
-	TRACEEXIT1(return 0);
+	EXIT1(return 0);
 
 err_settings:
 	remove_proc_entry("encr", wnd->procfs_iface);

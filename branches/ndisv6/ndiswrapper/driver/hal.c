@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -12,14 +12,6 @@
  *  GNU General Public License for more details.
  *
  */
-
-#include <linux/version.h>
-#include <linux/module.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/wireless.h>
-#include <linux/delay.h>
-#include <linux/usb.h>
 
 #include "ntoskernel.h"
 
