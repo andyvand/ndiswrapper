@@ -16,6 +16,11 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
+#ifndef CONFIG_WIRELESS_EXT
+#warning "wirelss devices are not supported by this kernel "\
+	"as CONFIG_WIRELESS_EXT is not enabled"
+#endif
+
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
@@ -44,6 +49,7 @@
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/highmem.h>
+#include <linux/percpu.h>
 
 #include "winnt_types.h"
 
@@ -97,7 +103,7 @@
 
 #include <linux/smp_lock.h>
 
-/* RedHat kernels #define irqs_disabled this way */
+/* RedHat kernels define irqs_disabled this way */
 #ifndef irqs_disabled
 #define irqs_disabled()                \
 ({                                     \
@@ -107,91 +113,60 @@
 })
 #endif
 
-#ifndef in_atomic
-#ifdef CONFIG_PREEMPT
-#define in_atomic()					\
-	((preempt_get_count() & ~PREEMPT_ACTIVE) != 0)
-#else
-#define in_atomic() (in_interrupt())
-#endif // CONFIG_PREEMPT
-#endif // in_atomic
-
 #endif // LINUX_VERSION_CODE
 
-#ifndef __wait_event_interruptible_timeout
-#define __wait_event_interruptible_timeout(wq, condition, ret)		\
-do {									\
-	wait_queue_t __wait;						\
-	init_waitqueue_entry(&__wait, current);				\
-									\
-	add_wait_queue(&wq, &__wait);					\
-	for (;;) {							\
-		set_current_state(TASK_INTERRUPTIBLE);			\
-		if (condition)						\
-			break;						\
-		if (!signal_pending(current)) {				\
-			ret = schedule_timeout(ret);			\
-			if (!ret)					\
-				break;					\
-			continue;					\
-		}							\
-		ret = -ERESTARTSYS;					\
-		break;							\
-	}								\
-	current->state = TASK_RUNNING;					\
-	remove_wait_queue(&wq, &__wait);				\
+#define prepare_wait_condition(task, var, value)	\
+do {							\
+	var = value;					\
+	task = current;					\
+	mb();						\
 } while (0)
-#endif
 
-#ifndef wait_event_interruptible_timeout
-#define wait_event_interruptible_timeout(wq, condition, timeout)	\
-({									\
-	long __ret = timeout;						\
-	if (!(condition))						\
-		__wait_event_interruptible_timeout(wq, condition, __ret); \
-	__ret;								\
+/* Wait in wait_state (e.g., TASK_INTERRUPTIBLE) for condition to
+ * become true; timeout is either jiffies (> 0) to wait or 0 to wait
+ * forever.
+ * When timeout == 0, return value is
+ *    > 0 if condition becomes true, or
+ *    < 0 if signal is pending on the thread.
+ * When timeout > 0, return value is
+ *    > 0 if condition becomes true before timeout,
+ *    < 0 if signal is pending on the thread before timeout, or
+ *    0 if timedout (condition may have become true at the same time)
+ */
+
+#define wait_condition(condition, timeout, wait_state)		\
+({								\
+	long ret = timeout ? timeout : 1;			\
+	while (1) {						\
+		if (signal_pending(current)) {			\
+			ret = -ERESTARTSYS;			\
+			break;					\
+		}						\
+		set_current_state(wait_state);			\
+		if (condition) {				\
+			__set_current_state(TASK_RUNNING);	\
+			break;					\
+		}						\
+		if (timeout) {					\
+			ret = schedule_timeout(ret);		\
+			if (!ret)				\
+				break;				\
+		} else						\
+			schedule();				\
+	}							\
+	ret;							\
 })
-#endif
-
-#ifndef __wait_event_timeout
-#define __wait_event_timeout(wq, condition, ret)			\
-do {									\
-	wait_queue_t __wait;						\
-	init_waitqueue_entry(&__wait, current);				\
-									\
-	add_wait_queue(&wq, &__wait);					\
-	for (;;) {							\
-		set_current_state(TASK_UNINTERRUPTIBLE);		\
-		if (condition)						\
-			break;						\
-		ret = schedule_timeout(ret);				\
-		if (!ret)						\
-			break;						\
-	}								\
-	current->state = TASK_RUNNING;					\
-	remove_wait_queue(&wq, &__wait);				\
-} while (0)
-#endif
-
-#ifndef wait_event_timeout
-#define wait_event_timeout(wq, condition, timeout)			\
-({									\
-	long __ret = timeout;						\
-	if (!(condition))						\
-		__wait_event_timeout(wq, condition, __ret);		\
-	 __ret;								\
-})
-#endif
 
 #ifdef USE_OWN_WQ
 
 typedef struct {
 	spinlock_t lock;
-	wait_queue_head_t waitq_head;
-	/* how many work_structs pending? */
-	int pending;
-	const char *name;
+	struct task_struct *task;
+	struct completion *completion;
+	char name[16];
 	int pid;
+	/* whether any work_structs pending? <0 implies quit */
+	int pending;
 	/* list of work_structs pending */
 	struct list_head work_list;
 } workqueue_struct_t;
@@ -204,22 +179,27 @@ typedef struct {
 	workqueue_struct_t *workq;
 } work_struct_t;
 
-#define initialize_work(work, work_func, work_data)		\
+#define initialize_work(work, pfunc, pdata)			\
 	do {							\
-		(work)->func = work_func;			\
-		(work)->data = work_data;			\
+		(work)->func = (pfunc);				\
+		(work)->data = (pdata);				\
 		(work)->workq = NULL;				\
 	} while (0)
 
 #undef create_singlethread_workqueue
 #define create_singlethread_workqueue wrap_create_wq
+#undef destroy_workqueue
 #define destroy_workqueue wrap_destroy_wq
+#undef queue_work
 #define queue_work wrap_queue_work
+#undef flush_workqueue
+#define flush_workqueue wrap_flush_wq
 
 workqueue_struct_t *wrap_create_wq(const char *name);
 void wrap_destroy_wq(workqueue_struct_t *workq);
 void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
 void wrap_cancel_work(work_struct_t *work);
+void wrap_flush_wq(workqueue_struct_t *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 
@@ -228,7 +208,7 @@ typedef void *worker_param_t;
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
 
-#ifdef INIT_WORK_NAR
+#if defined(INIT_WORK_NAR) || defined(INIT_DELAYED_WORK_DEFERRABLE)
 #define initialize_work(work, func, data) INIT_WORK(work, func)
 typedef struct work_struct *worker_param_t;
 #define worker_param_data(param, type, member)	\
@@ -241,6 +221,7 @@ typedef void *worker_param_t;
 
 #endif // USE_OWN_WQ
 
+struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
@@ -274,24 +255,7 @@ typedef void *worker_param_t;
 #define CHECKSUM_HW CHECKSUM_PARTIAL
 #endif
 
-/* this ugly hack is to handle RH kernels; I don't know any better,
- * but this has to be fixed soon */
-#ifndef rt_task
-#define rt_task(p) ((p)->prio < MAX_RT_PRIO)
-#endif
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#ifndef preempt_enable
-#define preempt_enable()  do { } while (0)
-#endif
-#ifndef preempt_disable
-#define preempt_disable() do { } while (0)
-#endif
-
-#ifndef preempt_enable_no_resched
-#define preempt_enable_no_resched() preempt_enable()
-#endif
 
 #ifndef container_of
 #define container_of(ptr, type, member)					\
@@ -337,7 +301,14 @@ typedef u32 pm_message_t;
 
 #ifndef PCI_D0
 #define PCI_D0 0
+#endif
+
+#ifndef PCI_D3hot
 #define PCI_D3hot 3
+#endif
+
+#ifndef PCI_D3cold
+#define PCI_D3cold 3
 #endif
 
 #ifndef PM_EVENT_SUSPEND
@@ -346,12 +317,6 @@ typedef u32 pm_message_t;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
 #define pci_choose_state(dev, state) (state)
-#endif
-
-#if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
-#define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
-#else
-#define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
 #endif
 
 #if !defined(HAVE_NETDEV_PRIV)
@@ -370,8 +335,32 @@ typedef u32 pm_message_t;
 #define flush_icache_range(start, end) do { } while (0)
 #endif
 
+#ifndef CHECKSUM_PARTIAL
+#define CHECKSUM_PARTIAL CHECKSUM_HW
+#endif
+
+#ifndef IRQF_SHARED
+#define IRQF_SHARED SA_SHIRQ
+#endif
+
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
+#define thread_priority(thread) (thread)->nice
+#define set_thread_priority(thread, prio) (thread)->nice = (prio)
+#else
+#define thread_priority(thread) task_nice(thread)
+#define set_thread_priority(thread, prio) set_user_nice(thread, prio)
+#endif
+
+#ifndef DMA_24BIT_MASK
+#define DMA_24BIT_MASK 0x0000000000ffffffULL
+#endif
+
+#ifndef DMA_30BIT_MASK
+#define DMA_30BIT_MASK 0x000000003fffffffULL
+#endif
 
 #include "ndiswrapper.h"
 #include "pe_linker.h"
@@ -379,19 +368,9 @@ typedef u32 pm_message_t;
 #include "lin2win.h"
 #include "loader.h"
 
-#ifdef CONFIG_X86_64
-#define get_sp(sp) __asm__ __volatile__("mov %%rsp, %0\n\t" : "=m"(sp))
-#else
-#define get_sp(sp) __asm__ __volatile__("mov %%esp, %0\n\t" : "=m"(sp))
+#ifdef DEBUG
+#define DEBUG_IRQL 1
 #endif
-
-#define print_sp() do {				\
-		void *sp;			\
-		get_sp(sp);			\
-		DBGTRACE1("sp: %p", sp);	\
-	} while (0)
-
-//#define DEBUG_IRQL 1
 
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
@@ -403,10 +382,10 @@ typedef u32 pm_message_t;
 #endif
 
 /* TICK is 100ns */
-#define TICKSPERSEC		10000000LL
+#define TICKSPERSEC		10000000
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
-#define TICKSPERJIFFY		((10000000 + HZ - 1) / HZ)
+#define TICKSPERJIFFY		((TICKSPERSEC + HZ - 1) / HZ)
 
 /* 1601 to 1970 is 369 years plus 89 leap days */
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
@@ -437,12 +416,12 @@ struct wrap_export {
 
 #ifdef CONFIG_X86_64
 
-#define WIN_SYMBOL(name, argc)					\
+#define WIN_SYMBOL(name, argc)						\
 	{#name, (generic_func) win2lin_ ## name ## _ ## argc}
 #define WIN_WIN_SYMBOL(name, argc)					\
 	{#name, (generic_func) win2lin__win_ ## name ## _ ## argc}
 #define WIN_FUNC_DECL(name, argc)			\
-	typeof(name) win2lin_ ## name ## _ ## argc ;
+	typeof(name) win2lin_ ## name ## _ ## argc;
 #define WIN_FUNC_PTR(name, argc) win2lin_ ## name ## _ ## argc
 
 #else
@@ -472,13 +451,13 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
-struct wrap_ndis_device;
+struct ndis_miniport_block;
 
 struct wrap_timer {
-	long repeat;
-	struct nt_list list;
+	struct nt_slist slist;
 	struct timer_list timer;
 	struct nt_timer *nt_timer;
+	long repeat;
 #ifdef TIMER_DEBUG
 	unsigned long wrap_timer_magic;
 #endif
@@ -488,7 +467,7 @@ struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
-	void (*func)(void *arg1, void *arg2) wstdcall;
+	NTOS_WORK_FUNC func;
 };
 
 struct wrap_device_setting {
@@ -516,9 +495,13 @@ struct wrap_driver {
 	unsigned short num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct nt_list wrap_devices;
-	union {
-		struct wrap_ndis_driver *ndis_driver;
-	};
+	struct nt_list settings;
+	int dev_type;
+	struct wrap_ndis_driver *ndis_driver;
+};
+
+enum hw_status {
+	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED, HW_PRESENT,
 };
 
 struct wrap_device {
@@ -536,10 +519,13 @@ struct wrap_device {
 
 	/* rest should be (de)initialized when a device is
 	 * (un)plugged */
+	struct cm_resource_list *resource_list;
+	unsigned long hw_status;
 	struct device_object *pdo;
 	union {
 		struct {
 			struct pci_dev *pdev;
+			enum device_power_state wake_state;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 			u32 pci_state[16];
 #endif
@@ -554,8 +540,6 @@ struct wrap_device {
 	union {
 		struct wrap_ndis_device *wnd;
 	};
-	struct cm_resource_list *resource_list;
-	BOOLEAN surprise_removed;
 };
 
 #define wrap_is_pci_bus(dev_bus)			\
@@ -573,25 +557,452 @@ struct wrap_device {
 	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
-extern workqueue_struct_t *wrap_wq;
+extern workqueue_struct_t *ndis_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
-#define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
 
-/* Normally workqueue for ntos is not required, as worker entries in
- * it are not supposed to wait; however, it helps to have separate
- * workqueue so keyboard etc. work when kernel crashes */
+extern workqueue_struct_t *wrapndis_wq;
+#define schedule_wrapndis_work(work_struct)	\
+	queue_work(wrapndis_wq, (work_struct))
 
-#ifdef USE_OWN_WQ
-#define USE_OWN_NTOS_WORKQUEUE 1
-#endif
+#define USE_NTOS_WQ 1
 
-//#define USE_OWN_NTOS_WORKQUEUE 1
-#ifdef USE_OWN_NTOS_WORKQUEUE
+#ifdef USE_NTOS_WQ
 extern workqueue_struct_t *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
+#define schedule_work(work_struct) queue_work(ntos_wq, (work_struct))
 #else
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
+
+#define atomic_unary_op(var, size, oper)				\
+do {									\
+	if (size == 1)							\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "b %b0\n\t" : "+m" (var));	\
+	else if (size == 2)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "w %w0\n\t" : "+m" (var));	\
+	else if (size == 4)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "l %0\n\t" : "+m" (var));	\
+	else if (size == 8)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "q %q0\n\t" : "+m" (var));	\
+	else {								\
+		extern void _invalid_op_size_(void);			\
+		_invalid_op_size_();					\
+	}								\
+} while (0)
+
+#define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
+
+#define atomic_inc_var(var) atomic_inc_var_size(var, sizeof(var))
+
+#define atomic_dec_var_size(var, size) atomic_unary_op(var, size, "dec")
+
+#define atomic_dec_var(var) atomic_dec_var_size(var, sizeof(var))
+
+#define pre_atomic_add(var, i)					\
+({								\
+	typeof(var) pre;					\
+	__asm__ __volatile__(					\
+		LOCK_PREFIX "xadd %0, %1\n\t"			\
+		: "=r"(pre), "+m"(var)				\
+		: "0"(i));					\
+	pre;							\
+})
+
+#define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
+
+#ifndef in_atomic
+#define in_atomic() in_interrupt()
+#endif
+
+/* if either PREEMPT is not available or PREEMPT_RT is used, we fake
+ * preempt so that the driver gets IRQL as required. When PREEMPT is
+ * not available, kernel won't preempt unless a sleep function is
+ * called, so we keep track of (fake) preemption with a variable. With
+ * PREEMPT_RT, we allow only one of the ndiswrapper threads to be at
+ * DISPATCH_LEVEL on each cpu - the kernel is free to preempt any of
+ * these threads */
+
+#if !defined(inc_preempt_count)
+#define WARP_PREEMPT 1
+#endif
+
+#ifdef WARP_PREEMPT
+
+extern int warp_preempt_count;
+#define warp_preempt_disable() atomic_inc_var(warp_preempt_count)
+#define warp_preempt_enable() atomic_dec_var(warp_preempt_count)
+#define warp_preempt_enable_no_resched() warp_preempt_enable()
+#define warp_in_atomic() (warp_preempt_count || in_atomic())
+
+#elif defined(CONFIG_PREEMPT_RT)
+
+DECLARE_PER_CPU(int, warp_preempt_count);
+DECLARE_PER_CPU(spinlock_t, warp_preempt_lock);
+#define warp_preempt_disable()						\
+do {									\
+	int count = get_cpu_var(warp_preempt_count)++;			\
+	spinlock_t *lock = &__get_cpu_var(warp_preempt_lock);		\
+	if (count == 0) {						\
+		assert(!spin_is_locked(lock));				\
+		rt_spin_lock(lock);					\
+	}								\
+	put_cpu_var(warp_preempt_count);				\
+} while (0)
+#define warp_preempt_enable()						\
+do {									\
+	int count = --(get_cpu_var(warp_preempt_count));		\
+	spinlock_t *lock = &__get_cpu_var(warp_preempt_lock);		\
+	if (count == 0) {						\
+		assert(spin_is_locked(lock));				\
+		rt_spin_unlock(lock);					\
+	}								\
+	put_cpu_var(warp_preempt_count);				\
+} while (0)
+#define warp_preempt_enable_no_resched() warp_preempt_enable()
+#define warp_in_atomic()						\
+({									\
+	int count = get_cpu_var(warp_preempt_count);			\
+	put_cpu_var(warp_preempt_count);				\
+	count || in_atomic();						\
+})
+
+#elif defined(CONFIG_PREEMPT)
+
+#ifndef preempt_enable_no_resched
+#define preempt_enable_no_resched() preempt_enable()
+#endif
+
+#define warp_preempt_disable() preempt_disable()
+#define warp_preempt_enable() preempt_enable()
+#define warp_preempt_enable_no_resched() preempt_enable_no_resched()
+#define warp_in_atomic() in_atomic()
+
+#else
+
+#define warp_preempt_disable() inc_preempt_count()
+#define warp_preempt_enable() dec_preempt_count()
+#define warp_preempt_enable_no_resched() warp_preempt_enable()
+#define warp_in_atomic() in_atomic()
+
+#endif
+
+static inline KIRQL current_irql(void)
+{
+#ifdef DEBUG_IRQL
+	if (in_irq() || irqs_disabled())
+		EXIT2(return DIRQL);
+	if (in_interrupt())
+		EXIT2(return SOFT_IRQL);
+#endif
+	if (warp_in_atomic())
+		EXIT6(return DISPATCH_LEVEL);
+	else
+		EXIT6(return PASSIVE_LEVEL);
+}
+
+static inline KIRQL raise_irql(KIRQL newirql)
+{
+	KIRQL irql = current_irql();
+	TRACE6("%d, %d", irql, newirql);
+#ifdef DEBUG_IRQL
+	if (newirql > DISPATCH_LEVEL || irql > newirql) {
+		WARNING("invalid irql: %d, %d", irql, newirql);
+		DBG_BLOCK(4) {
+			dump_stack();
+		}
+	}
+#endif
+	warp_preempt_disable();
+	return irql;
+}
+
+static inline void lower_irql(KIRQL oldirql)
+{									
+#ifdef DEBUG_IRQL
+	KIRQL irql = current_irql();
+	TRACE6("%d, %d", irql, oldirql);
+	if (irql > DISPATCH_LEVEL || oldirql > irql) {
+		WARNING("invalid irql: %d, %d", irql, oldirql);
+		DBG_BLOCK(4) {
+			dump_stack();
+		}
+	}
+#endif
+	warp_preempt_enable();
+}
+
+#define irql_gfp() (in_atomic() ? GFP_ATOMIC : GFP_KERNEL)
+
+#ifdef DEBUG_IRQL
+#define assert_irql(cond)						\
+do {									\
+	KIRQL _irql_ = current_irql();					\
+	if (!(cond)) {							\
+		WARNING("assertion '%s' failed: %d", #cond, _irql_);	\
+		DBG_BLOCK(1) {						\
+			dump_stack();					\
+		}							\
+	}								\
+} while (0)
+#else
+#define assert_irql(cond) do { } while (0)
+#endif
+
+/* Windows spinlocks are of type ULONG_PTR which is not big enough to
+ * store Linux spinlocks; so we implement Windows spinlocks using
+ * ULONG_PTR space with our own functions/macros */
+
+/* Windows seems to use 0 for unlocked state of spinlock - if Linux
+ * convention of 1 for unlocked state is used, at least prism54 driver
+ * crashes */
+
+#define NT_SPIN_LOCK_UNLOCKED 0
+#define NT_SPIN_LOCK_LOCKED 1
+
+static inline void  nt_spin_lock_init(NT_SPIN_LOCK *lock)
+{
+	*lock = NT_SPIN_LOCK_UNLOCKED;
+}
+
+#ifdef CONFIG_SMP
+
+static inline void nt_spin_lock(NT_SPIN_LOCK *lock)
+{
+	__asm__ __volatile__(
+		"1:\t"
+		"  xchgl %1, %0\n\t"
+		"  testl %1, %1\n\t"
+		"  je 3f\n"
+		"2:\t"
+		"  rep; nop\n\t"
+		"  cmpl %2, %0\n\t"
+		"  jne 2b\n\t"
+		"  jmp 1b\n"
+		"3:\n\t"
+		: "+m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
+}
+
+static inline void nt_spin_unlock(NT_SPIN_LOCK *lock)
+{
+	*lock = NT_SPIN_LOCK_UNLOCKED;
+}
+
+#else // CONFIG_SMP
+
+#define nt_spin_lock(lock) do { } while (0)
+
+#define nt_spin_unlock(lock)  do { } while (0)
+
+#endif // CONFIG_SMP
+
+/* When kernel would've disabled preempt (e.g., in interrupt
+ * handlers), we need to fake preempt so driver thinks it is running
+ * at right IRQL */
+
+#if defined(WARP_PREEMPT)
+
+#define nt_spin_lock_warp_preempt(lock)		\
+do {						\
+	atomic_inc_var(warp_preempt_count);	\
+	nt_spin_lock(lock);			\
+} while (0)
+#define nt_spin_unlock_warp_preempt(lock)	\
+do {						\
+	nt_spin_unlock(lock);			\
+	atomic_dec_var(warp_preempt_count);	\
+} while (0)
+
+#elif defined(CONFIG_PREEMPT_RT)
+
+#define nt_spin_lock_warp_preempt(lock)		\
+do {						\
+	get_cpu_var(warp_preempt_count)++;	\
+	put_cpu_var(warp_preempt_count);	\
+	nt_spin_lock(lock);			\
+} while (0)
+#define nt_spin_unlock_warp_preempt(lock)	\
+do {						\
+	nt_spin_unlock(lock);			\
+	get_cpu_var(warp_preempt_count)--;	\
+	put_cpu_var(warp_preempt_count);	\
+} while (0)
+
+#else
+
+#define nt_spin_lock_warp_preempt(lock) nt_spin_lock(lock)
+#define nt_spin_unlock_warp_preempt(lock) nt_spin_unlock(lock)
+
+#endif
+
+#ifdef CONFIG_PREEMPT_RT
+#define save_local_irq(flags) local_irq_save(flags)
+#define restore_local_irq(flags) local_irq_restore(flags)
+#else
+#define save_local_irq(flags) local_irq_save(flags)
+#define restore_local_irq(flags) local_irq_restore(flags)
+#endif
+
+/* raise IRQL to given (higher) IRQL if necessary before locking */
+static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
+{
+	KIRQL oldirql = raise_irql(newirql);
+	nt_spin_lock(lock);
+	return oldirql;
+}
+
+/* lower IRQL to given (lower) IRQL if necessary after unlocking */
+static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
+{
+	nt_spin_unlock(lock);
+	lower_irql(oldirql);
+}
+
+static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
+{
+	local_bh_disable();
+	warp_preempt_disable();
+	nt_spin_lock(lock);
+}
+
+static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
+{
+	nt_spin_unlock(lock);
+	warp_preempt_enable();
+	local_bh_enable();
+}
+
+#define nt_spin_lock_irqsave(lock, flags)				\
+do {									\
+	save_local_irq(flags);						\
+	warp_preempt_disable();						\
+	nt_spin_lock(lock);						\
+} while (0)
+
+#define nt_spin_unlock_irqrestore(lock, flags)				\
+do {									\
+	nt_spin_unlock(lock);						\
+	warp_preempt_enable_no_resched();				\
+	restore_local_irq(flags);					\
+} while (0)
+
+#define atomic_insert_list_head(oldhead, head, newhead)			\
+do {									\
+	oldhead = (typeof(oldhead))head;				\
+} while (cmpxchg(&(head), oldhead, newhead) != (typeof(head))oldhead)
+
+#define atomic_remove_list_head(head, newhead)				\
+({									\
+	typeof(head) oldhead;						\
+	do {								\
+		oldhead = head;						\
+		if (!oldhead)						\
+			break;						\
+	} while (cmpxchg(&(head), oldhead, newhead) != oldhead);	\
+	oldhead;							\
+})
+
+static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
+{
+	return PAGE_ALIGN(((unsigned long)ptr & (PAGE_SIZE - 1)) + length)
+		>> PAGE_SHIFT;
+}
+
+#ifdef CONFIG_X86_64
+
+/* TODO: can these be implemented without using spinlock? */
+
+static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
+					      struct nt_slist *entry,
+					      NT_SPIN_LOCK *lock)
+{
+	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	entry->next = head->next;
+	head->next = entry;
+	head->depth++;
+	nt_spin_unlock_irql(lock, irql);
+	TRACE4("%p, %p, %p", head, entry, entry->next);
+	return entry->next;
+}
+
+static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
+					     NT_SPIN_LOCK *lock)
+{
+	struct nt_slist *entry;
+	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	entry = head->next;
+	if (entry) {
+		head->next = entry->next;
+		head->depth--;
+	}
+	nt_spin_unlock_irql(lock, irql);
+	TRACE4("%p, %p", head, entry);
+	return entry;
+}
+
+#else
+
+#define u64_low_32(x) ((u32)x)
+#define u64_high_32(x) ((u32)(x >> 32))
+
+static inline u64 cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
+{
+	u64 prev;
+
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "cmpxchg8b %0\n"
+		: "+m" (*ptr), "=A" (prev)
+		: "A" (old), "b" (u64_low_32(new)), "c" (u64_high_32(new)));
+	return prev;
+}
+
+/* slist routines below update slist atomically - no need for
+ * spinlocks */
+
+static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
+					      struct nt_slist *entry,
+					      NT_SPIN_LOCK *lock)
+{
+	nt_slist_header old, new;
+	do {
+		old.align = head->align;
+		entry->next = old.next;
+		new.next = entry;
+		new.depth = old.depth + 1;
+	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	TRACE4("%p, %p, %p", head, entry, old.next);
+	return old.next;
+}
+
+static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
+					     NT_SPIN_LOCK *lock)
+{
+	struct nt_slist *entry;
+	nt_slist_header old, new;
+	do {
+		old.align = head->align;
+		entry = old.next;
+		if (!entry)
+			break;
+		new.next = entry->next;
+		new.depth = old.depth - 1;
+	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	TRACE4("%p, %p", head, entry);
+	return entry;
+}
+
+#endif
+
+#define sleep_hz(n)					\
+do {							\
+	set_current_state(TASK_INTERRUPTIBLE);		\
+	schedule_timeout(n);				\
+} while (0)
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -626,7 +1037,7 @@ struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2);
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct kdpc *kdpc, struct wrap_ndis_device *wnd);
+		     struct ndis_miniport_block *nmb);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 void wrap_free_timer(struct nt_timer *timer);
@@ -651,7 +1062,6 @@ void KefReleaseSpinLockFromDpcLevel(NT_SPIN_LOCK *lock) wfastcall;
 
 LONG ObfReferenceObject(void *object) wfastcall;
 void ObfDereferenceObject(void *object) wfastcall;
-int dereference_object(void *object);
 
 #define ObReferenceObject(object) ObfReferenceObject(object)
 #define ObDereferenceObject(object) ObfDereferenceObject(object)
@@ -682,9 +1092,22 @@ LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,
 LONG KeResetEvent(struct nt_event *nt_event) wstdcall;
 void KeClearEvent(struct nt_event *nt_event) wstdcall;
 void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx) wstdcall;
-BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2) wstdcall;
-BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc) wstdcall;
+BOOLEAN queue_kdpc(struct kdpc *kdpc);
+BOOLEAN dequeue_kdpc(struct kdpc *kdpc);
+
 void KeFlushQueuedDpcs(void) wstdcall;
+NTSTATUS IoConnectInterrupt(struct kinterrupt **kinterrupt,
+			    PKSERVICE_ROUTINE service_routine,
+			    void *service_context, NT_SPIN_LOCK *lock,
+			    ULONG vector, KIRQL irql, KIRQL synch_irql,
+			    enum kinterrupt_mode interrupt_mode,
+			    BOOLEAN shareable, KAFFINITY processor_enable_mask,
+			    BOOLEAN floating_save) wstdcall;
+void IoDisconnectInterrupt(struct kinterrupt *interrupt) wstdcall;
+BOOLEAN KeSynchronizeExecution(struct kinterrupt *interrupt,
+			       PKSYNCHRONIZE_ROUTINE synch_routine,
+			       void *ctx) wstdcall;
+
 NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 			       KPROCESSOR_MODE waitmode, BOOLEAN alertable,
 			       LARGE_INTEGER *timeout) wstdcall;
@@ -692,6 +1115,10 @@ struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
 			  BOOLEAN charge_quota, struct irp *irp) wstdcall;
 void MmBuildMdlForNonPagedPool(struct mdl *mdl) wstdcall;
 void IoFreeMdl(struct mdl *mdl) wstdcall;
+struct io_workitem *IoAllocateWorkItem(struct device_object *dev_obj) wstdcall;
+void IoFreeWorkItem(struct io_workitem *io_workitem) wstdcall;
+void IoQueueWorkItem(struct io_workitem *io_workitem, void *func,
+		     enum work_queue_type queue_type, void *context) wstdcall;
 NTSTATUS IoCreateDevice(struct driver_object *driver, ULONG dev_ext_length,
 			struct unicode_string *dev_name, DEVICE_TYPE dev_type,
 			ULONG dev_chars, BOOLEAN exclusive,
@@ -728,7 +1155,7 @@ struct irp *IoBuildAsynchronousFsdRequest
 NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp) wstdcall;
 
 NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp) wstdcall;
-WIN_FUNC_DECL(IoPassIrpDown,2)
+WIN_FUNC_DECL(IoPassIrpDown,2);
 NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 			  struct irp *irp) wstdcall;
 NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
@@ -772,7 +1199,7 @@ BOOLEAN KeSetTimer(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 		   struct kdpc *kdpc) wstdcall;
 BOOLEAN KeCancelTimer(struct nt_timer *nt_timer) wstdcall;
 void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx) wstdcall;
-struct task_struct *KeGetCurrentThread(void) wstdcall;
+struct nt_thread *KeGetCurrentThread(void) wstdcall;
 NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 				   void *obj_type, KPROCESSOR_MODE access_mode,
 				   void **object, void *handle_info) wstdcall;
@@ -782,301 +1209,20 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 #define IoCompleteRequest(irp, prio) IofCompleteRequest(irp, prio)
 #define IoCallDriver(dev, irp) IofCallDriver(dev, irp)
 
-struct io_workitem *IoAllocateWorkItem(struct device_object *dev_obj) wstdcall;
-void IoQueueWorkItem(struct io_workitem *io_workitem, void *func,
-		     enum work_queue_type queue_type, void *context) wstdcall;
-void IoFreeWorkItem(struct io_workitem *io_workitem) wstdcall;
-
-static inline KIRQL current_irql(void)
-{
-	if (in_irq() || irqs_disabled())
-		TRACEEXIT6(return DEVICE_LEVEL);
-	else if (in_interrupt())
-		TRACEEXIT6(return DISPATCH_LEVEL);
-	else
-		TRACEEXIT6(return PASSIVE_LEVEL);
-}
-
-static inline KIRQL raise_irql(KIRQL newirql)
-{
-	KIRQL irql = current_irql();
-//	assert (newirql == DISPATCH_LEVEL);
-	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
-		local_bh_disable();
-		preempt_disable();
-	}
-	DBGTRACE6("%d, %d", irql, newirql);
-	return irql;
-}
-
-static inline void lower_irql(KIRQL oldirql)
-{
-	KIRQL irql = current_irql();
-	DBGTRACE6("%d, %d", irql, oldirql);
-	DBG_BLOCK(2) {
-		if (irql < oldirql)
-			ERROR("invalid irql: %d < %d", irql, oldirql);
-	}
-	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
-		preempt_enable();
-		local_bh_enable();
-	}
-}
-
-#define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
-
-/* Windows spinlocks are of type ULONG_PTR which is not big enough to
- * store Linux spinlocks; so we implement Windows spinlocks using
- * ULONG_PTR space with our own functions/macros */
-
-/* Windows seems to use 0 for unlocked state of spinlock - if Linux
- * convention of 1 for unlocked state is used, at least prism54 driver
- * crashes */
-
-#define NT_SPIN_LOCK_UNLOCKED 0
-#define NT_SPIN_LOCK_LOCKED 1
-
-static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
-{
-	*lock = NT_SPIN_LOCK_UNLOCKED;
-}
-
-#ifdef CONFIG_SMP
-
-static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
-{
-	__asm__ __volatile__(
-		"\n"
-		"1:\t"
-		"  xchgl %1, %0\n\t"
-		"  cmpl %2, %1\n\t"
-		"  je 3f\n"
-		"2:\t"
-		"  rep; nop\n\t"
-		"  cmpl %2, %0\n\t"
-		"  jne 2b\n\t"
-		"  jmp 1b\n"
-		"3:\n\t"
-		: "+m" (*lock)
-		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
-}
-
-static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
-{
-	*lock = NT_SPIN_LOCK_UNLOCKED;
-}
-
-#else // CONFIG_SMP
-
-#define nt_spin_lock(lock) do { } while (0)
-
-#define nt_spin_unlock(lock)  do { } while (0)
-
-#endif // CONFIG_SMP
-
-/* raise IRQL to given (higher) IRQL if necessary before locking */
-static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
-{
-	KIRQL oldirql = raise_irql(newirql);
-	nt_spin_lock(lock);
-	return oldirql;
-}
-
-/* lower IRQL to given (lower) IRQL if necessary after unlocking */
-static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
-{
-	nt_spin_unlock(lock);
-	lower_irql(oldirql);
-}
-
-#ifdef CONFIG_PREEMPT_RT
-#define save_local_irq(flags) raw_local_irq_save(flags)
-#define restore_local_irq(flags) raw_local_irq_restore(flags)
-#else
-#define save_local_irq(flags) local_irq_save(flags)
-#define restore_local_irq(flags) local_irq_restore(flags)
-#endif
-
-#define nt_spin_lock_irqsave(lock, flags)				\
+#if defined(IO_DEBUG)
+#define DUMP_IRP(irp)							\
 do {									\
-	save_local_irq(flags);						\
-	preempt_disable();						\
-	nt_spin_lock(lock);						\
+	struct io_stack_location *irp_sl;				\
+	irp_sl = IoGetCurrentIrpStackLocation(irp);			\
+	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
+		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
+		irp, irp->stack_count, (irp)->current_location,		\
+		irp_sl, irp_sl->dev_obj, irp_sl->major_fn,		\
+		irp_sl->minor_fn, IRP_URB(irp),				\
+		(irp)->user_event);					\
 } while (0)
-
-#define nt_spin_unlock_irqrestore(lock, flags)				\
-do {									\
-	nt_spin_unlock(lock);						\
-	restore_local_irq(flags);					\
-	preempt_enable();						\
-} while (0)
-
-#define atomic_unary_op(var, size, oper)			\
-do {								\
-	if (size == 1)						\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "b %b0\n\t"		\
-			: "+m" (var));				\
-	else if (size == 2)					\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "w %w0\n\t"		\
-			: "+m" (var));				\
-	else if (size == 4)					\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "l %0\n\t"		\
-			: "+m" (var));				\
-	else if (size == 8)					\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "q %q0\n\t"		\
-			: "+m" (var));				\
-	else {							\
-		extern void _invalid_op_size_(void);		\
-		_invalid_op_size_();				\
-	}							\
-} while (0)
-
-#define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
-
-#define atomic_inc_var(var) atomic_inc_var_size(var, sizeof(var))
-
-#define atomic_dec_var_size(var, size) atomic_unary_op(var, size, "dec")
-
-#define atomic_dec_var(var) atomic_dec_var_size(var, sizeof(var))
-
-#define pre_atomic_add(var, i)					\
-({								\
-	typeof(var) pre;					\
-	__asm__ __volatile__(					\
-		LOCK_PREFIX "xadd %0, %1\n\t"			\
-		: "=r"(pre), "+m"(var)				\
-		: "0"(i));					\
-	pre;							\
-})
-
-#define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
-
-#define atomic_insert_list_head(oldhead, head, newhead)			\
-	do {								\
-		oldhead = head;						\
-	} while (cmpxchg(&(head), oldhead, newhead) != oldhead)
-
-#define atomic_remove_list_head(head, newhead)				\
-({									\
-	typeof(head) oldhead;						\
-	do {								\
-		oldhead = head;						\
-		if (!oldhead)						\
-			break;						\
-	} while (cmpxchg(&(head), oldhead, newhead) != oldhead);	\
-	oldhead;							\
-})
-
-static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
-{
-	/* all allocations in ndiswrapper are with kmalloc, so memory
-	 * at ptr is physically contiguous - which can be mapped to
-	 * DMA / physicall address with one register */
-#if 0
-	return PAGE_ALIGN(((unsigned long)ptr & (PAGE_SIZE - 1)) + length)
-			  >> PAGE_SHIFT;
 #else
-	if (length)
-		return 1;
-	else
-		return 0;
+#define DUMP_IRP(irp) do { } while (0)
 #endif
-}
-
-#ifdef CONFIG_X86_64
-
-/* TODO: can these be implemented without using spinlock? */
-
-static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
-					      struct nt_slist *entry,
-					      NT_SPIN_LOCK *lock)
-{
-	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
-	entry->next = head->next;
-	head->next = entry;
-	head->depth++;
-	nt_spin_unlock_irql(lock, irql);
-	DBGTRACE4("%p, %p, %p", head, entry, entry->next);
-	return entry->next;
-}
-
-static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
-					     NT_SPIN_LOCK *lock)
-{
-	struct nt_slist *entry;
-	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
-	entry = head->next;
-	if (entry) {
-		head->next = entry->next;
-		head->depth--;
-	}
-	nt_spin_unlock_irql(lock, irql);
-	DBGTRACE4("%p, %p", head, entry);
-	return entry;
-}
-
-#else
-
-#define u64_low_32(x) ((u32)x)
-#define u64_high_32(x) ((u32)(x >> 32))
-
-static inline u64 cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
-{
-	u64 prev;
-
-	__asm__ __volatile__(
-		"\n"
-		LOCK_PREFIX "cmpxchg8b %0\n"
-		: "+m" (*ptr), "=A" (prev)
-		: "A" (old), "b" (u64_low_32(new)), "c" (u64_high_32(new)));
-	return prev;
-}
-
-/* slist routines below update slist atomically - no need for
- * spinlocks */
-
-static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
-					      struct nt_slist *entry,
-					      NT_SPIN_LOCK *lock)
-{
-	nt_slist_header old, new;
-	do {
-		old.align = head->align;
-		entry->next = old.next;
-		new.next = entry;
-		new.depth = old.depth + 1;
-	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
-	DBGTRACE4("%p, %p, %p", head, entry, old.next);
-	return old.next;
-}
-
-static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
-					     NT_SPIN_LOCK *lock)
-{
-	struct nt_slist *entry;
-	nt_slist_header old, new;
-	do {
-		old.align = head->align;
-		entry = old.next;
-		if (!entry)
-			break;
-		new.next = entry->next;
-		new.depth = old.depth - 1;
-	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
-	DBGTRACE4("%p, %p", head, entry);
-	return entry;
-}
-
-#endif
-
-#define sleep_hz(n)					\
-do {							\
-	set_current_state(TASK_INTERRUPTIBLE);		\
-	schedule_timeout(n);				\
-} while (0)
 
 #endif // _NTOSKERNEL_H_

@@ -19,6 +19,9 @@
 #include "ndis.h"
 #include "pnp.h"
 
+int wrapndis_init(void);
+void wrapndis_exit(void);
+
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd);
 NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 				       ndis_oid oid, void *buf,

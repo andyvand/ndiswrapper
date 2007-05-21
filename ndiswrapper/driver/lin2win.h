@@ -167,32 +167,32 @@
 
 #define LIN2WIN1(func, arg1)						\
 ({									\
-	DBGTRACE6("calling %p", func);					\
+	TRACE6("calling %p", func);					\
 	func(arg1);							\
 })
 #define LIN2WIN2(func, arg1, arg2)					\
 ({									\
-	DBGTRACE6("calling %p", func);					\
+	TRACE6("calling %p", func);					\
 	func(arg1, arg2);						\
 })
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
 ({									\
-	DBGTRACE6("calling %p", func);					\
+	TRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3);						\
 })
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
 ({									\
-	DBGTRACE6("calling %p", func);					\
+	TRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3, arg4);					\
 })
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
-	DBGTRACE6("calling %p", func);					\
+	TRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3, arg4, arg5);				\
 })
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
-	DBGTRACE6("calling %p", func);					\
+	TRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
 })
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,10 +27,6 @@ int debug = DEBUG;
 #else
 int debug = 0;
 #endif
-
-/* use own workqueue instead of shared one, to avoid depriving
- * others */
-workqueue_struct_t *wrap_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -68,25 +64,19 @@ static void module_cleanup(void)
 	usb_exit();
 #endif
 
-	if (wrap_wq)
-		destroy_workqueue(wrap_wq);
 	wrap_procfs_remove();
+	wrapndis_exit();
 	ndis_exit();
-	ntoskernel_exit();
-	crt_exit();
 	rtl_exit();
+	crt_exit();
+	ntoskernel_exit();
 	wrapmem_exit();
 }
 
 static int __init wrapper_init(void)
 {
-	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
+	printk(KERN_INFO "%s version %s loaded (smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
-#if defined CONFIG_PREEMPT
-	       "yes",
-#else
-	       "no",
-#endif
 #ifdef CONFIG_SMP
 	       "yes"
 #else
@@ -94,10 +84,8 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	wrap_wq = create_singlethread_workqueue("wrap_wq");
-
-	if (!wrap_wq || wrapmem_init() || crt_init() || rtl_init() ||
-	    ntoskernel_init() || ndis_init() ||
+	if (wrapmem_init() || ntoskernel_init() || crt_init() ||
+	    rtl_init() || ndis_init() || wrapndis_init() ||
 #ifdef CONFIG_USB
 	    usb_init() ||
 #endif
@@ -106,12 +94,12 @@ static int __init wrapper_init(void)
 		ERROR("%s: initialization failed", DRIVER_NAME);
 		return -EINVAL;
 	}
-	TRACEEXIT1(return 0);
+	EXIT1(return 0);
 }
 
 static void __exit wrapper_exit(void)
 {
-	TRACEENTER1("");
+	ENTER1("");
 	module_cleanup();
 }
 
