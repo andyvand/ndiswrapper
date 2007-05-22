@@ -233,15 +233,16 @@ sub parse_mfr() {
 	    my ($models, @targets) = split(",", $val);
 	    if ($models) {
 		printf DBG "mfr: %s, %s\n", $line, $models;
-		parse_models($models);
+		my $target = choose_target_os(@targets);
+		parse_models($models, $target);
 	    }
 	}
     }
 }
 
 sub parse_models {
-    my $models = shift;
-    my $lines = get_target_os_section($models);
+    my ($models, $target) = @_;
+    my $lines = get_target_os_section($models, $target);
     if (!$lines) {
 	warn "couldn't find models section \"$models\" -\n" .
 	  "installation may be incomplete\n";
@@ -266,14 +267,15 @@ sub parse_models {
 	  parse_hwid($hwid);
 	next if (!$vendor);
 	printf DBG "models: %s, %s, %s\n", $install_section, $hwid, $vendor;
-	parse_install($install_section, $bus_type, $vendor, $device,
+	parse_install($install_section, $target, $bus_type, $vendor, $device,
 		      $subvendor, $subdevice);
     }
 }
 
 sub parse_install {
-    my ($secn, $bus_type, $vendor, $device, $subvendor, $subdevice) = @_;
-    my $lines = get_target_os_section($secn);
+    my ($secn, $target, $bus_type, $vendor, $device,
+	$subvendor, $subdevice) = @_;
+    my $lines = get_target_os_section($secn, $target);
     if (!$lines) {
 	warn "couldn't find install section \"$secn\" -\n" .
 	  "installation may be incomplete\n";
@@ -476,23 +478,50 @@ sub parse_key_value {
     }
 }
 
-sub get_target_os_section {
-    my $secn = shift;
+sub choose_target_os {
+    my @targets = @_;
     my $arch = `uname -m`;
     chomp($arch);
+    printf DBG "arch: %s\n", $arch;
+    if ($arch =~ /64$/) {
+	$arch = "NTAMD64";
+    } else {
+	$arch = "NTX86";
+    }
+    printf DBG "arch: %s\n", $arch;
+    foreach my $target (@targets) {
+	$target = trim($target);
+	printf DBG "target: '%s'\n", $target;
+	if ($target =~ /$arch/i) {
+	    return $target;
+	}
+    }
+    return $arch;
+}
+
+sub get_target_os_section {
+    my ($secn, $target) = @_;
+    my $arch = `uname -m`;
+    chomp($arch);
+    printf DBG "arch: %s\n", $arch;
     if ($arch =~ /64$/) {
 	$arch = "AMD64";
     } else {
 	$arch = "X86";
     }
+    printf DBG "arch: %s\n", $arch;
+
     chomp($secn);
     $secn =~ s/^\s*"\s*//;
     $secn =~ s/\s*"\s*$//;
     printf DBG "secn: \"%s\"\n", $secn;
-    $secn =~ s/\.NT($arch)?(\.5\.1)?$//;
+    $secn =~ s/\.NT($arch)?(\.[0-9]\.[0-9])?$//;
     printf DBG "secn: \"%s\"\n", $secn;
 
-    my $lines = get_section($secn . ".NT" . $arch . ".5.1");
+    my $lines = get_section($secn . "." . $target);
+    return $lines if ($lines);
+
+    $lines = get_section($secn . ".NT" . $arch . ".5.1");
     return $lines if ($lines);
 
     $lines = get_section($secn . ".NT" . $arch);
