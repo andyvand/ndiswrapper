@@ -1,3 +1,12 @@
+Version 1.45 2007-XX-XX
+=======================	
+* Fixes 'NOHZ: local_softirq_pending: 08' warnings from tickless
+  kernels
+* Fixes to RT-preempt enabled kernels
+* Fixes to ndiswrapper script to handle installation of Intel 4965AGN
+  driver (which apparently works with ndiswrapper)
+* Fixes a warning when SLUB allocator is used
+
 Version 1.44 2007-05-17
 =======================	
 * Fixed issues with Ubuntu kernels (where PREEMPT is not enabled)
