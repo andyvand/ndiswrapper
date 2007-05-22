@@ -304,41 +304,41 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	ENTER1("%p", wnd);
-	if (test_and_clear_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
-		hangcheck_del(wnd);
-		del_iw_stats_timer(wnd);
-		miniport = &wnd->wd->driver->ndis_driver->miniport;
-		TRACE1("halt: %p", miniport->miniport_halt);
-		LIN2WIN1(miniport->miniport_halt, wnd->nmb->mp_ctx);
-		/* if a driver doesn't call NdisMDeregisterInterrupt
-		 * during halt, deregister it now */
-		if (wnd->mp_interrupt)
-			NdisMDeregisterInterrupt(wnd->mp_interrupt);
-		/* cancel any timers left by bugyy windows driver; also free
-		 * the memory for timers */
-		while (1) {
-			struct nt_slist *slist;
-			struct wrap_timer *wrap_timer;
-
-			slist = atomic_remove_list_head(wnd->wrap_timer_slist.next,
-							oldhead->next);
-			TIMERTRACE("%p", slist);
-			if (!slist)
-				break;
-			wrap_timer = container_of(slist, struct wrap_timer,
-						  slist);
-			wrap_timer->repeat = 0;
-			/* ktimer that this wrap_timer is associated to can't
-			 * be touched, as it may have been freed by the driver
-			 * already */
-			if (del_timer_sync(&wrap_timer->timer))
-				WARNING("Buggy Windows driver left timer %p "
-					"running", wrap_timer->nt_timer);
-			memset(wrap_timer, 0, sizeof(*wrap_timer));
-			kfree(wrap_timer);
-		}
-	} else
+	if (!test_and_clear_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
 		WARNING("device %p is not initialized - not halting", wnd);
+		return;
+	}
+	hangcheck_del(wnd);
+	del_iw_stats_timer(wnd);
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	TRACE1("halt: %p", miniport->miniport_halt);
+	LIN2WIN1(miniport->miniport_halt, wnd->nmb->mp_ctx);
+	/* if a driver doesn't call NdisMDeregisterInterrupt during
+	 * halt, deregister it now */
+	if (wnd->mp_interrupt)
+		NdisMDeregisterInterrupt(wnd->mp_interrupt);
+	/* cancel any timers left by bugyy windows driver; also free
+	 * the memory for timers */
+	while (1) {
+		struct nt_slist *slist;
+		struct wrap_timer *wrap_timer;
+
+		slist = atomic_remove_list_head(wnd->wrap_timer_slist.next,
+						oldhead->next);
+		TIMERTRACE("%p", slist);
+		if (!slist)
+			break;
+		wrap_timer = container_of(slist, struct wrap_timer, slist);
+		wrap_timer->repeat = 0;
+		/* ktimer that this wrap_timer is associated to can't
+		 * be touched, as it may have been freed by the driver
+		 * already */
+		if (del_timer_sync(&wrap_timer->timer))
+			WARNING("Buggy Windows driver left timer %p "
+				"running", wrap_timer->nt_timer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
+		kfree(wrap_timer);
+	}
 	EXIT1(return);
 }
 
@@ -2038,6 +2038,7 @@ static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 	}
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
+	kfree(wnd->nmb);
 	free_netdev(wnd->net_dev);
 	EXIT2(return 0);
 }
@@ -2058,7 +2059,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
-	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
+	net_dev = alloc_etherdev(sizeof(*wnd));
 	if (!net_dev) {
 		ERROR("couldn't allocate device");
 		return STATUS_RESOURCES;
@@ -2071,8 +2072,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	if (wrap_is_usb_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
 #endif
-	status = IoCreateDevice(drv_obj, 0, NULL,
-				FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
+	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN, 0,
+				FALSE, &fdo);
 	if (status != STATUS_SUCCESS) {
 		free_netdev(net_dev);
 		EXIT2(return status);
@@ -2080,7 +2081,13 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd = netdev_priv(net_dev);
 	TRACE1("wnd: %p", wnd);
 
-	nmb = ((void *)wnd) + sizeof(*wnd);
+	nmb = kmalloc(sizeof(*nmb), GFP_KERNEL);
+	if (!nmb) {
+		WARNING("couldn't allocate memory");
+		IoDeleteDevice(fdo);
+		free_netdev(net_dev);
+		return STATUS_RESOURCES;
+	}
 #if defined(DEBUG) && DEBUG >= 6
 	/* poison nmb so if a driver accesses uninitialized pointers, we
 	 * know what it is */
@@ -2098,6 +2105,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	nmb->fdo = fdo;
 	if (ndis_init_device(wnd)) {
 		IoDeleteDevice(fdo);
+		kfree(nmb);
 		free_netdev(net_dev);
 		EXIT1(return STATUS_RESOURCES);
 	}

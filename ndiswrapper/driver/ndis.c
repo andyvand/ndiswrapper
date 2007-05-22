@@ -897,6 +897,13 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 			wnd->net_dev->name, wnd->dma_map_count);
 		EXIT2(return NDIS_STATUS_RESOURCES);
 	}
+	if (dmasize == NDIS_DMA_24BITS) {
+		pci_set_dma_mask(wnd->wd->pci.pdev, DMA_24BIT_MASK);
+		pci_set_consistent_dma_mask(wnd->wd->pci.pdev, DMA_24BIT_MASK);
+	} else if (dmasize == NDIS_DMA_32BITS) {
+		pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
+		pci_set_consistent_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
+	}
 	/* since memory for buffer is allocated with kmalloc, buffer
 	 * is physically contiguous, so entire map will fit in one
 	 * register */
@@ -2212,7 +2219,10 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			else
 				skb->ip_summed = CHECKSUM_NONE;
 
-			netif_rx(skb);
+			if (in_interrupt())
+				netif_rx(skb);
+			else
+				netif_rx_ni(skb);
 		} else {
 			WARNING("couldn't allocate skb; packet dropped");
 			atomic_inc_var(wnd->net_stats.rx_dropped);
@@ -2355,7 +2365,10 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 		skb->protocol = eth_type_trans(skb, wnd->net_dev);
 		pre_atomic_add(wnd->net_stats.rx_bytes, skb_size);
 		atomic_inc_var(wnd->net_stats.rx_packets);
-		netif_rx(skb);
+		if (in_interrupt())
+			netif_rx(skb);
+		else
+			netif_rx_ni(skb);
 	}
 
 	EXIT3(return);
@@ -2415,7 +2428,10 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	else
 		skb->ip_summed = CHECKSUM_NONE;
 
-	netif_rx(skb);
+	if (in_interrupt())
+		netif_rx(skb);
+	else
+		netif_rx_ni(skb);
 }
 
 /* called via function pointer */

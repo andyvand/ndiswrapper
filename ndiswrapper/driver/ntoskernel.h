@@ -620,10 +620,11 @@ do {									\
 
 /* if either PREEMPT is not available or PREEMPT_RT is used, we fake
  * preempt so that the driver gets IRQL as required. When PREEMPT is
- * not available, kernel won't preempt; when CONFIG_PREEMPT_RT is
- * used, if driver raises IRQL to DISPATCH_LEVEL, kernel is free to
- * preempt, but due to RT, we will get our turn quickly and hopefully
- * driver doesn't mind the short delay */
+ * not available, kernel won't preempt unless a sleep function is
+ * called, so we keep track of (fake) preemption with a variable. With
+ * PREEMPT_RT, we allow only one of the ndiswrapper threads to be at
+ * DISPATCH_LEVEL on each cpu - the kernel is free to preempt any of
+ * these threads */
 
 #if !defined(inc_preempt_count)
 #define WARP_PREEMPT 1
@@ -721,9 +722,9 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {									
+#ifdef DEBUG_IRQL
 	KIRQL irql = current_irql();
 	TRACE6("%d, %d", irql, oldirql);
-#ifdef DEBUG_IRQL
 	if (irql > DISPATCH_LEVEL || oldirql > irql) {
 		WARNING("invalid irql: %d, %d", irql, oldirql);
 		DBG_BLOCK(4) {

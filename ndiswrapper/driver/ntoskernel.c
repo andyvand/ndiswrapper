@@ -2534,8 +2534,7 @@ int ntoskernel_init(void)
 	TRACE2("%Lu", wrap_ticks_to_boot);
 #ifdef WARP_PREEMPT
 	warp_preempt_count = 0;
-#endif
-#ifdef CONFIG_PREEMPT_RT
+#elif defined(CONFIG_PREEMPT_RT)
 	do {
 		int i;
 		for (i = 0; i < NR_CPUS; i++) {
