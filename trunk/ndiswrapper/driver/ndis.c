@@ -1660,6 +1660,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	EXIT3(return);
 }
 
+/* called for serialized drivers only */
 wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 {
 	struct ndis_miniport_timer *timer;
@@ -1669,11 +1670,9 @@ wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 	TIMERENTER("%p, %p, %p, %p", timer, timer->func, timer->ctx, timer->nmb);
 	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nmb = timer->nmb;
-	if (!deserialized_driver(nmb->wnd))
-		serialize_lock(nmb->wnd);
+	serialize_lock(nmb->wnd);
 	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
-	if (!deserialized_driver(nmb->wnd))
-		serialize_unlock(nmb->wnd);
+	serialize_unlock(nmb->wnd);
 	TIMEREXIT(return);
 }
 WIN_FUNC_DECL(mp_timer_dpc,4)
@@ -1687,8 +1686,11 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-	KeInitializeDpc(&timer->kdpc, func, ctx);
-//	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4), timer);
+	if (deserialized_driver(nmb->wnd))
+		KeInitializeDpc(&timer->kdpc, func, ctx);
+	else
+		KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4),
+				timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb);
 	TIMEREXIT(return);
 }
