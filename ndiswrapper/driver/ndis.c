@@ -1687,8 +1687,8 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-//	KeInitializeDpc(&timer->kdpc, func, ctx);
-	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4), timer);
+	KeInitializeDpc(&timer->kdpc, func, ctx);
+//	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4), timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb);
 	TIMEREXIT(return);
 }
@@ -1759,7 +1759,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	int ret;
 
 	ENTER1("");
-	RtlInitAnsiString(&ansi, "mac_address");
+	RtlInitAnsiString(&ansi, "NetworkAddress");
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
@@ -1775,9 +1775,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 		if (ret != STATUS_SUCCESS)
 			EXIT1(return);
 
-		ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
-		if (ret != ETH_ALEN)
-			ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
+		ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
 		RtlFreeAnsiString(&ansi);
 		if (ret == ETH_ALEN) {
 			int i;
