@@ -430,15 +430,15 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 	struct unicode_string key;
 	struct ansi_string ansi;
 	NDIS_STATUS res;
-	unsigned char mac_string[3 * ETH_ALEN];
+	unsigned char mac_string[2 * ETH_ALEN + 1];
 	mac_address mac;
 
 	memcpy(mac, addr->sa_data, sizeof(mac));
 	memset(mac_string, 0, sizeof(mac_string));
-	res = snprintf(mac_string, sizeof(mac_string), MACSTRSEP, MAC2STR(mac));
-	TRACE1("%d", res);
-	if (res != (2 * sizeof(mac) + sizeof(mac) - 1))
+	res = snprintf(mac_string, sizeof(mac_string), MACSTR, MAC2STR(mac));
+	if (res != (sizeof(mac_string) - 1))
 		EXIT1(return -EINVAL);
+	TRACE1("new mac: %s", mac_string);
 
 	RtlInitAnsiString(&ansi, mac_string);
 	if (RtlAnsiStringToUnicodeString(&param.data.string, &ansi, TRUE)) {
@@ -446,7 +446,7 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 		EXIT1(return -EINVAL);
 	}
 	param.type = NdisParameterString;
-	RtlInitAnsiString(&ansi, "mac_address");
+	RtlInitAnsiString(&ansi, "NetworkAddress");
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
 		EXIT1(return -EINVAL);
 	NdisWriteConfiguration(&res, wnd->nmb, &key, &param);
