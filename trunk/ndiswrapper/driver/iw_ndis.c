@@ -950,8 +950,8 @@ static int iw_set_nick(struct net_device *dev, struct iw_request_info *info,
 
 	if (wrqu->data.length > IW_ESSID_MAX_SIZE || wrqu->data.length <= 0)
 		return -EINVAL;
+	memset(wnd->nick, 0, sizeof(wnd->nick));
 	memcpy(wnd->nick, extra, wrqu->data.length);
-	wnd->nick[wrqu->data.length-1] = 0;
 	return 0;
 }
 
