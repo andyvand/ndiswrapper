@@ -95,10 +95,7 @@ if ($ARGV[0] eq "-i" and @ARGV == 2) {
 } elsif ($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = add_module_alias();
 } elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
-    printf "utils "; system("loadndisdriver -v");
-    printf "driver ";
-    system("modinfo ndiswrapper | grep -E '^(version|vermagic|filename)'");
-    $res = 0;
+    $res = check_version();
 } elsif ($ARGV[0] eq "-ma" and @ARGV == 1) {
     $res = generate_module_device_map(0);
 } elsif ($ARGV[0] eq "-mi" and @ARGV == 1) {
@@ -135,6 +132,46 @@ sub remove_driver {
 sub abort {
     remove_driver($driver_name);
     exit 1;
+}
+
+sub check_version {
+    my ($utils_version, $drv_utils_version, $res);
+    $res = 0;
+    $utils_version = `loadndisdriver -v`;
+    chomp($utils_version);
+    $utils_version =~ s/^version: //;
+    if (length($utils_version) eq 0) {
+	printf "utils version is too old!\n";
+	$res = -1;
+    }
+    $drv_utils_version = 0;
+    open(MODINFO, "modinfo ndiswrapper |");
+    while (my $line = <MODINFO>) {
+	if ($line =~ /utils_version:([0-9\.]+)/) {
+	    $drv_utils_version = $1;
+	    last;
+	}
+    }
+    if ($drv_utils_version eq 0) {
+	printf "driver version is too old!\n";
+	$res = -1;
+    } elsif ($utils_version ne $drv_utils_version) {
+	printf "utils version '%s' is incompatible with utils version needed" .
+	  " by driver ('%s')!\n", $utils_version, $drv_utils_version;
+	$res = -1;
+    }
+    printf "utils version: '%s', utils version needed by driver: '%s'\n",
+      $utils_version, $drv_utils_version;
+    printf "module details:\n";
+    system("modinfo ndiswrapper | " .
+	   "grep -E '^(version|vermagic|filename)|utils_version'");
+
+    if ($res) {
+	printf "\nYou may need to upgrade driver and/or utils to latest " .
+	  "versions available at\n" .
+	  "http://ndiswrapper.sourceforge.net\n";
+    }
+    return $res;
 }
 
 sub install {
