@@ -372,7 +372,6 @@ sub parse_install {
     printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
     printf CONF "class_guid|%s\n", $classguid;
-    printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
     printf CONF "BusType|%s\n", $bus_type;
     printf CONF "SlotNumber|01\n";
