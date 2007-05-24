@@ -1575,24 +1575,25 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	return old_prio;
 }
 
-struct thread_trampoline_info {
+struct thread_trampoline {
 	void (*func)(void *) wstdcall;
 	void *ctx;
 	struct nt_thread *thread;
 	struct completion started;
 };
 
-static int thread_trampoline(void *data)
+static int windisdrvr_thread(void *data)
 {
-	struct thread_trampoline_info *thread_info = data;
-	typeof(thread_info->func) func = thread_info->func;
-	typeof(thread_info->ctx) ctx = thread_info->ctx;
+	struct thread_trampoline *thread_tramp = data;
+	/* yes, a tramp! */
+	typeof(thread_tramp->func) func = thread_tramp->func;
+	typeof(thread_tramp->ctx) ctx = thread_tramp->ctx;
 
-	thread_info->thread->task = current;
-	thread_info->thread->pid = current->pid;
-	TRACE2("thread: %p, task: %p (%d)", thread_info->thread,
+	thread_tramp->thread->task = current;
+	thread_tramp->thread->pid = current->pid;
+	TRACE2("thread: %p, task: %p (%d)", thread_tramp->thread,
 	       current, current->pid);
-	complete(&thread_info->started);
+	complete(&thread_tramp->started);
 
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
@@ -1605,49 +1606,47 @@ static int thread_trampoline(void *data)
 }
 
 wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
-	(void **phandle, ULONG access, void *obj_attr, void *process,
+	(void **handle, ULONG access, void *obj_attr, void *process,
 	 void *client_id, void (*func)(void *) wstdcall, void *ctx)
 {
-	struct nt_thread *thread;
-	struct thread_trampoline_info thread_info;
-	no_warn_unused struct task_struct *task;
-	no_warn_unused int pid;
+	struct thread_trampoline thread_tramp;
 
-	ENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
-	       "client_id = %p, func = %p, context = %p", phandle, access,
+	ENTER2("handle = %p, access = %u, obj_attr = %p, process = %p, "
+	       "client_id = %p, func = %p, context = %p", handle, access,
 	       obj_attr, process, client_id, func, ctx);
 
-	thread = create_nt_thread(NULL);
-	if (!thread) {
+	thread_tramp.thread = create_nt_thread(NULL);
+	if (!thread_tramp.thread) {
 		ERROR("couldn't allocate thread object");
 		EXIT2(return STATUS_RESOURCES);
 	}
 	TRACE2("thread: %p", thread);
-	thread_info.thread = thread;
-	thread_info.func = func;
-	thread_info.ctx = ctx;
-	init_completion(&thread_info.started);
+	thread_tramp.func = func;
+	thread_tramp.ctx = ctx;
+	init_completion(&thread_tramp.started);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	pid = kernel_thread(thread_trampoline, &thread_info, CLONE_SIGHAND);
-	TRACE2("pid = %d", pid);
-	if (pid < 0) {
-		free_object(thread_info.thread);
+	thread_tramp.pid = kernel_thread(windisdrvr_thread, &thread_tramp,
+					 CLONE_SIGHAND);
+	TRACE2("pid = %d", thread_tramp.pid);
+	if (thread_tramp.pid < 0) {
+		free_object(thread_tramp.thread);
 		EXIT2(return STATUS_FAILURE);
 	}
-	TRACE2("created task: %d", pid);
+	TRACE2("created task: %d", thread_tramp.pid);
 #else
-	task = kthread_run(thread_trampoline, &thread_info, "windisdrvr");
-	if (IS_ERR(task)) {
-		free_object(thread_info.thread);
+	thread_tramp.thread->task = kthread_run(windisdrvr_thread,
+						&thread_tramp, "windisdrvr");
+	if (IS_ERR(thread_tramp.thread->task)) {
+		free_object(thread_tramp.thread);
 		EXIT2(return STATUS_FAILURE);
 	}
-	TRACE2("created task: %p (%d)", task, task->pid);
+	TRACE2("created task: %p", thread_tramp.thread->task);
 #endif
 
-	wait_for_completion(&thread_info.started);
-	*phandle = OBJECT_TO_HEADER(thread_info.thread);
-	TRACE2("created thread: %p, %p", thread_info.thread, *phandle);
+	wait_for_completion(&thread_tramp.started);
+	*handle = OBJECT_TO_HEADER(thread_tramp.thread);
+	TRACE2("created thread: %p, %p", thread_tramp.thread, *handle);
 	EXIT2(return STATUS_SUCCESS);
 }
 
