@@ -1585,6 +1585,8 @@ struct thread_trampoline_info {
 static int thread_trampoline(void *data)
 {
 	struct thread_trampoline_info *thread_info = data;
+	typeof(thread_info->func) func = thread_info->func;
+	typeof(thread_info->ctx) ctx = thread_info->ctx;
 
 	thread_info->thread->task = current;
 	thread_info->thread->pid = current->pid;
@@ -1597,7 +1599,7 @@ static int thread_trampoline(void *data)
 #endif
 	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
 	current->comm[sizeof(current->comm)-1] = 0;
-	LIN2WIN1(thread_info->func, thread_info->ctx);
+	LIN2WIN1(func, ctx);
 	ERROR("task: %p", current);
 	return 0;
 }
