@@ -50,7 +50,8 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
 WRAP_MODULE_PARM_STRING(utils_version, 0400);
-MODULE_PARM_DESC(utils_version, UTILS_VERSION);
+MODULE_PARM_DESC(utils_version, "Compatible version of utils "
+		 "(read only: " UTILS_VERSION ")");
 
 MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 #ifdef MODULE_DESCRIPTION
