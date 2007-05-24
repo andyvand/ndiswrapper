@@ -40,12 +40,11 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
+	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
 		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
 
-	res = miniport_query(wnd, OID_802_11_STATISTICS,
-				  &stats, sizeof(stats));
+	res = mp_query(wnd, OID_802_11_STATISTICS, &stats, sizeof(stats));
 	if (!res) {
 
 		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
@@ -88,8 +87,8 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query(wnd, OID_802_11_BSSID,
-			     &ap_address, sizeof(ap_address));
+	res = mp_query(wnd, OID_802_11_BSSID,
+		       &ap_address, sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
 	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
@@ -97,13 +96,12 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
-	res = miniport_query(wnd, OID_802_11_SSID, &essid, sizeof(essid));
+	res = mp_query(wnd, OID_802_11_SSID, &essid, sizeof(essid));
 	if (!res) {
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
-	res = miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS,
-				 &encr_status);
+	res = mp_query_int(wnd, OID_802_11_ENCRYPTION_STATUS, &encr_status);
 	if (!res) {
 		typeof(&wnd->encr_info.keys[0]) tx_key;
 		p += sprintf(p, "tx_key=%u\n", wnd->encr_info.tx_key_index);
@@ -117,12 +115,10 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		p += sprintf(p, "\n");
 		p += sprintf(p, "encr_mode=%d\n", encr_status);
 	}
-	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
-				  &auth_mode);
+	res = mp_query_int(wnd, OID_802_11_AUTHENTICATION_MODE, &auth_mode);
 	if (!res)
 		p += sprintf(p, "auth_mode=%d\n", auth_mode);
-	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
-				 &infra_mode);
+	res = mp_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, &infra_mode);
 	p += sprintf(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ?
 		     "adhoc" : (infra_mode == Ndis802_11Infrastructure) ?
 		     "managed" : "auto");
@@ -159,15 +155,14 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_int(wnd, OID_GEN_HARDWARE_STATUS, &n);
+	res = mp_query_int(wnd, OID_GEN_HARDWARE_STATUS, &n);
 	if (res >= 0 && res < sizeof(hw_status) / sizeof(hw_status[0]))
 		p += sprintf(p, "status=%s\n", hw_status[res]);
 
-	res = miniport_query(wnd, OID_802_3_CURRENT_ADDRESS, mac, sizeof(mac));
+	res = mp_query(wnd, OID_802_3_CURRENT_ADDRESS, mac, sizeof(mac));
 	if (!res)
 		p += sprintf(p, "mac: " MACSTRSEP "\n", MAC2STR(mac));
-	res = miniport_query(wnd, OID_802_11_CONFIGURATION,
-			     &config, sizeof(config));
+	res = mp_query(wnd, OID_802_11_CONFIGURATION, &config, sizeof(config));
 	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
 			     config.beacon_period);
@@ -181,45 +176,44 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 			     config.fh_config.dwell_time);
 	}
 
-	res = miniport_query(wnd, OID_802_11_TX_POWER_LEVEL,
-			     &tx_power, sizeof(tx_power));
+	res = mp_query(wnd, OID_802_11_TX_POWER_LEVEL,
+		       &tx_power, sizeof(tx_power));
 	if (!res)
 		p += sprintf(p, "tx_power=%u mW\n", tx_power);
 
-	res = miniport_query(wnd, OID_GEN_LINK_SPEED,
-			     &bit_rate, sizeof(bit_rate));
+	res = mp_query(wnd, OID_GEN_LINK_SPEED, &bit_rate, sizeof(bit_rate));
 	if (!res)
 		p += sprintf(p, "bit_rate=%u kBps\n", (u32)bit_rate / 10);
 
-	res = miniport_query(wnd, OID_802_11_RTS_THRESHOLD,
-			     &rts_threshold, sizeof(rts_threshold));
+	res = mp_query(wnd, OID_802_11_RTS_THRESHOLD,
+		       &rts_threshold, sizeof(rts_threshold));
 	if (!res)
 		p += sprintf(p, "rts_threshold=%u bytes\n", rts_threshold);
 
-	res = miniport_query(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
-			     &frag_threshold, sizeof(frag_threshold));
+	res = mp_query(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
+		       &frag_threshold, sizeof(frag_threshold));
 	if (!res)
 		p += sprintf(p, "frag_threshold=%u bytes\n", frag_threshold);
 
-	res = miniport_query_int(wnd, OID_802_11_POWER_MODE, &power_mode);
+	res = mp_query_int(wnd, OID_802_11_POWER_MODE, &power_mode);
 	if (!res)
 		p += sprintf(p, "power_mode=%s\n",
 			     (power_mode == NDIS_POWER_OFF) ? "always_on" :
 			     (power_mode == NDIS_POWER_MAX) ?
 			     "max_savings" : "min_savings");
 
-	res = miniport_query(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
-			     &antenna, sizeof(antenna));
+	res = mp_query(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
+		       &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "num_antennas=%u\n", antenna);
 
-	res = miniport_query(wnd, OID_802_11_TX_ANTENNA_SELECTED,
-			     &antenna, sizeof(antenna));
+	res = mp_query(wnd, OID_802_11_TX_ANTENNA_SELECTED,
+		       &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "tx_antenna=%u\n", antenna);
 
-	res = miniport_query(wnd, OID_802_11_RX_ANTENNA_SELECTED,
-			     &antenna, sizeof(antenna));
+	res = mp_query(wnd, OID_802_11_RX_ANTENNA_SELECTED,
+		       &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "rx_antenna=%u\n", antenna);
 
@@ -241,8 +235,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 		     test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
 		     ", WPA2PSK" : "");
 
-	res = miniport_query_int(wnd, OID_GEN_CURRENT_PACKET_FILTER,
-				 &packet_filter);
+	res = mp_query_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, &packet_filter);
 	if (!res) {
 		if (packet_filter != wnd->packet_filter)
 			WARNING("wrong packet_filter? 0x%08x, 0x%08x\n",
@@ -356,7 +349,7 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
-		res = miniport_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
+		res = mp_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
 		if (res)
 			WARNING("setting packet_filter failed: %08X", res);
 	}
