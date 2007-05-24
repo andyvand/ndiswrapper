@@ -147,7 +147,7 @@ sub check_version {
     $drv_utils_version = 0;
     open(MODINFO, "modinfo ndiswrapper |");
     while (my $line = <MODINFO>) {
-	if ($line =~ /utils_version:([0-9\.]+)/) {
+	if ($line =~ /utils_version:.*read only:\s([0-9\.]+)/) {
 	    $drv_utils_version = $1;
 	    last;
 	}
@@ -163,8 +163,7 @@ sub check_version {
     printf "utils version: '%s', utils version needed by driver: '%s'\n",
       $utils_version, $drv_utils_version;
     printf "module details:\n";
-    system("modinfo ndiswrapper | " .
-	   "grep -E '^(version|vermagic|filename)|utils_version'");
+    system("modinfo ndiswrapper | grep -E '^(version|vermagic|filename)'");
 
     if ($res) {
 	printf "\nYou may need to upgrade driver and/or utils to latest " .

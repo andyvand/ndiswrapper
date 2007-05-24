@@ -6,6 +6,7 @@ Version 1.45 2007-XX-XX
 * Fixes to ndiswrapper script to handle installation of Intel 4965AGN
   driver (which apparently works with ndiswrapper)
 * Fixes a warning when SLUB allocator is used
+* Fixed a bug with sis163u when preempt is enabled
 
 Version 1.44 2007-05-17
 =======================	

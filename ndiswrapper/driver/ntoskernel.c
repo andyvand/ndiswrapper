@@ -1582,7 +1582,7 @@ struct thread_trampoline {
 	struct completion started;
 };
 
-static int windisdrvr_thread(void *data)
+static int ntdrvr_thread(void *data)
 {
 	struct thread_trampoline *thread_tramp = data;
 	/* yes, a tramp! */
@@ -1598,7 +1598,7 @@ static int windisdrvr_thread(void *data)
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #endif
-	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
+	strncpy(current->comm, "ntdrvr", sizeof(current->comm));
 	current->comm[sizeof(current->comm)-1] = 0;
 	LIN2WIN1(func, ctx);
 	ERROR("task: %p", current);
@@ -1626,7 +1626,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	init_completion(&thread_tramp.started);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	thread_tramp.pid = kernel_thread(windisdrvr_thread, &thread_tramp,
+	thread_tramp.pid = kernel_thread(ntdrvr_thread, &thread_tramp,
 					 CLONE_SIGHAND);
 	TRACE2("pid = %d", thread_tramp.pid);
 	if (thread_tramp.pid < 0) {
@@ -1635,8 +1635,8 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	}
 	TRACE2("created task: %d", thread_tramp.pid);
 #else
-	thread_tramp.thread->task = kthread_run(windisdrvr_thread,
-						&thread_tramp, "windisdrvr");
+	thread_tramp.thread->task = kthread_run(ntdrvr_thread,
+						&thread_tramp, "ntdrvr");
 	if (IS_ERR(thread_tramp.thread->task)) {
 		free_object(thread_tramp.thread);
 		EXIT2(return STATUS_FAILURE);
