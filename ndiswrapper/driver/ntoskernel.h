@@ -114,21 +114,19 @@
 
 #endif // LINUX_VERSION_CODE
 
-/* TODO: find out when WIRELESS_EXT appeared */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7) &&	\
-     !defined(CONFIG_WIRELESS_EXT))
-#warning "wirelss devices are not supported by this kernel \
-	as CONFIG_WIRELESS_EXT is not enabled"
-#elif !defined(CONFIG_NET_RADIO)
-#warning "wirelss devices are not supported by this kernel " \
-	"as CONFIG_NET_RADIO is not enabled"
+#if defined(CONFIG_NET_RADIO) && !defined(CONFIG_WIRELESS_EXT)
+#define CONFIG_WIRELESS_EXT
+#endif
+
+#ifndef CONFIG_WIRELESS_EXT
+#warning "wirelss devices are not supported by this kernel"
 #endif
 
 #define prepare_wait_condition(task, var, value)	\
 do {							\
 	var = value;					\
 	task = current;					\
-	mb();						\
+	barrier();					\
 } while (0)
 
 /* Wait in wait_state (e.g., TASK_INTERRUPTIBLE) for condition to
