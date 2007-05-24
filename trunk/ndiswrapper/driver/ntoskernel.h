@@ -16,11 +16,6 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#ifndef CONFIG_WIRELESS_EXT
-#warning "wirelss devices are not supported by this kernel "\
-	"as CONFIG_WIRELESS_EXT is not enabled"
-#endif
-
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
@@ -55,6 +50,8 @@
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
+#else
+#include <linux/config.h>
 #endif
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
@@ -101,6 +98,8 @@
 #define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
 
+#define pci_set_consistent_dma_mask(dev,mask) do { } while (0)
+
 #include <linux/smp_lock.h>
 
 /* RedHat kernels define irqs_disabled this way */
@@ -114,6 +113,16 @@
 #endif
 
 #endif // LINUX_VERSION_CODE
+
+/* TODO: find out when WIRELESS_EXT appeared */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7) &&	\
+     !defined(CONFIG_WIRELESS_EXT))
+#warning "wirelss devices are not supported by this kernel \
+	as CONFIG_WIRELESS_EXT is not enabled"
+#elif !defined(CONFIG_NET_RADIO)
+#warning "wirelss devices are not supported by this kernel " \
+	"as CONFIG_NET_RADIO is not enabled"
+#endif
 
 #define prepare_wait_condition(task, var, value)	\
 do {							\
@@ -360,6 +369,10 @@ typedef u32 pm_message_t;
 
 #ifndef DMA_30BIT_MASK
 #define DMA_30BIT_MASK 0x000000003fffffffULL
+#endif
+
+#ifndef DMA_32BIT_MASK
+#define DMA_32BIT_MASK 0x00000000ffffffffULL
 #endif
 
 #include "ndiswrapper.h"

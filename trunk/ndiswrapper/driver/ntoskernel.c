@@ -1620,20 +1620,20 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 		ERROR("couldn't allocate thread object");
 		EXIT2(return STATUS_RESOURCES);
 	}
-	TRACE2("thread: %p", thread);
+	TRACE2("thread: %p", thread_tramp.thread);
 	thread_tramp.func = func;
 	thread_tramp.ctx = ctx;
 	init_completion(&thread_tramp.started);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	thread_tramp.pid = kernel_thread(ntdrvr_thread, &thread_tramp,
-					 CLONE_SIGHAND);
-	TRACE2("pid = %d", thread_tramp.pid);
-	if (thread_tramp.pid < 0) {
+	thread_tramp.thread->pid = kernel_thread(ntdrvr_thread, &thread_tramp,
+						 CLONE_SIGHAND);
+	TRACE2("pid = %d", thread_tramp.thread->pid);
+	if (thread_tramp.thread->pid < 0) {
 		free_object(thread_tramp.thread);
 		EXIT2(return STATUS_FAILURE);
 	}
-	TRACE2("created task: %d", thread_tramp.pid);
+	TRACE2("created task: %d", thread_tramp.thread->pid);
 #else
 	thread_tramp.thread->task = kthread_run(ntdrvr_thread,
 						&thread_tramp, "ntdrvr");
