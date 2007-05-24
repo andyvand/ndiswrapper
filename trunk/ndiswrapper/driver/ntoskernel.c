@@ -437,7 +437,7 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct ndis_miniport_block *nmb)
+		     struct ndis_mp_block *nmb)
 {
 	struct wrap_timer *wrap_timer;
 
@@ -1509,15 +1509,21 @@ wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 	struct task_struct *task;
 
 	TRACE2("%p", thread);
+#ifdef CONFIG_X86_64
 	/* sis163u driver for amd64 passes 0x1f from thread created by
 	 * PsCreateSystemThread - no idea what is 0x1f */
 	if (thread == (void *)0x1f)
 		thread = get_current_nt_thread();
-	if (!thread)
+#endif
+	if (!thread) {
+		TRACE2("invalid thread");
 		EXIT2(return LOW_REALTIME_PRIORITY);
+	}
 	task = get_nt_thread_task(thread);
-	if (!task)
+	if (!task) {
+		TRACE2("couldn't find task for thread: %p", thread);
 		EXIT2(return LOW_REALTIME_PRIORITY);
+	}
 
 	if (thread_priority(thread->task) <= 0)
 		prio = LOW_PRIORITY;
@@ -1537,13 +1543,19 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	struct task_struct *task;
 
 	TRACE2("thread: %p, priority = %u", thread, prio);
+#ifdef CONFIG_X86_64
 	if (thread == (void *)0x1f)
 		thread = get_current_nt_thread();
-	if (!thread)
+#endif
+	if (!thread) {
+		TRACE2("invalid thread");
 		EXIT2(return LOW_REALTIME_PRIORITY);
+	}
 	task = get_nt_thread_task(thread);
-	if (!task)
+	if (!task) {
+		TRACE2("couldn't find task for thread: %p", thread);
 		EXIT2(return LOW_REALTIME_PRIORITY);
+	}
 
 	if (thread_priority(task) <= 0)
 		old_prio = LOW_PRIORITY;
