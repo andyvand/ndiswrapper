@@ -473,6 +473,7 @@ static void wrap_urb_complete_worker(worker_param_t dummy)
 	struct wrap_urb *wrap_urb;
 	struct nt_list *ent;
 	unsigned long flags;
+	KIRQL irql;
 
 	USBENTER("");
 	while (1) {
@@ -541,7 +542,9 @@ static void wrap_urb_complete_worker(worker_param_t dummy)
 			break;
 		}
 		wrap_free_urb(urb);
+		irql = raise_irql(DISPATCH_LEVEL);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
+		lower_irql(irql);
 	}
 	USBEXIT(return);
 }

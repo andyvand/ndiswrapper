@@ -1126,11 +1126,6 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		*status = NDIS_STATUS_FAILURE;
 		EXIT4(return);
 	}
-	DBG_BLOCK(2) {
-		if (pool->num_allocated_descr > pool->max_descr)
-			WARNING("pool %p is full: %d(%d)", pool,
-				pool->num_allocated_descr, pool->max_descr);
-	}
 	descr = atomic_remove_list_head(pool->free_descr, oldhead->next);
 	if (descr) {
 		typeof(descr->flags) flags;
@@ -1140,6 +1135,12 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
+		DBG_BLOCK(2) {
+			if (pool->num_allocated_descr > pool->max_descr)
+				TRACE2("pool %p is full: %d(%d)", pool,
+				       pool->num_allocated_descr,
+				       pool->max_descr);
+		}
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
@@ -1424,9 +1425,9 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		EXIT4(return);
 	}
 	DBG_BLOCK(2) {
-		if (pool->num_used_descr >= pool->max_descr)
-			WARNING("pool %p is full: %d(%d)", pool,
-				pool->num_used_descr, pool->max_descr);
+		if (pool->num_used_descr > pool->max_descr)
+			TRACE2("pool %p is full: %d(%d)", pool,
+			       pool->num_used_descr, pool->max_descr);
 	}
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
@@ -2901,7 +2902,7 @@ int ndis_init(void)
 	nt_spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
 
-	ndis_wq = create_singlethread_workqueue("ndis_wq");
+	ndis_wq = create_workqueue("ndis_wq");
 	if (!ndis_wq) {
 		WARNING("couldn't create worker thread");
 		EXIT1(return -ENOMEM);

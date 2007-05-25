@@ -193,6 +193,8 @@ typedef struct {
 		(work)->workq = NULL;				\
 	} while (0)
 
+#undef create_workqueue
+#define create_workqueue wrap_create_wq
 #undef create_singlethread_workqueue
 #define create_singlethread_workqueue wrap_create_wq
 #undef destroy_workqueue
@@ -408,8 +410,8 @@ typedef u32 pm_message_t;
 	((((sys_time) <= 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
 	  (((s64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
 
-#define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
-#define USEC_TO_HZ(us) ((us) * HZ / 1000000)
+#define MSEC_TO_HZ(ms) (((ms * HZ) + 999) / 1000)
+#define USEC_TO_HZ(us) (((us * HZ) + 999999) / 1000000)
 
 extern u64 wrap_ticks_to_boot;
 
@@ -568,22 +570,21 @@ struct wrap_device {
 	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
-extern workqueue_struct_t *ndis_wq;
-#define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
-
-extern workqueue_struct_t *wrapndis_wq;
-#define schedule_wrapndis_work(work_struct)	\
-	queue_work(wrapndis_wq, (work_struct))
-
 #define USE_NTOS_WQ 1
 
 #ifdef USE_NTOS_WQ
 extern workqueue_struct_t *ntos_wq;
-#define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
-#define schedule_work(work_struct) queue_work(ntos_wq, (work_struct))
+#define schedule_ntos_work(work_struct) queue_work(ntos_wq, work_struct)
+#define schedule_work(work_struct) queue_work(ntos_wq, work_struct)
 #else
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
+
+extern workqueue_struct_t *ndis_wq;
+#define schedule_ndis_work(work_struct) queue_work(ndis_wq, work_struct)
+
+extern workqueue_struct_t *wrapndis_wq;
+#define schedule_wrapndis_work(work_struct) queue_work(wrapndis_wq, work_struct)
 
 #define atomic_unary_op(var, size, oper)				\
 do {									\
@@ -705,9 +706,9 @@ static inline KIRQL current_irql(void)
 {
 #ifdef DEBUG_IRQL
 	if (in_irq() || irqs_disabled())
-		EXIT2(return DIRQL);
+		EXIT4(return DIRQL);
 	if (in_interrupt())
-		EXIT2(return SOFT_IRQL);
+		EXIT4(return SOFT_IRQL);
 #endif
 	if (warp_in_atomic())
 		EXIT6(return DISPATCH_LEVEL);
