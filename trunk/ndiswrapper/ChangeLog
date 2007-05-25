@@ -7,6 +7,13 @@ Version 1.45 2007-XX-XX
   driver (which apparently works with ndiswrapper)
 * Fixed a warning when SLUB allocator is used
 * Fixed a bug with sis163u when preempt is enabled
+* Changing MAC address with 'ifconfig <iface> hw ether' should work
+  with all drivers now. If MAC address should be changed everytime
+  ndiswrapper is loaded, change 'NetworkAddress' setting, as explained
+  in wiki entry 'Tips' (earlier 'mac_address' setting was used, but
+  that no longer applies)
+* Fixed an issue with some drivers (e.g., sis163u) that would stall
+  after working for a while
 
 Version 1.44 2007-05-17
 =======================	
