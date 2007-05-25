@@ -194,8 +194,10 @@ struct driver_object *find_bus_driver(const char *name)
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	drv_obj = NULL;
 	nt_list_for_each_entry(bus_driver, &bus_driver_list, list) {
-		if (strcmp(bus_driver->name, name) == 0)
+		if (strcmp(bus_driver->name, name) == 0) {
 			drv_obj = &bus_driver->drv_obj;
+			break;
+		}
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	return drv_obj;
@@ -1582,7 +1584,7 @@ struct thread_trampoline {
 	struct completion started;
 };
 
-static int ntdrvr_thread(void *data)
+static int ntdriver_thread(void *data)
 {
 	struct thread_trampoline *thread_tramp = data;
 	/* yes, a tramp! */
@@ -1598,7 +1600,7 @@ static int ntdrvr_thread(void *data)
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #endif
-	strncpy(current->comm, "ntdrvr", sizeof(current->comm));
+	strncpy(current->comm, "ntdriver", sizeof(current->comm));
 	current->comm[sizeof(current->comm)-1] = 0;
 	LIN2WIN1(func, ctx);
 	ERROR("task: %p", current);
@@ -1626,7 +1628,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	init_completion(&thread_tramp.started);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	thread_tramp.thread->pid = kernel_thread(ntdrvr_thread, &thread_tramp,
+	thread_tramp.thread->pid = kernel_thread(ntdriver_thread, &thread_tramp,
 						 CLONE_SIGHAND);
 	TRACE2("pid = %d", thread_tramp.thread->pid);
 	if (thread_tramp.thread->pid < 0) {
@@ -1635,8 +1637,8 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	}
 	TRACE2("created task: %d", thread_tramp.thread->pid);
 #else
-	thread_tramp.thread->task = kthread_run(ntdrvr_thread,
-						&thread_tramp, "ntdrvr");
+	thread_tramp.thread->task = kthread_run(ntdriver_thread,
+						&thread_tramp, "ntdriver");
 	if (IS_ERR(thread_tramp.thread->task)) {
 		free_object(thread_tramp.thread);
 		EXIT2(return STATUS_FAILURE);
@@ -2558,7 +2560,7 @@ int ntoskernel_init(void)
 #endif
 
 #ifdef USE_NTOS_WQ
-	ntos_wq = create_singlethread_workqueue("ntos_wq");
+	ntos_wq = create_workqueue("ntos_wq");
 	if (!ntos_wq) {
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;

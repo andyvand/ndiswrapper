@@ -1898,7 +1898,7 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	TRACE2("maximum send packets: %d", wnd->max_tx_packets);
 	NdisAllocatePacketPoolEx(&status, &wnd->tx_packet_pool,
-				 wnd->max_tx_packets, 0,
+				 wnd->max_tx_packets + 2, 0,
 				 PROTOCOL_RESERVED_SIZE_IN_PACKET);
 	if (status != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate packet pool");
@@ -2151,7 +2151,7 @@ int init_ndis_driver(struct driver_object *drv_obj)
 
 int wrapndis_init(void)
 {
-	wrapndis_wq = create_singlethread_workqueue("wrapndis_wq");
+	wrapndis_wq = create_workqueue("wrapndis_wq");
 	if (!wrapndis_wq)
 		EXIT1(return -ENOMEM);
 	wrapndis_worker_thread = wrap_worker_init(wrapndis_wq);
