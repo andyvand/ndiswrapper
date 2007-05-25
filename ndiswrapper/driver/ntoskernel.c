@@ -1136,7 +1136,15 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout);
 
-	assert(current_irql() < DISPATCH_LEVEL);
+	DBG_BLOCK(2) {
+		KIRQL irql = current_irql();
+		if (irql >= DISPATCH_LEVEL) {
+			TRACE2("wait in atomic context: %Lu, %lu, %d, %ld, %x",
+			       *timeout, wait_hz, in_atomic(), in_interrupt(),
+			       preempt_count());
+		}
+	}
+	assert_irql(_irql_ < DISPATCH_LEVEL);
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
 	/* we don't honor 'alertable' - according to decription for
 	 * this, even if waiting in non-alertable state, thread may be

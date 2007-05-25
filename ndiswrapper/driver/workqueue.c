@@ -15,36 +15,43 @@
 
 #include "ntoskernel.h"
 
-/* workqueue implementation for 2.4 kernels */
+struct workq_thread_data {
+	workqueue_struct_t *workq;
+	int index;
+};
 
 static int workq_thread(void *data)
 {
-	workqueue_struct_t *workq = data;
+	struct workq_thread_data *thread_data = data;
+	struct workqueue_thread *thread;
+	workqueue_struct_t *workq;
 	work_struct_t *work;
 	unsigned long flags;
 
+	workq = thread_data->workq;
+	thread = &workq->threads[thread_data->index];
+	WORKTRACE("%p, %d, %p", workq, thread_data->index, thread);
+	strncpy(thread->name, current->comm, sizeof(thread->name));
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	strncpy(current->comm, workq->name, sizeof(current->comm));
-	current->comm[sizeof(current->comm) - 1] = 0;
 	daemonize();
 	reparent_to_init();
 	current->nice -= 5;
+	sigfillset(&current->blocked);
 #else
-	daemonize(workq->name);
+	daemonize(thread->name);
 	set_user_nice(current, -5);
 #endif
 
-#ifdef PF_NOFREEZE
-	current->flags |= PF_NOFREEZE;
-#else
-	sigfillset(&current->blocked);
-#endif
-
-	workq->task = current;
-	complete(xchg(&workq->completion, NULL));
-	WORKTRACE("%s (%d) started", workq->name, workq->pid);
-	while (workq->pending >= 0) {
-		if (wait_condition(workq->pending, 0, TASK_INTERRUPTIBLE) < 0) {
+	if (thread->task != current) {
+		WARNING("invalid task: %p, %p", thread->task, current);
+		thread->task = current;
+	}
+	thread->pid = current->pid;
+	complete(xchg(&thread->completion, NULL));
+	WORKTRACE("%s (%d) started", thread->name, thread->pid);
+	while (1) {
+		if (wait_condition(thread->pending, 0, TASK_INTERRUPTIBLE) < 0) {
 			/* TODO: deal with signal */
 			WARNING("signal not blocked?");
 			flush_signals(current);
@@ -53,104 +60,207 @@ static int workq_thread(void *data)
 		while (1) {
 			struct list_head *entry;
 
-			spin_lock_irqsave(&workq->lock, flags);
-			if (list_empty(&workq->work_list)) {
+			spin_lock_irqsave(&thread->lock, flags);
+			if (list_empty(&thread->work_list)) {
 				struct completion *completion;
-				if (workq->pending > 0)
-					workq->pending = 0;
-				completion = workq->completion;
-				workq->completion = NULL;
-				spin_unlock_irqrestore(&workq->lock, flags);
+				if (thread->pending < 0) {
+					spin_unlock_irqrestore(&thread->lock,
+							       flags);
+					goto out;
+				}
+				thread->pending = 0;
+				completion = thread->completion;
+				thread->completion = NULL;
+				spin_unlock_irqrestore(&thread->lock, flags);
 				if (completion)
 					complete(completion);
 				break;
 			}
-			entry = workq->work_list.next;
+			entry = thread->work_list.next;
 			work = list_entry(entry, work_struct_t, list);
-			if (xchg(&work->workq, NULL))
+			if (xchg(&work->thread, NULL))
 				list_del(entry);
 			else
 				work = NULL;
-			spin_unlock_irqrestore(&workq->lock, flags);
+			spin_unlock_irqrestore(&thread->lock, flags);
+			DBG_BLOCK(4) {
+				WORKTRACE("%p, %p", work, thread);
+			}
 			if (work)
 				work->func(work->data);
 		}
 	}
 
-	WORKTRACE("%s exiting", workq->name);
-	workq->pid = 0;
+out:
+	WORKTRACE("%s exiting", thread->name);
+	thread->pid = 0;
 	return 0;
+}
+
+wfastcall void wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+				  int cpu)
+{
+	struct workqueue_thread *thread = &workq->threads[cpu];
+	unsigned long flags;
+
+	DBG_BLOCK(4) {
+		WORKTRACE("%p, %d", workq, cpu);
+	}
+	spin_lock_irqsave(&thread->lock, flags);
+	if (!work->thread) {
+		work->thread = thread;
+		list_add_tail(&work->list, &thread->work_list);
+		thread->pending = 1;
+		wake_up_process(thread->task);
+	}
+	spin_unlock_irqrestore(&thread->lock, flags);
 }
 
 wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&workq->lock, flags);
-	if (!work->workq) {
-		work->workq = workq;
-		list_add_tail(&work->list, &workq->work_list);
-		workq->pending++;
-		wake_up_process(workq->task);
+	if (NR_CPUS == 1 || workq->singlethread)
+		wrap_queue_work_on(workq, work, 0);
+	else {
+		typeof(workq->qon) qon;
+		/* work is queued on threads in a round-robbin fashion */
+		do {
+			qon = workq->qon % NR_CPUS;
+			atomic_inc_var(workq->qon);
+		} while (!workq->threads[qon].pid);
+		wrap_queue_work_on(workq, work, qon);
 	}
-	spin_unlock_irqrestore(&workq->lock, flags);
 }
 
 void wrap_cancel_work(work_struct_t *work)
 {
-	workqueue_struct_t *workq;
+	struct workqueue_thread *thread;
 	unsigned long flags;
 
-	if ((workq = xchg(&work->workq, NULL))) {
-		spin_lock_irqsave(&workq->lock, flags);
+	WORKTRACE("%p", work);
+	if ((thread = xchg(&work->thread, NULL))) {
+		WORKTRACE("%p", thread);
+		spin_lock_irqsave(&thread->lock, flags);
 		list_del(&work->list);
-		spin_unlock_irqrestore(&workq->lock, flags);
+		spin_unlock_irqrestore(&thread->lock, flags);
 	}
 }
 
-workqueue_struct_t *wrap_create_wq(const char *name)
+workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 {
 	struct completion started;
-	workqueue_struct_t *workq = kmalloc(sizeof(*workq), GFP_KERNEL);
+	workqueue_struct_t *workq;
+	int i, n;
+
+	if (singlethread)
+		n = 1;
+	else
+		n = NR_CPUS;
+	workq = kmalloc(sizeof(*workq) + n * sizeof(workq->threads[0]),
+			GFP_KERNEL);
 	if (!workq) {
 		WARNING("couldn't allocate memory");
 		return NULL;
 	}
-	memset(workq, 0, sizeof(*workq));
-	spin_lock_init(&workq->lock);
-	strncpy(workq->name, name, sizeof(workq->name));
-	workq->name[sizeof(workq->name) - 1] = 0;
-	INIT_LIST_HEAD(&workq->work_list);
+	memset(workq, 0, sizeof(*workq) + n * sizeof(workq->threads[0]));
+	WORKTRACE("%p", workq);
 	init_completion(&started);
-	workq->completion = &started;
-	workq->pid = kernel_thread(workq_thread, workq, 0);
-	if (workq->pid <= 0) {
-		kfree(workq);
-		WARNING("couldn't start thread %s", name);
-		return NULL;
+	for_each_online_cpu(i) {
+		struct workq_thread_data thread_data;
+		spin_lock_init(&workq->threads[i].lock);
+		INIT_LIST_HEAD(&workq->threads[i].work_list);
+		INIT_COMPLETION(started);
+		workq->threads[i].completion = &started;
+		thread_data.workq = workq;
+		thread_data.index = i;
+		WORKTRACE("%p, %d, %p", workq, i, &workq->threads[i]);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
+		workq->threads[i].pid =
+			kernel_thread(workq_thread, &thread_data, CLONE_SIGHAND);
+		if (workq->threads[i].pid < 0)
+			workq->threads[i].task = (void *)-ENOMEM;
+		else
+			workq->threads[i].task =
+				find_task_by_pid(workq->threads[i].pid);
+#else
+		workq->threads[i].task =
+			kthread_create(workq_thread, &thread_data,
+				       "%s/%d", name, i);
+#endif
+		if (IS_ERR(workq->threads[i].task)) {
+			int j;
+			for (j = 0; j < i; j++)
+				wrap_destroy_wq_on(workq, j);
+			kfree(workq);
+			WARNING("couldn't start thread %s", name);
+			return NULL;
+		}
+#ifdef PF_NOFREEZE
+		if (!freeze)
+			workq->threads[i].task->flags |= PF_NOFREEZE;
+#endif
+		kthread_bind(workq->threads[i].task, i);
+		wake_up_process(workq->threads[i].task);
+		wait_for_completion(&started);
+		WORKTRACE("%s, %d: %p, %d", name, i,
+			  workq, workq->threads[i].pid);
+		if (singlethread)
+			break;
 	}
-	wait_for_completion(&started);
 	return workq;
 }
 
-void wrap_flush_wq(workqueue_struct_t *workq)
+void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu)
 {
+	struct workqueue_thread *thread = &workq->threads[cpu];
 	struct completion done;
+
+	WORKTRACE("%p: %d, %s", workq, cpu, thread->name);
 	init_completion(&done);
-	workq->completion = &done;
-	workq->pending = 1;
-	wake_up_process(workq->task);
+	thread->completion = &done;
+	thread->pending = 1;
+	wake_up_process(thread->task);
 	wait_for_completion(&done);
 	return;
 }
 
-void wrap_destroy_wq(workqueue_struct_t *workq)
+void wrap_flush_wq(workqueue_struct_t *workq)
 {
-	workq->pending = -1;
-	wake_up_process(workq->task);
-	while (workq->pid) {
-		WORKTRACE("%d", workq->pid);
+	int i, n;
+
+	WORKTRACE("%p", workq);
+	if (workq->singlethread)
+		n = 1;
+	else
+		n = NR_CPUS;
+	for (i = 0; i < n; i++)
+		wrap_flush_wq_on(workq, i);
+}
+
+void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu)
+{
+	struct workqueue_thread *thread = &workq->threads[cpu];
+
+	WORKTRACE("%p: %d, %s", workq, cpu, thread->name);
+	if (!thread->pid)
+		return;
+	thread->pending = -1;
+	wake_up_process(thread->task);
+	while (thread->pid) {
+		WORKTRACE("%d", thread->pid);
 		schedule();
 	}
+}
+
+void wrap_destroy_wq(workqueue_struct_t *workq)
+{
+	int i, n;
+
+	WORKTRACE("%p", workq);
+	if (workq->singlethread)
+		n = 1;
+	else
+		n = NR_CPUS;
+	for (i = 0; i < n; i++)
+		wrap_destroy_wq_on(workq, i);
 	kfree(workq);
 }
