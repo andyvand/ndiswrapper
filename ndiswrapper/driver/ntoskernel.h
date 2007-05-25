@@ -166,37 +166,45 @@ do {							\
 
 #ifdef USE_OWN_WQ
 
-typedef struct {
+struct workqueue_struct;
+
+struct workqueue_thread {
 	spinlock_t lock;
 	struct task_struct *task;
 	struct completion *completion;
 	char name[16];
 	int pid;
 	/* whether any work_structs pending? <0 implies quit */
-	int pending;
+	s8 pending;
 	/* list of work_structs pending */
 	struct list_head work_list;
+};
+
+typedef struct workqueue_struct {
+	u8 singlethread;
+	u8 qon;
+	struct workqueue_thread threads[0];
 } workqueue_struct_t;
 
 typedef struct {
 	struct list_head list;
 	void (*func)(void *data);
 	void *data;
-	/* whether/on which workqueue scheduled */
-	workqueue_struct_t *workq;
+	/* whether/on which thread scheduled */
+	struct workqueue_thread *thread;
 } work_struct_t;
 
 #define initialize_work(work, pfunc, pdata)			\
 	do {							\
 		(work)->func = (pfunc);				\
 		(work)->data = (pdata);				\
-		(work)->workq = NULL;				\
+		(work)->thread = NULL;				\
 	} while (0)
 
 #undef create_workqueue
-#define create_workqueue wrap_create_wq
+#define create_workqueue(name) wrap_create_wq(name, 0, 0)
 #undef create_singlethread_workqueue
-#define create_singlethread_workqueue wrap_create_wq
+#define create_singlethread_workqueue(name) wrap_create_wq(name, 1, 0)
 #undef destroy_workqueue
 #define destroy_workqueue wrap_destroy_wq
 #undef queue_work
@@ -204,10 +212,14 @@ typedef struct {
 #undef flush_workqueue
 #define flush_workqueue wrap_flush_wq
 
-workqueue_struct_t *wrap_create_wq(const char *name);
+workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze);
+void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu);
 void wrap_destroy_wq(workqueue_struct_t *workq);
+void wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+			int cpu) wfastcall;
 void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
 void wrap_cancel_work(work_struct_t *work);
+void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu);
 void wrap_flush_wq(workqueue_struct_t *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
