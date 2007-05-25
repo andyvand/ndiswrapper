@@ -1660,27 +1660,27 @@ wstdcall NTSTATUS WIN_FUNC(PsTerminateSystemThread,1)
 	TRACE2("%p, %08X", current, status);
 	thread = get_current_nt_thread();
 	TRACE2("%p", thread);
-	if (!thread) {
+	if (thread) {
+		KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
+		while (1) {
+			struct nt_list *ent;
+			struct irp *irp;
+			KIRQL irql;
+			irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+			ent = RemoveHeadList(&thread->irps);
+			nt_spin_unlock_irql(&thread->lock, irql);
+			if (!ent)
+				break;
+			irp = container_of(ent, struct irp, thread_list);
+			IOTRACE("%p", irp);
+			IoCancelIrp(irp);
+		}
+		/* the driver may later query this status with
+		 * ZwQueryInformationThread */
+		thread->status = status;
+	} else
 		ERROR("couldn't find thread for task: %p", current);
-		return STATUS_FAILURE;
-	}
-	KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
-	while (1) {
-		struct nt_list *ent;
-		struct irp *irp;
-		KIRQL irql;
-		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&thread->irps);
-		nt_spin_unlock_irql(&thread->lock, irql);
-		if (!ent)
-			break;
-		irp = container_of(ent, struct irp, thread_list);
-		IOTRACE("%p", irp);
-		IoCancelIrp(irp);
-	}
-	/* the driver may later query this status with
-	 * ZwQueryInformationThread */
-	thread->status = status;
+
 	complete_and_exit(NULL, status);
 	ERROR("oops: %p, %d", thread->task, thread->pid);
 	return STATUS_FAILURE;

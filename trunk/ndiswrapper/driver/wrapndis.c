@@ -609,6 +609,8 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	NdisFreeBuffer(buffer);
 	dev_kfree_skb_any(oob_data->tx_skb);
 	NdisFreePacket(packet);
+	if (netif_queue_stopped(wnd->net_dev))
+		netif_wake_queue(wnd->net_dev);
 	EXIT3(return);
 }
 
@@ -741,8 +743,6 @@ static void tx_worker(worker_param_t param)
 			wnd->tx_ring_start =
 				(wnd->tx_ring_start + n) % TX_RING_SIZE;
 			wnd->is_tx_ring_full = 0;
-			if (netif_queue_stopped(wnd->net_dev))
-				netif_wake_queue(wnd->net_dev);
 		}
 		lower_irql(irql);
 		up(&wnd->tx_ring_mutex);
@@ -758,7 +758,8 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 
 	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
-		WARNING("couldn't allocate packet");
+		TRACE1("couldn't allocate packet");
+		netif_stop_queue(wnd->net_dev);
 		return NETDEV_TX_BUSY;
 	}
 	nt_spin_lock(&wnd->tx_ring_lock);
