@@ -201,10 +201,16 @@ typedef struct {
 		(work)->thread = NULL;				\
 	} while (0)
 
-#undef create_workqueue
-#define create_workqueue(name) wrap_create_wq(name, 0, 0)
 #undef create_singlethread_workqueue
 #define create_singlethread_workqueue(name) wrap_create_wq(name, 1, 0)
+#undef create_workqueue
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#define create_workqueue(name) wrap_create_wq(name, 0, 0)
+#else
+#define create_workqueue(name) wrap_create_wq(name, 1, 0)
+#define for_each_online_cpu(cpu) while ((cpu = 0) || 1)
+#define kthread_bind(thread, cpu) do { } while (0)
+#endif
 #undef destroy_workqueue
 #define destroy_workqueue wrap_destroy_wq
 #undef queue_work
