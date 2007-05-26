@@ -183,6 +183,7 @@ struct workqueue_thread {
 typedef struct workqueue_struct {
 	u8 singlethread;
 	u8 qon;
+	int num_cpus;
 	struct workqueue_thread threads[0];
 } workqueue_struct_t;
 
@@ -221,9 +222,9 @@ typedef struct {
 workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze);
 void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu);
 void wrap_destroy_wq(workqueue_struct_t *workq);
-void wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
-			int cpu) wfastcall;
-void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
+int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+		       int cpu) wfastcall;
+int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
 void wrap_cancel_work(work_struct_t *work);
 void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu);
 void wrap_flush_wq(workqueue_struct_t *workq);
