@@ -26,7 +26,6 @@ static int workq_thread(void *data)
 	struct workqueue_thread *thread;
 	workqueue_struct_t *workq;
 	work_struct_t *work;
-	unsigned long flags;
 
 	workq = thread_data->workq;
 	thread = &workq->threads[thread_data->index];
@@ -59,6 +58,7 @@ static int workq_thread(void *data)
 		}
 		while (1) {
 			struct list_head *entry;
+			unsigned long flags;
 
 			spin_lock_irqsave(&thread->lock, flags);
 			if (list_empty(&thread->work_list)) {
@@ -213,7 +213,7 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 		if (singlethread)
 			break;
 	}
-	worq->num_cpus++;
+	workq->num_cpus++;
 	return workq;
 }
 
