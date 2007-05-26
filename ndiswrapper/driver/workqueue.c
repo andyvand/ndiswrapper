@@ -97,37 +97,43 @@ out:
 	return 0;
 }
 
-wfastcall void wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
-				  int cpu)
+wfastcall int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+				 int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 	unsigned long flags;
+	int ret;
 
+	assert(thread->pid > 0);
 	DBG_BLOCK(4) {
 		WORKTRACE("%p, %d", workq, cpu);
 	}
 	spin_lock_irqsave(&thread->lock, flags);
-	if (!work->thread) {
+	if (work->thread)
+		ret = 0;
+	else {
 		work->thread = thread;
 		list_add_tail(&work->list, &thread->work_list);
 		thread->pending = 1;
 		wake_up_process(thread->task);
+		ret = 1;
 	}
 	spin_unlock_irqrestore(&thread->lock, flags);
+	return ret;
 }
 
-wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
+wfastcall int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
 	if (NR_CPUS == 1 || workq->singlethread)
-		wrap_queue_work_on(workq, work, 0);
+		return wrap_queue_work_on(workq, work, 0);
 	else {
 		typeof(workq->qon) qon;
 		/* work is queued on threads in a round-robbin fashion */
 		do {
-			qon = workq->qon % NR_CPUS;
+			qon = workq->qon % workq->num_cpus;
 			atomic_inc_var(workq->qon);
 		} while (!workq->threads[qon].pid);
-		wrap_queue_work_on(workq, work, qon);
+		return wrap_queue_work_on(workq, work, qon);
 	}
 }
 
@@ -199,6 +205,7 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 			workq->threads[i].task->flags |= PF_NOFREEZE;
 #endif
 		kthread_bind(workq->threads[i].task, i);
+		workq->num_cpus = max(workq->num_cpus, i);
 		wake_up_process(workq->threads[i].task);
 		wait_for_completion(&started);
 		WORKTRACE("%s, %d: %p, %d", name, i,
@@ -206,6 +213,7 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 		if (singlethread)
 			break;
 	}
+	worq->num_cpus++;
 	return workq;
 }
 
