@@ -316,7 +316,7 @@ sub parse_install {
     $classguid =~ s/^\s*{//;
     $classguid =~ s/}\s*$//;
 
-    printf CONF "NdisVersion|0x50001\n";
+    printf CONF "NdisVersion|0x00060000\n";
     printf CONF "Environment|1\n";
     printf CONF "class_guid|%s\n", $classguid;
     printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
@@ -358,7 +358,8 @@ sub parse_registry {
 	my $value;
 	my $param = trim($fields[1]);
 	if ($param =~ /^ndi\\/i) {
-	    if ($param =~ /^ndi\\params\\(.+)/i) {
+	    if ($param =~ /^ndi\\params\\(.+)/i or
+		$param =~ /^ndi\\xparams\\(.+)/i) {
 		$param = strip_quotes(trim($1));
 		$param =~ s/\\.*$//;
 		next if (lc(trim($fields[2])) ne "default");
