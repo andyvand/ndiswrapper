@@ -22,33 +22,31 @@
 int wrapndis_init(void);
 void wrapndis_exit(void);
 
-NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd);
-NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
-				       ndis_oid oid, void *buf,
-				       ULONG bufsize, ULONG *needed);
-NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-				void *buf, ULONG bufsize);
-NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-			      void *buf, ULONG bufsize);
-NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			       ULONG *data);
-NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			     ULONG data);
-NDIS_STATUS miniport_request_method_needed(struct wrap_ndis_device *wnd,
-					   ndis_oid oid, void *buf, int buf_len,
-					   UINT *bytes_needed);
-NDIS_STATUS miniport_request_method(struct wrap_ndis_device *wnd,
-				    ndis_oid oid, void *buf, int buf_len);
+NDIS_STATUS mp_reset(struct wrap_ndis_device *wnd);
+NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
+			  ULONG bufsize, UINT *needed, UINT *written);
+NDIS_STATUS mp_query(struct wrap_ndis_device *wnd, ndis_oid oid,
+		     void *buf, ULONG bufsize);
+NDIS_STATUS mp_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
+			 ULONG *data);
+NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
+			ULONG bufsize, UINT *needed, UINT *written);
+NDIS_STATUS mp_set(struct wrap_ndis_device *wnd, ndis_oid oid,
+		   void *buf, ULONG bufsize);
+NDIS_STATUS mp_set_int(struct wrap_ndis_device *wnd, ndis_oid oid, ULONG data);
+NDIS_STATUS mp_request_method(struct wrap_ndis_device *wnd, ndis_oid oid,
+			      void *buf, ULONG buf_len, UINT *needed,
+			      UINT *written);
 void free_tx_buffer_list(struct wrap_ndis_device *wnd,
-			     struct net_buffer_list *buffer_list);
+			 struct net_buffer_list *buffer_list);
 int init_ndis_driver(struct driver_object *drv_obj);
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);
 
 void get_encryption_capa(struct wrap_ndis_device *wnd);
 void hangcheck_add(struct wrap_ndis_device *wnd);
 void hangcheck_del(struct wrap_ndis_device *wnd);
-NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
-			       enum ndis_device_pnp_event event, ULONG profile);
+NDIS_STATUS mp_pnp_event(struct wrap_ndis_device *wnd,
+			 enum ndis_device_pnp_event event, ULONG profile);
 
 driver_dispatch_t winNdisDispatchPnp;
 driver_dispatch_t winNdisDispatchPower;

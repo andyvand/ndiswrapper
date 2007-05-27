@@ -262,10 +262,10 @@ default: $(OBJS)
 	$(LD) -r -o $(MODULE) $(OBJS)
 else
 
-MODULE := ndiswrapper.ko
-obj-m := ndiswrapper.o 
+MODULE := ndisv6.ko
+obj-m := ndisv6.o 
 
-ndiswrapper-objs := $(OBJS)
+ndisv6-objs := $(OBJS)
 
 default:
 	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR)

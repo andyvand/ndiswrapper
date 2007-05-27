@@ -40,12 +40,11 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
+	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
 		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
 
-	res = miniport_query_info(wnd, OID_802_11_STATISTICS,
-				  &stats, sizeof(stats));
+	res = mp_query(wnd, OID_802_11_STATISTICS, &stats, sizeof(stats));
 	if (!res) {
 
 		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
@@ -209,7 +208,7 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
-		res = miniport_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
+		res = mp_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
 		if (res)
 			WARNING("setting packet_filter failed: %08X", res);
 	}

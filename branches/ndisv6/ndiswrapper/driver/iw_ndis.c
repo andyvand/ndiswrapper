@@ -47,11 +47,11 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 	ssid_list.num_total_entries = 1;
 	ssid_list.ssids[0].length = ssid_len;
 	memcpy(ssid_list.ssids[0].ssid, ssid, ssid_len);
-	res = miniport_set_info(wnd, OID_DOT11_DESIRED_SSID_LIST, &ssid_list,
-				sizeof(ssid_list));
+	res = mp_set(wnd, OID_DOT11_DESIRED_SSID_LIST, &ssid_list,
+		     sizeof(ssid_list));
 	if (res)
 		WARNING("setting essid failed: %08X", res);
-//	res = miniport_set_info(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
+//	res = mp_set(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
 	EXIT2(return res);
 }
 
@@ -100,8 +100,8 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	memset(&ssid_list, 0, sizeof(ssid_list));
 	init_ndis_object_header(&ssid_list, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_SSID_LIST_REVISION_1);
-	res = miniport_query_info(wnd, OID_DOT11_DESIRED_SSID_LIST, &ssid_list,
-				  sizeof(ssid_list));
+	res = mp_query(wnd, OID_DOT11_DESIRED_SSID_LIST, &ssid_list,
+		       sizeof(ssid_list));
 	if (res) {
 		WARNING("getting essid failed: %08X", res);
 		res = -EOPNOTSUPP;
@@ -126,8 +126,7 @@ NDIS_STATUS set_infra_mode(struct wrap_ndis_device *wnd,
 			   enum ndis_dot11_bss_type type)
 {
 	NDIS_STATUS res;
-	res = miniport_set_info(wnd, OID_DOT11_DESIRED_BSS_TYPE,
-				&type, sizeof(type));
+	res = mp_set(wnd, OID_DOT11_DESIRED_BSS_TYPE, &type, sizeof(type));
 	if (res)
 		WARNING("setting mode to %d failed: %08X", type, res);
 	else
@@ -167,8 +166,8 @@ static int iw_get_infra_mode(struct net_device *dev,
 	NDIS_STATUS res;
 	enum ndis_dot11_bss_type bss_type;
 
-	res = miniport_query_info(wnd, OID_DOT11_DESIRED_BSS_TYPE,
-				  &bss_type, sizeof(bss_type));
+	res = mp_query(wnd, OID_DOT11_DESIRED_BSS_TYPE,
+		       &bss_type, sizeof(bss_type));
 	if (res) {
 		WARNING("getting mode failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -219,8 +218,7 @@ static int iw_get_network_type(struct net_device *dev,
 	NDIS_STATUS res;
 	int n;
 
-	res = miniport_query_info(wnd, OID_DOT11_CURRENT_PHY_ID,
-				  &n, sizeof(ULONG));
+	res = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &n);
 	TRACE2("%08X, %d", res, n);
 	if (res || n > wnd->phy_types->num_entries)
 		EXIT2(return -EOPNOTSUPP);
@@ -242,8 +240,8 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	ULONG ndis_freq;
 
-	res = miniport_query_info(wnd, OID_DOT11_CURRENT_CHANNEL,
-				  &ndis_freq, sizeof(ndis_freq));
+	res = mp_query(wnd, OID_DOT11_CURRENT_CHANNEL,
+		       &ndis_freq, sizeof(ndis_freq));
 	if (res) {
 		WARNING("getting frequency failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -278,8 +276,8 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 		ndis_freq = i;
 	}
 
-	res = miniport_set_info(wnd, OID_DOT11_CURRENT_CHANNEL,
-				&ndis_freq, sizeof(ndis_freq));
+	res = mp_set(wnd, OID_DOT11_CURRENT_CHANNEL,
+		     &ndis_freq, sizeof(ndis_freq));
 	if (res) {
 		WARNING("setting frequency failed: %08X", res);
 		return -EINVAL;
@@ -295,11 +293,10 @@ static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	ULONG n;
 
-	res = miniport_query_info(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL,
-				  &n, sizeof(n));
+	res = mp_query(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, &n, sizeof(n));
 	TRACE2("%08X, %d", res, n);
-	res = miniport_query_info_needed(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
-					 NULL, 0, &n);
+	res = mp_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
+			    NULL, 0, &n, NULL);
 	if (res != NDIS_STATUS_BUFFER_OVERFLOW) {
 		WARNING("query failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -308,15 +305,13 @@ static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 	if (!power_levels)
 		EXIT2(return -ENOMEM);
 	
-	res = miniport_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
-				  power_levels, n);
+	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, power_levels, n);
 	if (res || power_levels->num_levels > OID_DOT11_MAX_TX_POWER_LEVELS) {
 		WARNING("query failed: %08X", res);
 		kfree(power_levels);
 		return -EOPNOTSUPP;
 	}
-	res = miniport_query_info(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL,
-				  &n, sizeof(n));
+	res = mp_query(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, &n, sizeof(n));
 	if (res || n < 1 || n > power_levels->num_levels) {
 		WARNING("query failed: %08X", res);
 		kfree(power_levels);
@@ -335,8 +330,8 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	ULONG i, n;
 
-	res = miniport_query_info_needed(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
-					 NULL, 0, &n);
+	res = mp_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, NULL, 0,
+			    &n, NULL);
 	if (res != NDIS_STATUS_BUFFER_OVERFLOW) {
 		WARNING("query failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -345,8 +340,7 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 	if (!power_levels)
 		EXIT2(return -ENOMEM);
 	
-	res = miniport_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
-				  power_levels, n);
+	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, power_levels, n);
 	if (res || power_levels->num_levels > OID_DOT11_MAX_TX_POWER_LEVELS) {
 		WARNING("query failed: %08X", res);
 		kfree(power_levels);
@@ -371,8 +365,7 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 		if (n <= power_levels->levels[i])
 			break;
 	n = power_levels->levels[i];
-	res = miniport_set_info(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL,
-				&n, sizeof(n));
+	res = mp_set(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, &n, sizeof(n));
 	kfree(power_levels);
 	if (res) {
 		WARNING("query failed: %08X", res);
@@ -389,8 +382,7 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 	int res;
 
 	ENTER2("");
-	res = miniport_query_info(wnd, OID_GEN_LINK_SPEED,
-				  &ndis_rate, sizeof(ndis_rate));
+	res = mp_query(wnd, OID_GEN_LINK_SPEED, &ndis_rate, sizeof(ndis_rate));
 	if (res) {
 		WARNING("getting bitrate failed (%08X)", res);
 		ndis_rate = 0;
@@ -421,7 +413,7 @@ static int iw_get_rts_threshold(struct net_device *dev,
 	ULONG n;
 	NDIS_STATUS res;
 
-	res = miniport_query_info(wnd, OID_DOT11_RTS_THRESHOLD, &n, sizeof(n));
+	res = mp_query(wnd, OID_DOT11_RTS_THRESHOLD, &n, sizeof(n));
 	if (res) {
 		WARNING("getting fragmentation threshold failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -438,7 +430,7 @@ static int iw_set_rts_threshold(struct net_device *dev,
 	ULONG n = wrqu->rts.value;
 	NDIS_STATUS res;
 
-	res = miniport_set_info(wnd, OID_DOT11_RTS_THRESHOLD, &n, sizeof(n));
+	res = mp_set(wnd, OID_DOT11_RTS_THRESHOLD, &n, sizeof(n));
 	if (res) {
 		WARNING("setting fragmentation threshold failed: %08X", res);
 		return -EINVAL;
@@ -454,8 +446,7 @@ static int iw_get_frag_threshold(struct net_device *dev,
 	ULONG n;
 	NDIS_STATUS res;
 
-	res = miniport_query_info(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD,
-				  &n, sizeof(n));
+	res = mp_query(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD, &n, sizeof(n));
 	if (res) {
 		WARNING("getting fragmentation threshold failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -472,8 +463,7 @@ static int iw_set_frag_threshold(struct net_device *dev,
 	ULONG n = wrqu->frag.value;
 	NDIS_STATUS res;
 
-	res = miniport_set_info(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD,
-				&n, sizeof(n));
+	res = mp_set(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD, &n, sizeof(n));
 	if (res) {
 		WARNING("setting fragmentation threshold failed: %08X", res);
 		return -EINVAL;
@@ -491,8 +481,8 @@ int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 				DOT11_BSSID_LIST_REVISION_1);
 	bssid_list.num_entries = 1;
 	bssid_list.num_total_entries = 1;
-	res = miniport_query_info(wnd, OID_DOT11_DESIRED_BSSID_LIST,
-				  &bssid_list, sizeof(bssid_list));
+	res = mp_query(wnd, OID_DOT11_DESIRED_BSSID_LIST,
+		       &bssid_list, sizeof(bssid_list));
 	if (res) {
 		WARNING("getting bssid list failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -536,8 +526,8 @@ static int iw_set_ap_address(struct net_device *dev,
 	memcpy(bssid_list.bssids[0], wrqu->ap_addr.sa_data,
 	       sizeof(bssid_list.bssids[0]));
 	TRACE2("ap: " MACSTRSEP, MAC2STR(bssid_list.bssids[0]));
-	res = miniport_set_info(wnd, OID_DOT11_DESIRED_BSSID_LIST,
-				&bssid_list, sizeof(bssid_list));
+	res = mp_set(wnd, OID_DOT11_DESIRED_BSSID_LIST,
+		     &bssid_list, sizeof(bssid_list));
 	if (res) {
 		WARNING("setting bssid list failed: %08X", res);
 		return -EINVAL;
@@ -557,8 +547,8 @@ NDIS_STATUS set_auth_algo(struct wrap_ndis_device *wnd,
 	auth_algos.num_entries = 1;
 	auth_algos.num_total_entries = 1;
 	auth_algos.algo_ids[0] = algo_id;
-	res = miniport_set_info(wnd, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM,
-				&auth_algos, sizeof(auth_algos));
+	res = mp_set(wnd, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM,
+		     &auth_algos, sizeof(auth_algos));
 	if (res)
 		WARNING("setting authentication mode to %d failed: %08X",
 			algo_id, res);
@@ -575,8 +565,8 @@ enum ndis_dot11_auth_algorithm get_auth_algo(struct wrap_ndis_device *wnd)
 				DOT11_AUTH_ALGORITHM_LIST_REVISION_1);
 	auth_algos.num_entries = 1;
 	auth_algos.num_total_entries = 1;
-	res = miniport_query_info(wnd, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM,
-				  &auth_algos, sizeof(auth_algos));
+	res = mp_query(wnd, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM,
+		       &auth_algos, sizeof(auth_algos));
 	if (res) {
 		WARNING("getting authentication mode failed: %08X", res);
 		return DOT11_AUTH_ALGO_80211_OPEN;
@@ -596,8 +586,8 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 	cipher_algos.num_entries = 1;
 	cipher_algos.num_total_entries = 1;
 	cipher_algos.algo_ids[0] = algo_id;
-	res = miniport_set_info(wnd, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
-				&cipher_algos, sizeof(cipher_algos));
+	res = mp_set(wnd, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
+		     &cipher_algos, sizeof(cipher_algos));
 	if (res)
 		WARNING("setting cipher algorithm to %d failed: %08X",
 			algo_id, res);
@@ -607,8 +597,8 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 			exclude_unencr = FALSE;
 		else
 			exclude_unencr = TRUE;
-		res = miniport_set_info(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED,
-					&exclude_unencr, sizeof(ULONG));
+		res = mp_set(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED,
+			     &exclude_unencr, sizeof(ULONG));
 		if (res)
 			WARNING("setting cipher failed: %08X", res);
 		else
@@ -627,15 +617,13 @@ enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd)
 				DOT11_CIPHER_ALGORITHM_LIST_REVISION_1);
 	cipher_algos.num_entries = 1;
 	cipher_algos.num_total_entries = 1;
-	res = miniport_query_info(wnd,
-				  OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM,
-				  &cipher_algos, sizeof(cipher_algos));
+	res = mp_query(wnd, OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM,
+		       &cipher_algos, sizeof(cipher_algos));
 	if (res)
 		WARNING("getting cipher algorithm failed: %08X", res);
 	TRACE2("%d, %d", cipher_algos.algo_ids[0], wnd->cipher_info.algo);
-	res = miniport_query_info(wnd,
-				  OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
-				  &cipher_algos, sizeof(cipher_algos));
+	res = mp_query(wnd, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
+		       &cipher_algos, sizeof(cipher_algos));
 	if (res) {
 		WARNING("getting cipher algorithm failed: %08X", res);
 		return DOT11_CIPHER_ALGO_NONE;
@@ -751,8 +739,8 @@ int add_cipher_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 	ndis_key->key_length = key_len;
 	memcpy(ndis_key->key, key, key_len);
 
-	res = miniport_set_info(wnd, OID_DOT11_CIPHER_DEFAULT_KEY, ndis_key,
-				sizeof(*ndis_key));
+	res = mp_set(wnd, OID_DOT11_CIPHER_DEFAULT_KEY, ndis_key,
+		     sizeof(*ndis_key));
 	if (res) {
 		WARNING("adding key %d failed (%08X)", index + 1, res);
 		kfree(ndis_key);
@@ -790,8 +778,8 @@ static int delete_cipher_key(struct wrap_ndis_device *wnd, int index,
 	ndis_key->is_static = TRUE;
 	ndis_key->key_length = wnd->cipher_info.keys[index].length;
 
-	res = miniport_set_info(wnd, OID_DOT11_CIPHER_DEFAULT_KEY, ndis_key,
-				sizeof(*ndis_key));
+	res = mp_set(wnd, OID_DOT11_CIPHER_DEFAULT_KEY, ndis_key,
+		     sizeof(*ndis_key));
 	if (res) {
 		WARNING("deleting key %d failed (%08X)", index + 1, res);
 		EXIT2(return -EINVAL);
@@ -877,8 +865,8 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 		EXIT2(return -EINVAL);
 
 	if (index == cipher_info->tx_index) {
-		res = miniport_set_info(wnd, OID_DOT11_CIPHER_DEFAULT_KEY_ID,
-					&index, sizeof(ULONG));
+		res = mp_set(wnd, OID_DOT11_CIPHER_DEFAULT_KEY_ID,
+			     &index, sizeof(ULONG));
 		if (res) {
 			WARNING("couldn't set tx key to %d: %08X", index, res);
 			return -EINVAL;
@@ -1057,7 +1045,7 @@ int set_scan(struct wrap_ndis_device *wnd)
 //	dump_bytes(__FUNCTION__, (void *)scan_req, len);
 //	scan_req->num_phy_types = 0;
 //	((char *)scan_req)[15] = 0x80;
-	res = miniport_set_info(wnd, OID_DOT11_SCAN_REQUEST, scan_req, len);
+	res = mp_set(wnd, OID_DOT11_SCAN_REQUEST, scan_req, len);
 	kfree(scan_req);
 	if (res && res != NDIS_STATUS_DOT11_MEDIA_IN_USE) {
 		if (res == NDIS_STATUS_DOT11_POWER_STATE_INVALID)
@@ -1101,8 +1089,8 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	}
 	memcpy(byte_array, "USA", 3);
 	TRACE2("%d", sizeof(*byte_array));
-	res = miniport_request_method_needed(wnd, OID_DOT11_ENUM_BSS_LIST,
-					     byte_array, len, &len);
+	res = mp_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
+				byte_array, len, &len, NULL);
 	if (res == NDIS_STATUS_INVALID_LENGTH ||
 	    res == NDIS_STATUS_BUFFER_OVERFLOW ||
 	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
@@ -1114,8 +1102,8 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 			ERROR("couldn't allocate memory");
 			return -ENOMEM;
 		}
-		res = miniport_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
-					      byte_array, len);
+		res = mp_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
+					byte_array, len, NULL, NULL);
 	}
 	if (res) {
 		WARNING("getting BSSID list failed (%08X)", res);
@@ -1156,12 +1144,12 @@ static int iw_set_power_mode(struct net_device *dev,
 		hw_state = TRUE;
 	}
 
-	res = miniport_set_info(wnd, OID_DOT11_HARDWARE_PHY_STATE,
-				&hw_state, sizeof(hw_state));
+	res = mp_set(wnd, OID_DOT11_HARDWARE_PHY_STATE,
+		     &hw_state, sizeof(hw_state));
 	TRACE2("%d, %08X", hw_state, res);
 
-	res = miniport_set_info(wnd, OID_DOT11_POWER_MGMT_REQUEST,
-				&power_mode, sizeof(power_mode));
+	res = mp_set(wnd, OID_DOT11_POWER_MGMT_REQUEST,
+		     &power_mode, sizeof(power_mode));
 	TRACE2("%d, %08X", power_mode, res);
 	if (res)
 		WARNING("setting power mode failed (%08X)", res);
@@ -1178,16 +1166,16 @@ static int iw_get_power_mode(struct net_device *dev,
 	BOOLEAN hw_state;
 
 	ENTER2("");
-	res = miniport_query_info(wnd, OID_DOT11_POWER_MGMT_MODE,
-				  &power_mode, sizeof(power_mode));
+	res = mp_query(wnd, OID_DOT11_POWER_MGMT_MODE,
+		       &power_mode, sizeof(power_mode));
 	TRACE2("%d, %08X", power_mode, res);
 
-	res = miniport_query_info(wnd, OID_DOT11_HARDWARE_PHY_STATE,
-				  &hw_state, sizeof(hw_state));
+	res = mp_query(wnd, OID_DOT11_HARDWARE_PHY_STATE,
+		       &hw_state, sizeof(hw_state));
 	TRACE2("%d, %08X", hw_state, res);
 
-	res = miniport_query_info(wnd, OID_DOT11_POWER_MGMT_REQUEST,
-				  &power_mode, sizeof(power_mode));
+	res = mp_query(wnd, OID_DOT11_POWER_MGMT_REQUEST,
+		       &power_mode, sizeof(power_mode));
 	TRACE2("%d, %08X", power_mode, res);
 	if (res)
 		return -ENOTSUPP;
@@ -1251,8 +1239,8 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->num_txpower = 0;
 	power_levels = kzalloc(sizeof(*power_levels), GFP_KERNEL);
 	if (power_levels &&
-	    (miniport_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
-				 power_levels, sizeof(*power_levels)) ==
+	    (mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
+		      power_levels, sizeof(*power_levels)) ==
 	     NDIS_STATUS_SUCCESS)) {
 		for (i = 0; i < power_levels->num_levels; i++) {
 			range->txpower[range->num_txpower++] =
@@ -1285,8 +1273,8 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->num_bitrates = 0;
 	data_rates = kzalloc(sizeof(*data_rates), GFP_KERNEL);
 	if (data_rates &&
-	    (miniport_query_info(wnd, OID_DOT11_SUPPORTED_DATA_RATES_VALUE,
-				 data_rates, sizeof(*data_rates)) ==
+	    (mp_query(wnd, OID_DOT11_SUPPORTED_DATA_RATES_VALUE,
+		      data_rates, sizeof(*data_rates)) ==
 	     NDIS_STATUS_SUCCESS)) {
 		for (i = 0; i < MAX_NUM_SUPPORTED_RATES_V2 &&
 			     data_rates->tx_rates[i]; i++) {
@@ -1490,20 +1478,19 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 
 	ENTER2("");
 	if (wrqu->param.value == 0)
-		res = miniport_reset(netdev_priv(dev));
+		res = mp_reset(netdev_priv(dev));
 	else if (wrqu->param.value == 1) {
 		reset_req.type = ndis_dot11_reset_type_phy;
 		reset_req.set_default_mib = FALSE;
-		res = miniport_set_info(wnd, OID_DOT11_RESET_REQUEST,
-					&reset_req, sizeof(reset_req));
+		res = mp_set(wnd, OID_DOT11_RESET_REQUEST,
+			     &reset_req, sizeof(reset_req));
 	} else if (wrqu->param.value == 2) {
 		reset_req.type = ndis_dot11_reset_type_phy_and_mac;
 		reset_req.set_default_mib = FALSE;
-		res = miniport_set_info(wnd, OID_DOT11_RESET_REQUEST,
-					&reset_req, sizeof(reset_req));
+		res = mp_set(wnd, OID_DOT11_RESET_REQUEST,
+			     &reset_req, sizeof(reset_req));
 	} else {
-		res = miniport_set_info(wnd, OID_DOT11_DISCONNECT_REQUEST,
-					NULL, 0);
+		res = mp_set(wnd, OID_DOT11_DISCONNECT_REQUEST, NULL, 0);
 	}
 	if (res) {
 		WARNING("reset failed: %08X", res);
@@ -1520,8 +1507,7 @@ static int priv_set_phy_id(struct net_device *dev, struct iw_request_info *info,
 	int res;
 
 	ENTER2("");
-	res = miniport_query_info(wnd, OID_DOT11_CURRENT_PHY_ID,
-				  &id, sizeof(id));
+	res = mp_query(wnd, OID_DOT11_CURRENT_PHY_ID, &id, sizeof(id));
 	TRACE2("%08X, %u", res, id);
 	if (res)
 		return -EINVAL;
@@ -1539,11 +1525,10 @@ static int priv_set_phy_id(struct net_device *dev, struct iw_request_info *info,
 		phy_id_list.num_entries = 1;
 		phy_id_list.num_total_entries = 1;
 		phy_id_list.phy_ids[0] = DOT11_PHY_ID_ANY;
-		res = miniport_set_info(wnd, OID_DOT11_DESIRED_PHY_LIST,
-					&phy_id_list, sizeof(phy_id_list));
+		res = mp_set(wnd, OID_DOT11_DESIRED_PHY_LIST,
+			     &phy_id_list, sizeof(phy_id_list));
 	} else {
-		res = miniport_set_info(wnd, OID_DOT11_CURRENT_PHY_ID,
-					&id, sizeof(id));
+		res = mp_set(wnd, OID_DOT11_CURRENT_PHY_ID, &id, sizeof(id));
 		if (res == NDIS_STATUS_SUCCESS)
 			wnd->phy_id = id;
 	}
@@ -1561,18 +1546,16 @@ static int priv_set_nic_power(struct net_device *dev,
 	BOOLEAN state;
 	NDIS_STATUS res;
 
-	res = miniport_query_info(wnd, OID_DOT11_HARDWARE_PHY_STATE,
-				  &state, sizeof(state));
+	res = mp_query(wnd, OID_DOT11_HARDWARE_PHY_STATE,
+		       &state, sizeof(state));
 	TRACE2("%08X, %d", res, state);
-	res = miniport_query_info(wnd, OID_DOT11_NIC_POWER_STATE,
-				  &state, sizeof(state));
+	res = mp_query(wnd, OID_DOT11_NIC_POWER_STATE, &state, sizeof(state));
 	TRACE2("%08X, %d", res, state);
 	if (wrqu->param.value)
 		state = TRUE;
 	else
 		state = FALSE;
-	res = miniport_set_info(wnd, OID_DOT11_NIC_POWER_STATE,
-				&state, sizeof(state));
+	res = mp_set(wnd, OID_DOT11_NIC_POWER_STATE, &state, sizeof(state));
 	if (res)
 		return -EOPNOTSUPP;
 	else
@@ -1590,15 +1573,13 @@ static int priv_connect(struct net_device *dev, struct iw_request_info *info,
 		memset(&excl_mac, 0, sizeof(excl_mac));
 		init_ndis_object_header(&excl_mac, NDIS_OBJECT_TYPE_DEFAULT,
 					DOT11_MAC_ADDRESS_LIST_REVISION_1);
-		res = miniport_set_info(wnd, OID_DOT11_EXCLUDED_MAC_ADDRESS_LIST,
-					&excl_mac, sizeof(excl_mac));
+		res = mp_set(wnd, OID_DOT11_EXCLUDED_MAC_ADDRESS_LIST,
+			     &excl_mac, sizeof(excl_mac));
 		if (res)
 			WARNING("excluding mac list failed: %08X", res);
-		res = miniport_set_info(wnd, OID_DOT11_CONNECT_REQUEST,
-					NULL, 0);
+		res = mp_set(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
 	} else
-		res = miniport_set_info(wnd, OID_DOT11_DISCONNECT_REQUEST,
-					NULL, 0);
+		res = mp_set(wnd, OID_DOT11_DISCONNECT_REQUEST, NULL, 0);
 	if (res)
 		return -EOPNOTSUPP;
 	else
