@@ -48,17 +48,16 @@ wstdcall void WIN_FUNC(NdisTerminateWrapper,2)
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 	(struct driver_object *drv_obj, struct unicode_string *registry_path,
-	 void *mp_driver_ctx, struct mp_driver_characteristics *mp_driver_chars,
+	 void *mp_driver_ctx, struct mp_driver_characteristics *mp_driver,
 	 void **driver_handle)
 {
 	struct wrap_driver *wrap_driver;
 	struct wrap_ndis_driver *ndis_driver;
 
 	ENTER2("%p, %p, 0x%x, 0x%x", drv_obj, mp_driver_ctx,
-		    mp_driver_chars->major_version,
-		    mp_driver_chars->minor_version);
-	if (mp_driver_chars->major_version != 0x6) {
-		WARNING("invalid version: 0x%x", mp_driver_chars->major_version);
+		    mp_driver->major_version, mp_driver->minor_version);
+	if (mp_driver->major_version != 0x6) {
+		WARNING("invalid version: 0x%x", mp_driver->major_version);
 		return NDIS_STATUS_BAD_VERSION;
 	}
 	wrap_driver =
@@ -77,16 +76,16 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 	memset(ndis_driver, 0, sizeof(*ndis_driver));
 	wrap_driver->ndis_driver = ndis_driver;
 	ndis_driver->wrap_driver = wrap_driver;
-	ndis_driver->major_version = mp_driver_chars->major_version;
-	ndis_driver->minor_version = mp_driver_chars->minor_version;
+	ndis_driver->major_version = mp_driver->major_version;
+	ndis_driver->minor_version = mp_driver->minor_version;
 	ndis_driver->mp_driver_ctx = mp_driver_ctx;
-	memcpy(&ndis_driver->mp_driver_chars, mp_driver_chars,
-	       sizeof(ndis_driver->mp_driver_chars));
+	memcpy(&ndis_driver->mp_driver, mp_driver,
+	       sizeof(ndis_driver->mp_driver));
 	*driver_handle = wrap_driver;
-	TRACE2("%p", mp_driver_chars->set_options);
-	if (mp_driver_chars->set_options) {
+	TRACE2("%p", mp_driver->set_options);
+	if (mp_driver->set_options) {
 		NDIS_STATUS status;
-		status = LIN2WIN2(mp_driver_chars->set_options, wrap_driver,
+		status = LIN2WIN2(mp_driver->set_options, wrap_driver,
 				  mp_driver_ctx);
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("failed: 0x%x", status);
@@ -1960,7 +1959,7 @@ wstdcall void return_net_buffer_lists(void *arg1, void *arg2)
 	buffer_list = arg2;
 	ENTER4("%p, %p", wnd, buffer_list);
 	ndis_driver = wnd->wd->driver->ndis_driver;
-	LIN2WIN3(ndis_driver->mp_driver_chars.return_net_buffer_lists,
+	LIN2WIN3(ndis_driver->mp_driver.return_net_buffer_lists,
 		 wnd->nmb->adapter_ctx, buffer_list, 0);
 	EXIT4(return);
 }

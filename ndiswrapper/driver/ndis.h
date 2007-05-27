@@ -1255,7 +1255,7 @@ struct wrap_ndis_driver {
 	struct wrap_driver *wrap_driver;
 	UCHAR major_version;
 	UCHAR minor_version;
-	struct mp_driver_characteristics mp_driver_chars;
+	struct mp_driver_characteristics mp_driver;
 	struct mp_pnp_characteristics mp_pnp_chars;
 	void *mp_driver_ctx;
 };
