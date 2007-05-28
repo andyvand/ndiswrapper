@@ -1,12 +1,13 @@
-Version 1.45 2007-XX-XX
+Version 1.45 2007-05-28
 =======================	
 * Fixes 'NOHZ: local_softirq_pending: 08' warnings from tickless
   kernels
-* Fixes to RT-preempt enabled kernels
+* Fixed issue(s) with RT-preempt enabled kernels
 * Fixed ndiswrapper script to handle installation of Intel 4965AGN
   driver (which apparently works with ndiswrapper)
 * Fixed a warning when SLUB allocator is used
-* Fixed a bug with sis163u when preempt is enabled
+* Fixed kernel crash with PsCreateSystemThread that manifested with
+  sis163u when preempt is enabled
 * Changing MAC address with 'ifconfig <iface> hw ether' should work
   with all drivers now. If MAC address should be changed everytime
   ndiswrapper is loaded, change 'NetworkAddress' setting, as explained
@@ -14,6 +15,7 @@ Version 1.45 2007-XX-XX
   that no longer applies)
 * Fixed an issue with some drivers (e.g., sis163u) that would stall
   after working for a while
+* Fixed crashes when removing module with usb devices
 
 Version 1.44 2007-05-17
 =======================	

@@ -2705,8 +2705,12 @@ void ntoskernel_exit(void)
 	while ((cur = RemoveHeadList(&object_list))) {
 		struct common_object_header *hdr;
 		hdr = container_of(cur, struct common_object_header, list);
-		WARNING("object %p type %d was not freed, freeing it now",
-			HEADER_TO_OBJECT(hdr), hdr->type);
+		if (hdr->type == OBJECT_TYPE_NT_THREAD)
+			TRACE1("object %p(%d) was not freed, freeing it now",
+			       HEADER_TO_OBJECT(hdr), hdr->type);
+		else
+			WARNING("object %p(%d) was not freed, freeing it now",
+				HEADER_TO_OBJECT(hdr), hdr->type);
 		ExFreePool(hdr);
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
