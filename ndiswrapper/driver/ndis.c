@@ -1126,7 +1126,13 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		*status = NDIS_STATUS_FAILURE;
 		EXIT4(return);
 	}
-	descr = atomic_remove_list_head(pool->free_descr, oldhead->next);
+	nt_spin_lock_bh(&pool->lock);
+	if (pool->free_descr) {
+		descr = pool->free_descr;
+		pool->free_descr = descr->next;
+	} else
+		descr = NULL;
+	nt_spin_unlock_bh(&pool->lock);
 	if (descr) {
 		typeof(descr->flags) flags;
 		flags = descr->flags;
@@ -1175,15 +1181,20 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		EXIT4(return);
 	}
 	pool = buffer->pool;
+	nt_spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
-		atomic_dec_var(pool->num_allocated_descr);
+		pool->num_allocated_descr--;
 		buffer->pool = NULL;
+		nt_spin_unlock_bh(&pool->lock);
 		free_mdl(buffer);
-	} else
-		atomic_insert_list_head(buffer->next, pool->free_descr, buffer);
+	} else {
+		buffer->next = pool->free_descr;
+		pool->free_descr = buffer;
+		nt_spin_unlock_bh(&pool->lock);
+	}
 	EXIT4(return);
 }
 
@@ -1438,7 +1449,13 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
-	packet = atomic_remove_list_head(pool->free_descr, oldhead->reserved[0]);
+	nt_spin_lock_bh(&pool->lock);
+	if (pool->free_descr) {
+		packet = pool->free_descr;
+		pool->free_descr = (void *)packet->reserved[0];
+	} else
+		packet = NULL;
+	nt_spin_unlock_bh(&pool->lock);
 	if (!packet) {
 		packet = kmalloc(packet_length, irql_gfp());
 		if (!packet) {
@@ -1479,18 +1496,22 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		ERROR("pool for descriptor %p is invalid", packet);
 		EXIT4(return);
 	}
-	atomic_dec_var(pool->num_used_descr);
+	nt_spin_lock_bh(&pool->lock);
+	pool->num_used_descr--;
 	if (packet->reserved[1]) {
 		TRACE3("%p, %p", packet, (void *)packet->reserved[1]);
 		kfree((void *)packet->reserved[1]);
 		packet->reserved[1] = 0;
 	}
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		atomic_dec_var(pool->num_allocated_descr);
+		pool->num_allocated_descr--;
 		kfree(packet);
-	} else
-		atomic_insert_list_head(packet->reserved[0], pool->free_descr,
-					packet);
+	} else {
+		packet->reserved[0] =
+			(typeof(packet->reserved[0]))pool->free_descr;
+		pool->free_descr = packet;
+	}
+	nt_spin_unlock_bh(&pool->lock);
 	EXIT4(return);
 }
 

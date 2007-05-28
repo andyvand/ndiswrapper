@@ -907,7 +907,7 @@ static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
 {
 	nt_spin_unlock(lock);
-	warp_preempt_enable();
+	warp_preempt_enable_no_resched();
 	local_bh_enable();
 }
 
