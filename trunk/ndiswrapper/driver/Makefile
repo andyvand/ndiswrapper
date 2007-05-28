@@ -130,7 +130,7 @@ OBJS += workqueue.o
 endif
 
 ifdef NTOS_WQ
-CFLAGS += -NTOS_WQ
+CFLAGS += -DNTOS_WQ
 endif
 
 ntoskernel.h: lin2win.h

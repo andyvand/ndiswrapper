@@ -138,7 +138,7 @@ static void kill_all_urbs(struct wrap_device *wd, int complete)
 	struct wrap_urb *wrap_urb;
 	KIRQL irql;
 
-	USBENTER("%d", wd->usb.num_alloc_urbs);
+	USBTRACE("%d", wd->usb.num_alloc_urbs);
 	while (1) {
 		IoAcquireCancelSpinLock(&irql);
 		ent = RemoveHeadList(&wd->usb.wrap_urb_list);
@@ -1100,10 +1100,14 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	USBD_STATUS status;
 	struct usbd_idle_callback *idle_callback;
 
-	USBTRACE("%p, %p", pdo, irp);
+	USBENTER("%p, %p", pdo, irp);
 	wd = pdo->reserved;
-//	if (wd->usb.intf == NULL)
-//		USBEXIT(return STATUS_DEVICE_REMOVED);
+	if (wd->usb.intf == NULL) {
+		USBTRACE("%p", irp);
+		irp->io_status.status = STATUS_DEVICE_REMOVED;
+		irp->io_status.info = 0;
+		USBEXIT(return STATUS_DEVICE_REMOVED);
+	}
 	IRP_WRAP_DEVICE(irp) = wd;
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	switch (irp_sl->params.dev_ioctl.code) {
