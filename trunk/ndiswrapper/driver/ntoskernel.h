@@ -164,7 +164,7 @@ do {							\
 	ret;							\
 })
 
-#ifdef USE_OWN_WQ
+#ifdef WRAP_WQ
 
 struct workqueue_struct;
 
@@ -231,7 +231,7 @@ void wrap_flush_wq(workqueue_struct_t *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 
-#else // USE_OWN_WQ
+#else // WRAP_WQ
 
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
@@ -247,7 +247,7 @@ typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 #endif // INIT_WORK_NAR
 
-#endif // USE_OWN_WQ
+#endif // WRAP_WQ
 
 struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
 
@@ -589,11 +589,13 @@ struct wrap_device {
 	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
-#ifdef USE_OWN_WQ
-#define USE_NTOS_WQ 1
+#ifdef WRAP_WQ
+#define NTOS_WQ 1
 #endif
 
-#ifdef USE_NTOS_WQ
+#define NTOS_WQ 1
+
+#ifdef NTOS_WQ
 extern workqueue_struct_t *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, work_struct)
 #define schedule_work(work_struct) queue_work(ntos_wq, work_struct)
