@@ -217,7 +217,7 @@ wstdcall NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 }
 
 wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-					  struct  irp *irp)
+					   struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -773,6 +773,7 @@ void __devexit wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	if (wd == NULL)
 		EXIT1(return);
 	intf = wd->usb.intf;
+	wd->usb.intf = NULL;
 	pnp_remove_device(wd);
 }
 #endif

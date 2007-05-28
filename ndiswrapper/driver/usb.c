@@ -200,7 +200,7 @@ static NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
 	case USBD_STATUS_SUCCESS:
 		return STATUS_SUCCESS;
 	case USBD_STATUS_DEVICE_GONE:
-		return STATUS_DEVICE_NOT_CONNECTED;
+		return STATUS_DEVICE_REMOVED;
 	case USBD_STATUS_PENDING:
 		return STATUS_PENDING;
 	case USBD_STATUS_NOT_SUPPORTED:
@@ -528,13 +528,13 @@ static void wrap_urb_complete_worker(worker_param_t dummy)
 		case -ECONNRESET:
 			/* urb canceled */
 			irp->io_status.info = 0;
-			TRACE1("urb %p canceled", urb);
+			USBTRACE("urb %p canceled", urb);
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
 			irp->io_status.status = STATUS_CANCELLED;
 			break;
 		default:
-			TRACE1("irp: %p, urb: %p, status: %d/%d",
-			       irp, urb, urb->status, wrap_urb->state);
+			USBTRACE("irp: %p, urb: %p, status: %d/%d",
+				 irp, urb, urb->status, wrap_urb->state);
 			irp->io_status.info = 0;
 			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
 			irp->io_status.status =
