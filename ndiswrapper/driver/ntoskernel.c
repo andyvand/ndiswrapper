@@ -85,7 +85,7 @@ WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
-#ifdef USE_NTOS_WQ
+#ifdef NTOS_WQ
 workqueue_struct_t *ntos_wq;
 #endif
 
@@ -2567,7 +2567,7 @@ int ntoskernel_init(void)
 	} while (0);
 #endif
 
-#ifdef USE_NTOS_WQ
+#ifdef NTOS_WQ
 	ntos_wq = create_workqueue("ntos_wq");
 	if (!ntos_wq) {
 		WARNING("couldn't create ntos_wq thread");
@@ -2693,7 +2693,7 @@ void ntoskernel_exit(void)
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
-#ifdef USE_NTOS_WQ
+#ifdef NTOS_WQ
 	if (ntos_wq)
 		destroy_workqueue(ntos_wq);
 #endif

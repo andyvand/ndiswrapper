@@ -1422,11 +1422,11 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	int packet_length;
 
 	ENTER4("pool: %p", pool);
-	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT4(return);
 	}
+	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
 	DBG_BLOCK(2) {
 		if (pool->num_used_descr > pool->max_descr) {
 			TRACE1("pool %p is full: %d(%d)", pool,
