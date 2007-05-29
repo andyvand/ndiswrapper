@@ -270,6 +270,7 @@ sub parse_mfr() {
 	    if ($models) {
 		printf DBG "mfr: %s, %s\n", $line, $models;
 		my $target = choose_target_os(@targets);
+		printf DBG "target: '%s'\n", $target;
 		parse_models($models, $target);
 	    }
 	}
@@ -278,6 +279,7 @@ sub parse_mfr() {
 
 sub parse_models {
     my ($models, $target) = @_;
+    printf DBG "models: target: '%s'.'%s'\n", $models, $target;
     my $lines = get_target_os_section($models, $target);
     if (!$lines) {
 	warn "couldn't find models section \"$models\" -\n" .
@@ -293,7 +295,7 @@ sub parse_models {
 	    printf "couldn't find install directive: %s\n", $line;
 	    next;
 	}
-	my $install_section = trim($fields[0]);
+	my $section = trim($fields[0]);
 	my $hwid = trim($fields[1]);
 	if ($hwid =~ /^%.+%$/) {
 	    $hwid = get_string_value($hwid);
@@ -302,18 +304,18 @@ sub parse_models {
 	my ($bus_type, $vendor, $device, $subvendor, $subdevice) =
 	  parse_hwid($hwid);
 	next if (!$vendor);
-	printf DBG "models: %s, %s, %s\n", $install_section, $hwid, $vendor;
-	parse_install($install_section, $target, $bus_type, $vendor, $device,
+	printf DBG "models: %s, %s, %s\n", $section, $hwid, $vendor;
+	parse_install($section, $target, $bus_type, $vendor, $device,
 		      $subvendor, $subdevice);
     }
 }
 
 sub parse_install {
-    my ($secn, $target, $bus_type, $vendor, $device,
+    my ($section, $target, $bus_type, $vendor, $device,
 	$subvendor, $subdevice) = @_;
-    my $lines = get_target_os_section($secn, $target);
+    my $lines = get_target_os_section($section, $target);
     if (!$lines) {
-	warn "couldn't find install section \"$secn\" -\n" .
+	warn "couldn't find install section \"$section\" -\n" .
 	  "installation may be incomplete\n";
 	return -1;
     }
@@ -519,65 +521,66 @@ sub choose_target_os {
     chomp($arch);
     printf DBG "arch: %s\n", $arch;
     if ($arch =~ /64$/) {
-	$arch = "NTAMD64";
+	$arch = "AMD64";
     } else {
-	$arch = "NTX86";
+	$arch = "X86";
     }
     printf DBG "arch: %s\n", $arch;
-    foreach my $target (@targets) {
-	$target = trim($target);
-	printf DBG "target: '%s'\n", $target;
-	if ($target =~ /$arch/i) {
-	    return $target;
+    my @prefs = ("NT$arch\.5.1", "NT$arch\.5", "NT$arch",
+		 "NT\.5\.1", "NT.5", "NT");
+    foreach my $pref (@prefs) {
+	foreach my $target (@targets) {
+	    $target = trim($target);
+	    printf DBG "target: '%s', pref: '%s'\n", $target, $pref;
+	    if ($target =~ /$pref/i) {
+		return $target;
+	    }
 	}
     }
-    return $arch;
+    return "";
 }
 
 sub get_target_os_section {
-    my ($secn, $target) = @_;
+    my ($section, $target) = @_;
+
+    chomp($section);
+    $section =~ s/^\s*"\s*//;
+    $section =~ s/\s*"\s*$//;
+    printf DBG "section: \"%s\", target: \"%s\"\n", $section, $target;
+
+    my $lines;
+
+    if (length($target) gt 0) {
+	$lines = get_section($section . "." . $target);
+	return $lines if ($lines);
+    }
+
     my $arch = `uname -m`;
     chomp($arch);
     printf DBG "arch: %s\n", $arch;
     if ($arch =~ /64$/) {
-	$arch = ".NTAMD64";
+	$arch = "AMD64";
     } else {
-	$arch = ".NTX86";
+	$arch = "X86";
     }
     printf DBG "arch: %s\n", $arch;
 
-    chomp($secn);
-    $secn =~ s/^\s*"\s*//;
-    $secn =~ s/\s*"\s*$//;
-    printf DBG "secn: \"%s\"\n", $secn;
-    $secn =~ s/($arch)?(\.[0-9]\.[0-9])?$//;
-    printf DBG "secn: \"%s\"\n", $secn;
-
-    my $lines = get_section($secn . "." . $target);
+    my @prefs = ("NT$arch\.5.1", "NT$arch\.5", "NT$arch",
+		 "NT\.5\.1", "NT.5", "NT");
+    foreach my $pref (@prefs) {
+	$lines = get_section($section . "." . $pref);
+	return $lines if ($lines);
+    }
+    $lines = get_section($section);
     return $lines if ($lines);
 
-    $lines = get_section($secn . $arch . ".5.1");
-    return $lines if ($lines);
-
-    $lines = get_section($secn . $arch);
-    return $lines if ($lines);
-
-    $lines = get_section($secn . ".NT.5.1");
-    return $lines if ($lines);
-
-    $lines = get_section($secn . ".NT");
-    return $lines if ($lines);
-
-    $lines = get_section($secn);
-    return $lines if ($lines);
-
-    printf DBG "couldn't find section \"$secn\" for \"$arch\"\n";
+    printf DBG "couldn't find section \"$section\" for \"$arch\"\n";
     return 0;
 }
 
 sub get_section_value {
-    (my $secn, my $name) = @_;
-    return $parsed_sections{$secn}->{$name};
+    (my $section, my $name) = @_;
+    return $parsed_sections{$section}->{$name};
 }
 
 sub get_string_value {
