@@ -27,7 +27,7 @@
 extern char *if_name;
 extern int hangcheck_interval;
 extern struct iw_handler_def ndis_handler_def;
-extern NT_SPIN_LOCK timer_lock;
+extern NT_SPIN_LOCK ntoskernel_lock;
 
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
@@ -319,9 +319,12 @@ static void mp_halt(struct wrap_ndis_device *wnd)
 	while (1) {
 		struct nt_slist *slist;
 		struct wrap_timer *wrap_timer;
+		KIRQL irql;
 
-		slist = atomic_remove_list_head(wnd->wrap_timer_slist.next,
-						oldhead->next);
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		if ((slist = wnd->wrap_timer_slist.next))
+			wnd->wrap_timer_slist.next = slist->next;
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		TIMERTRACE("%p", slist);
 		if (!slist)
 			break;

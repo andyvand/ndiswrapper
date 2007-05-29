@@ -925,22 +925,6 @@ do {									\
 	restore_local_irq(flags);					\
 } while (0)
 
-#define atomic_insert_list_head(oldhead, head, newhead)			\
-do {									\
-	oldhead = (typeof(oldhead))head;				\
-} while (cmpxchg(&(head), oldhead, newhead) != (typeof(head))oldhead)
-
-#define atomic_remove_list_head(head, newhead)				\
-({									\
-	typeof(head) oldhead;						\
-	do {								\
-		oldhead = head;						\
-		if (!oldhead)						\
-			break;						\
-	} while (cmpxchg(&(head), oldhead, newhead) != oldhead);	\
-	oldhead;							\
-})
-
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	return PAGE_ALIGN(((unsigned long)ptr & (PAGE_SIZE - 1)) + length)

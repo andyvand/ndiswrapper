@@ -442,6 +442,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 		     struct ndis_mp_block *nmb)
 {
 	struct wrap_timer *wrap_timer;
+	KIRQL irql;
 
 	/* TODO: if a timer is initialized more than once, we allocate
 	 * memory for wrap_timer more than once for the same nt_timer,
@@ -475,14 +476,15 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	initialize_object(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	TIMERTRACE("timer %p (%p)", wrap_timer, nt_timer);
-	if (nmb)
-		atomic_insert_list_head(wrap_timer->slist.next,
-					nmb->wnd->wrap_timer_slist.next,
-					&wrap_timer->slist);
-	else
-		atomic_insert_list_head(wrap_timer->slist.next,
-					wrap_timer_slist.next,
-					&wrap_timer->slist);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	if (nmb) {
+		wrap_timer->slist.next = nmb->wnd->wrap_timer_slist.next;
+		nmb->wnd->wrap_timer_slist.next = &wrap_timer->slist;
+	} else {
+		wrap_timer->slist.next = wrap_timer_slist.next;
+		wrap_timer_slist.next = &wrap_timer->slist;
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	TIMEREXIT(return);
 }
 
@@ -2634,8 +2636,10 @@ void ntoskernel_exit(void)
 		struct wrap_timer *wrap_timer;
 		struct nt_slist *slist;
 
-		slist = atomic_remove_list_head(wrap_timer_slist.next,
-						oldhead->next);
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		if ((slist = wrap_timer_slist.next))
+			wrap_timer_slist.next = slist->next;
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		TIMERTRACE("%p", slist);
 		if (!slist)
 			break;
