@@ -606,6 +606,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	if (wnd->sg_dma_size)
 		free_tx_sg_list(wnd, oob_data);
 	buffer = packet->private.buffer_head;
+	TRACE3("%p, %p", buffer, oob_data->tx_skb);
 	NdisFreeBuffer(buffer);
 	dev_kfree_skb_any(oob_data->tx_skb);
 	NdisFreePacket(packet);
@@ -758,7 +759,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 
 	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
-		TRACE1("couldn't allocate packet");
+		TRACE3("couldn't allocate packet");
 		netif_stop_queue(wnd->net_dev);
 		return NETDEV_TX_BUSY;
 	}

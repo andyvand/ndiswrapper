@@ -1127,11 +1127,8 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		EXIT4(return);
 	}
 	nt_spin_lock_bh(&pool->lock);
-	if (pool->free_descr) {
-		descr = pool->free_descr;
+	if ((descr = pool->free_descr))
 		pool->free_descr = descr->next;
-	} else
-		descr = NULL;
 	nt_spin_unlock_bh(&pool->lock);
 	if (descr) {
 		typeof(descr->flags) flags;
@@ -1141,14 +1138,11 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
-		DBG_BLOCK(2) {
-			if (pool->num_allocated_descr > pool->max_descr) {
-				TRACE2("pool %p is full: %d(%d)", pool,
-				       pool->num_allocated_descr,
-				       pool->max_descr);
-				*status = NDIS_STATUS_RESOURCES;
-				return;
-			}
+		if (pool->num_allocated_descr > pool->max_descr) {
+			TRACE3("pool %p is full: %d(%d)", pool,
+			       pool->num_allocated_descr, pool->max_descr);
+			*status = NDIS_STATUS_RESOURCES;
+			return;
 		}
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
@@ -1438,23 +1432,24 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		EXIT4(return);
 	}
 	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
-	DBG_BLOCK(2) {
-		if (pool->num_used_descr > pool->max_descr) {
-			TRACE1("pool %p is full: %d(%d)", pool,
-			       pool->num_used_descr, pool->max_descr);
-			*status = NDIS_STATUS_RESOURCES;
-			return;
-		}
+	if (pool->num_used_descr > pool->max_descr) {
+		TRACE3("pool %p is full: %d(%d)", pool,
+		       pool->num_used_descr, pool->max_descr);
+		*status = NDIS_STATUS_RESOURCES;
+		return;
 	}
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
 	nt_spin_lock_bh(&pool->lock);
-	if (pool->free_descr) {
-		packet = pool->free_descr;
+	if ((packet = pool->free_descr)) {
 		pool->free_descr = (void *)packet->reserved[0];
-	} else
-		packet = NULL;
+		DBG_BLOCK(2) {
+			if (packet->private.packet_flags)
+				WARNING("invalid packet: %p, %p", packet,
+					pool->free_descr);
+		}
+	}
 	nt_spin_unlock_bh(&pool->lock);
 	if (!packet) {
 		packet = kmalloc(packet_length, irql_gfp());
@@ -1504,9 +1499,14 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		packet->reserved[1] = 0;
 	}
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
+		TRACE3("%p", packet);
 		pool->num_allocated_descr--;
 		kfree(packet);
 	} else {
+		TRACE3("%p, %p", packet, pool->free_descr);
+		DBG_BLOCK(2) {
+			packet->private.packet_flags = 0;
+		}
 		packet->reserved[0] =
 			(typeof(packet->reserved[0]))pool->free_descr;
 		pool->free_descr = packet;
@@ -2127,7 +2127,7 @@ wstdcall void NdisMSendComplete(struct ndis_mp_block *nmb,
 				struct ndis_packet *packet, NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	ENTER4("%p, %08X", packet, status);
+	ENTER3("%p, %08X", packet, status);
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	if (deserialized_driver(wnd))
 		free_tx_packet(wnd, packet, status);
