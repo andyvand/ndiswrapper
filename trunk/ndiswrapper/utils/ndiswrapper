@@ -135,7 +135,7 @@ sub abort {
 }
 
 sub check_version {
-    my ($utils_version, $drv_utils_version, $res);
+    my ($utils_version, $module_utils_version, $res);
     $res = 0;
     $utils_version = `loadndisdriver -v`;
     chomp($utils_version);
@@ -144,24 +144,24 @@ sub check_version {
 	printf "utils version is too old!\n";
 	$res = -1;
     }
-    $drv_utils_version = 0;
+    $module_utils_version = 0;
     open(MODINFO, "modinfo ndiswrapper |");
     while (my $line = <MODINFO>) {
 	if ($line =~ /utils_version:.*read only:\s([0-9\.]+)/) {
-	    $drv_utils_version = $1;
+	    $module_utils_version = $1;
 	    last;
 	}
     }
-    if ($drv_utils_version eq 0) {
-	printf "driver version is too old!\n";
+    if ($module_utils_version eq 0) {
+	printf "module version is too old!\n";
 	$res = -1;
-    } elsif ($utils_version ne $drv_utils_version) {
+    } elsif ($utils_version ne $module_utils_version) {
 	printf "utils version '%s' is incompatible with utils version needed" .
-	  " by driver ('%s')!\n", $utils_version, $drv_utils_version;
+	  " by driver ('%s')!\n", $utils_version, $module_utils_version;
 	$res = -1;
     }
-    printf "utils version: '%s', utils version needed by driver: '%s'\n",
-      $utils_version, $drv_utils_version;
+    printf "utils version: '%s', utils version needed by module: '%s'\n",
+      $utils_version, $module_utils_version;
     printf "module details:\n";
     system("modinfo ndiswrapper | grep -E '^(version|vermagic|filename)'");
 
@@ -542,13 +542,12 @@ sub choose_target_os {
 
 sub get_target_os_section {
     my ($section, $target) = @_;
+    my $lines;
 
     chomp($section);
     $section =~ s/^\s*"\s*//;
     $section =~ s/\s*"\s*$//;
     printf DBG "section: \"%s\", target: \"%s\"\n", $section, $target;
-
-    my $lines;
 
     if (length($target) gt 0) {
 	$lines = get_section($section . "." . $target);
