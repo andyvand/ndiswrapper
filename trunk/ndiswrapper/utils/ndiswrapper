@@ -532,6 +532,10 @@ sub choose_target_os {
 	foreach my $target (@targets) {
 	    $target = trim($target);
 	    printf DBG "target: '%s', pref: '%s'\n", $target, $pref;
+	    if ($target =~ /NT((amd64)|(x86))/i) {
+		printf DBG "target arch: '%s'\n", $1;
+		next if ($1 !~ /$arch/i);
+	    }
 	    if ($target =~ /$pref/i) {
 		return $target;
 	    }
