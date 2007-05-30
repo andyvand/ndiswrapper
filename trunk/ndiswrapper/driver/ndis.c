@@ -1141,8 +1141,10 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		if (pool->num_allocated_descr > pool->max_descr) {
 			TRACE3("pool %p is full: %d(%d)", pool,
 			       pool->num_allocated_descr, pool->max_descr);
-//			*status = NDIS_STATUS_RESOURCES;
-//			return;
+#ifndef ALLOW_POOL_OVERFLOW
+			*status = NDIS_STATUS_RESOURCES;
+			return;
+#endif
 		}
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
@@ -1435,8 +1437,10 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	if (pool->num_used_descr > pool->max_descr) {
 		TRACE3("pool %p is full: %d(%d)", pool,
 		       pool->num_used_descr, pool->max_descr);
-//		*status = NDIS_STATUS_RESOURCES;
-//		return;
+#ifndef ALLOW_POOL_OVERFLOW
+		*status = NDIS_STATUS_RESOURCES;
+		return;
+#endif
 	}
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +

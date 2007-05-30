@@ -18,6 +18,8 @@
 
 #include "ntoskernel.h"
 
+//#define ALLOW_POOL_OVERFLOW 1
+
 #define NDIS_DMA_24BITS 0
 #define NDIS_DMA_32BITS 1
 #define NDIS_DMA_64BITS 2
@@ -203,6 +205,17 @@ struct ndis_task_tcp_large_send {
 	BOOLEAN ip_opts;
 };
 
+struct ndis_packet;
+
+struct ndis_packet_pool {
+	struct ndis_packet *free_descr;
+	NT_SPIN_LOCK lock;
+	UINT max_descr;
+	UINT num_allocated_descr;
+	UINT num_used_descr;
+	UINT proto_rsvd_length;
+};
+
 struct ndis_packet_stack {
 	ULONG_PTR IM_reserved[2];
 	ULONG_PTR ndis_reserved[4];
@@ -224,7 +237,7 @@ struct ndis_packet_private {
 	UINT len;
 	ndis_buffer *buffer_head;
 	ndis_buffer *buffer_tail;
-	void *pool;
+	struct ndis_packet_pool *pool;
 	UINT count;
 	ULONG flags;
 	BOOLEAN valid_counts;
@@ -290,15 +303,6 @@ struct ndis_packet_oob_data {
 #define NDIS_PACKET_OOB_DATA(packet)					\
 	(struct ndis_packet_oob_data *)(((void *)(packet)) +		\
 					(packet)->private.oob_offset)
-
-struct ndis_packet_pool {
-	struct ndis_packet *free_descr;
-	NT_SPIN_LOCK lock;
-	UINT max_descr;
-	UINT num_allocated_descr;
-	UINT num_used_descr;
-	UINT proto_rsvd_length;
-};
 
 enum ndis_device_pnp_event {
 	NdisDevicePnPEventQueryRemoved, NdisDevicePnPEventRemoved,
