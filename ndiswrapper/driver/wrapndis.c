@@ -586,7 +586,7 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	DBG_BLOCK(4) {
 		dump_bytes(__FUNCTION__, skb->data, skb->len);
 	}
-	TRACE3("packet: %p, buffer: %p, skb: %p", packet, buffer, skb);
+	TRACE4("%p, %p, %p", packet, buffer, skb);
 	return packet;
 }
 
@@ -595,9 +595,14 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 {
 	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
+	struct sk_buff *skb;
 
-	ENTER3("%p, %08X", packet, status);
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
+	assert(packet->private.packet_flags);
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
+	skb = oob_data->tx_skb;
+	buffer = packet->private.buffer_head;
+	TRACE4("%p, %p, %p, %08X", packet, buffer, skb, status);
 	if (status == NDIS_STATUS_SUCCESS) {
 		pre_atomic_add(wnd->net_stats.tx_bytes, packet->private.len);
 		atomic_inc_var(wnd->net_stats.tx_packets);
@@ -605,17 +610,12 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		TRACE1("packet dropped: %08X", status);
 		atomic_inc_var(wnd->net_stats.tx_dropped);
 	}
-	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->sg_dma_size)
 		free_tx_sg_list(wnd, oob_data);
-	buffer = packet->private.buffer_head;
-	TRACE3("%p, %p", buffer, oob_data->tx_skb);
 	NdisFreeBuffer(buffer);
-	dev_kfree_skb_any(oob_data->tx_skb);
+	dev_kfree_skb_any(skb);
 	NdisFreePacket(packet);
-	if (netif_queue_stopped(wnd->net_dev))
-		netif_wake_queue(wnd->net_dev);
-	EXIT3(return);
+	EXIT4(return);
 }
 
 /* MiniportSend and MiniportSendPackets */
@@ -747,6 +747,8 @@ static void tx_worker(worker_param_t param)
 			wnd->tx_ring_start =
 				(wnd->tx_ring_start + n) % TX_RING_SIZE;
 			wnd->is_tx_ring_full = 0;
+			if (netif_queue_stopped(wnd->net_dev))
+				netif_wake_queue(wnd->net_dev);
 		}
 		lower_irql(irql);
 		up(&wnd->tx_ring_mutex);
@@ -762,8 +764,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 
 	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
-		TRACE3("couldn't allocate packet");
-		netif_stop_queue(wnd->net_dev);
+		WARNING("couldn't allocate packet");
 		return NETDEV_TX_BUSY;
 	}
 	nt_spin_lock(&wnd->tx_ring_lock);

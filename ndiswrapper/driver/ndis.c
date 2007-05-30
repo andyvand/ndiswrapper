@@ -1141,8 +1141,8 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		if (pool->num_allocated_descr > pool->max_descr) {
 			TRACE3("pool %p is full: %d(%d)", pool,
 			       pool->num_allocated_descr, pool->max_descr);
-			*status = NDIS_STATUS_RESOURCES;
-			return;
+//			*status = NDIS_STATUS_RESOURCES;
+//			return;
 		}
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
@@ -1435,8 +1435,8 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	if (pool->num_used_descr > pool->max_descr) {
 		TRACE3("pool %p is full: %d(%d)", pool,
 		       pool->num_used_descr, pool->max_descr);
-		*status = NDIS_STATUS_RESOURCES;
-		return;
+//		*status = NDIS_STATUS_RESOURCES;
+//		return;
 	}
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
@@ -1444,10 +1444,10 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	nt_spin_lock_bh(&pool->lock);
 	if ((packet = pool->free_descr)) {
 		pool->free_descr = (void *)packet->reserved[0];
-		DBG_BLOCK(2) {
+		DBG_BLOCK(1) {
 			if (packet->private.packet_flags)
-				WARNING("invalid packet: %p, %p", packet,
-					pool->free_descr);
+				WARNING("invalid packet: %p, %p, %p", pool,
+					packet, pool->free_descr);
 		}
 	}
 	nt_spin_unlock_bh(&pool->lock);
@@ -1460,7 +1460,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		}
 		atomic_inc_var(pool->num_allocated_descr);
 	}
-	TRACE3("packet: %p", packet);
+	TRACE4("%p, %p, %p", pool, packet, pool->free_descr);
 	atomic_inc_var(pool->num_used_descr);
 	memset(packet, 0, packet_length);
 	packet->private.oob_offset =
@@ -1469,7 +1469,6 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	packet->private.pool = pool;
 	*ndis_packet = packet;
 	*status = NDIS_STATUS_SUCCESS;
-	TRACE4("packet: %p, pool: %p", packet, pool);
 	EXIT4(return);
 }
 
@@ -1485,7 +1484,7 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 {
 	struct ndis_packet_pool *pool;
 
-	ENTER3("packet: %p, pool: %p", packet, packet->private.pool);
+	ENTER4("packet: %p, pool: %p", packet, packet->private.pool);
 	pool = packet->private.pool;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", packet);
@@ -1503,10 +1502,13 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		pool->num_allocated_descr--;
 		kfree(packet);
 	} else {
-		TRACE3("%p, %p", packet, pool->free_descr);
-		DBG_BLOCK(2) {
+		DBG_BLOCK(1) {
+			if (!packet->private.packet_flags)
+				WARNING("invalid packet: %p, %p, %p", pool,
+					packet, pool->free_descr);
 			packet->private.packet_flags = 0;
 		}
+		TRACE4("%p, %p, %p", pool, packet, pool->free_descr);
 		packet->reserved[0] =
 			(typeof(packet->reserved[0]))pool->free_descr;
 		pool->free_descr = packet;
@@ -2127,7 +2129,7 @@ wstdcall void NdisMSendComplete(struct ndis_mp_block *nmb,
 				struct ndis_packet *packet, NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	ENTER3("%p, %08X", packet, status);
+	ENTER4("%p, %08X", packet, status);
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	if (deserialized_driver(wnd))
 		free_tx_packet(wnd, packet, status);
