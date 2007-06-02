@@ -21,8 +21,8 @@
 #include <linux/kernel_stat.h>
 #include <asm/dma.h>
 
-#define MAX_ALLOCATED_NDIS_PACKETS 20
-#define MAX_ALLOCATED_NDIS_BUFFERS 20
+#define MAX_ALLOCATED_NDIS_PACKETS TX_RING_SIZE
+#define MAX_ALLOCATED_NDIS_BUFFERS TX_RING_SIZE
 
 static void ndis_worker(worker_param_t dummy);
 static work_struct_t ndis_work;
@@ -1363,12 +1363,11 @@ wstdcall void WIN_FUNC(NdisAllocatePacketPoolEx,5)
 	struct ndis_packet_pool *pool;
 
 	ENTER3("buffers: %d, length: %d", num_descr, proto_rsvd_length);
-	pool = kmalloc(sizeof(*pool), irql_gfp());
+	pool = kzalloc(sizeof(*pool), irql_gfp());
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT3(return);
 	}
-	memset(pool, 0, sizeof(*pool));
 	nt_spin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
@@ -1527,9 +1526,7 @@ wstdcall struct ndis_packet_stack *WIN_FUNC(NdisIMGetCurrentPacketStack,2)
 	struct ndis_packet_stack *stack;
 
 	if (!packet->reserved[1]) {
-		stack = kmalloc(2 * sizeof(*stack), irql_gfp());
-		if (stack)
-			memset(stack, 0, 2 * sizeof(*stack));
+		stack = kzalloc(2 * sizeof(*stack), irql_gfp());
 		TRACE3("%p, %p", packet, stack);
 		packet->reserved[1] = (typeof(packet->reserved[1]))stack;
 	} else {

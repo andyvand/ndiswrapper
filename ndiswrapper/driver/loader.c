@@ -356,13 +356,12 @@ static int load_bin_files_info(struct wrap_driver *driver,
 	driver->bin_files = NULL;
 	if (load_driver->num_bin_files == 0)
 		EXIT1(return 0);
-	bin_files = kmalloc(load_driver->num_bin_files * sizeof(*bin_files),
+	bin_files = kzalloc(load_driver->num_bin_files * sizeof(*bin_files),
 			    GFP_KERNEL);
 	if (!bin_files) {
 		ERROR("couldn't allocate memory");
 		EXIT1(return -ENOMEM);
 	}
-	memset(bin_files, 0, load_driver->num_bin_files * sizeof(*bin_files));
 
 	for (i = 0; i < load_driver->num_bin_files; i++) {
 		strncpy(bin_files[i].name, load_driver->bin_files[i].name,
@@ -390,12 +389,11 @@ static int load_settings(struct wrap_driver *wrap_driver,
 		struct wrap_device_setting *setting;
 		ULONG data1;
 
-		setting = kmalloc(sizeof(*setting), GFP_KERNEL);
+		setting = kzalloc(sizeof(*setting), GFP_KERNEL);
 		if (!setting) {
 			ERROR("couldn't allocate memory");
 			break;
 		}
-		memset(setting, 0, sizeof(*setting));
 		strncpy(setting->name, load_setting->name,
 			sizeof(setting->name));
 		setting->name[sizeof(setting->name)-1] = 0;
@@ -565,13 +563,12 @@ static int load_user_space_driver(struct load_driver *load_driver)
 		EXIT1(return -ENOMEM);
 	}
 	TRACE1("drv_obj: %p", drv_obj);
-	drv_obj->drv_ext = kmalloc(sizeof(*(drv_obj->drv_ext)), GFP_KERNEL);
+	drv_obj->drv_ext = kzalloc(sizeof(*(drv_obj->drv_ext)), GFP_KERNEL);
 	if (!drv_obj->drv_ext) {
 		ERROR("couldn't allocate memory");
 		ObDereferenceObject(drv_obj);
 		EXIT1(return -ENOMEM);
 	}
-	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	if (IoAllocateDriverObjectExtension(drv_obj,
 					    (void *)WRAP_DRIVER_CLIENT_ID,
@@ -793,12 +790,11 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 		       load_device.subdevice);
 		if (load_device.vendor) {
 			struct wrap_device *wd;
-			wd = kmalloc(sizeof(*wd), GFP_KERNEL);
+			wd = kzalloc(sizeof(*wd), GFP_KERNEL);
 			if (!wd) {
 				ret = -ENOMEM;
 				break;
 			}
-			memset(wd, 0, sizeof(*wd));
 			InitializeListHead(&wd->settings);
 			wd->dev_bus = WRAP_BUS(load_device.bus);
 			wd->vendor = load_device.vendor;

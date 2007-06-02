@@ -300,7 +300,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	}
 	if (!urb) {
 		IoReleaseCancelSpinLock(irp->cancel_irql);
-		wrap_urb = kmalloc(sizeof(*wrap_urb), alloc_flags);
+		wrap_urb = kzalloc(sizeof(*wrap_urb), alloc_flags);
 		if (!wrap_urb) {
 			WARNING("couldn't allocate memory");
 			return NULL;
@@ -315,7 +315,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			kfree(wrap_urb);
 			return NULL;
 		}
-		memset(wrap_urb, 0, sizeof(*wrap_urb));
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		wrap_urb->urb = urb;
 		wrap_urb->state = URB_ALLOCATED;
@@ -692,13 +691,12 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
 
-	dr = kmalloc(sizeof(*dr), GFP_ATOMIC);
+	dr = kzalloc(sizeof(*dr), GFP_ATOMIC);
 	if (!dr) {
 		ERROR("couldn't allocate memory");
 		wrap_free_urb(urb);
 		return USBD_STATUS_NO_MEMORY;
 	}
-	memset(dr, 0, sizeof(*dr));
 	dr->bRequestType = req_type;
 	dr->bRequest = vc_req->request;
 	dr->wValue = cpu_to_le16(vc_req->value);

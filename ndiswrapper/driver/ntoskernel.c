@@ -170,12 +170,11 @@ static int add_bus_driver(const char *name)
 	struct bus_driver *bus_driver;
 	KIRQL irql;
 
-	bus_driver = kmalloc(sizeof(*bus_driver), GFP_KERNEL);
+	bus_driver = kzalloc(sizeof(*bus_driver), GFP_KERNEL);
 	if (!bus_driver) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	memset(bus_driver, 0, sizeof(*bus_driver));
 	strncpy(bus_driver->name, name, sizeof(bus_driver->name));
 	bus_driver->name[sizeof(bus_driver->name)-1] = 0;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -2087,9 +2086,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		TRACE2("%s, %s", bin_file->name, file_basename);
 		fo->flags = FILE_OPENED;
 	} else if (access_mask & FILE_WRITE_DATA) {
-		bin_file = kmalloc(sizeof(*bin_file), GFP_KERNEL);
+		bin_file = kzalloc(sizeof(*bin_file), GFP_KERNEL);
 		if (bin_file) {
-			memset(bin_file, 0, sizeof(*bin_file));
 			strncpy(bin_file->name, file_basename,
 				sizeof(bin_file->name));
 			bin_file->name[sizeof(bin_file->name)-1] = 0;
