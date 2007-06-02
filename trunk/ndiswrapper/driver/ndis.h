@@ -509,7 +509,6 @@ struct ndis_mp_block;
 /* this is opaque to drivers, so we can use it as we please */
 struct ndis_mp_interrupt {
 	struct kinterrupt *kinterrupt;
-	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
 	NT_SPIN_LOCK lock;
 	union {
 		void *reserved;
@@ -845,13 +844,13 @@ struct wrap_ndis_device {
 	u8 tx_ring_start;
 	u8 tx_ring_end;
 	u8 is_tx_ring_full;
+	u8 tx_ok;
 	NT_SPIN_LOCK tx_ring_lock;
 	struct semaphore tx_ring_mutex;
 	unsigned int max_tx_packets;
-	u8 tx_ok;
 	struct semaphore ndis_req_mutex;
 	struct task_struct *ndis_req_task;
-	s8 ndis_req_done;
+	int ndis_req_done;
 	NDIS_STATUS ndis_req_status;
 	ULONG packet_filter;
 
@@ -892,9 +891,9 @@ struct wrap_ndis_device {
 	enum ndis_physical_medium physical_medium;
 	ULONG ndis_wolopts;
 	struct nt_slist wrap_timer_slist;
-	char netdev_name[IFNAMSIZ];
 	int drv_ndis_version;
 	struct ndis_pnp_capabilities pnp_capa;
+	char netdev_name[IFNAMSIZ];
 };
 
 struct ndis_pmkid_candidate {

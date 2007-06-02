@@ -47,6 +47,7 @@
 #include <linux/percpu.h>
 
 #include "winnt_types.h"
+#include "compat.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -97,8 +98,6 @@
 	pci_map_sg(dev, sglist, nents, direction)
 #define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
-
-#define pci_set_consistent_dma_mask(dev,mask) do { } while (0)
 
 #include <linux/smp_lock.h>
 

@@ -543,10 +543,9 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 {
 	struct kinterrupt *interrupt;
 	IOENTER("");
-	interrupt = kmalloc(sizeof(*interrupt), GFP_KERNEL);
+	interrupt = kzalloc(sizeof(*interrupt), GFP_KERNEL);
 	if (!interrupt)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-	memset(interrupt, 0, sizeof(*interrupt));
 	interrupt->vector = vector;
 	interrupt->cpu_mask = cpu_mask;
 	nt_spin_lock_init(&interrupt->lock);
