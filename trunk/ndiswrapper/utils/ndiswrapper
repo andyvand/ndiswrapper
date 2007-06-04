@@ -521,13 +521,13 @@ sub choose_target_os {
     chomp($arch);
     printf DBG "arch: %s\n", $arch;
     if ($arch =~ /64$/) {
-	$arch = "AMD64";
+	$arch = "amd64";
     } else {
-	$arch = "X86";
+	$arch = "x86";
     }
     printf DBG "arch: %s\n", $arch;
-    my @prefs = ("NT$arch\.5.1", "NT$arch\.5", "NT$arch",
-		 "NT\.5\.1", "NT.5", "NT");
+    my @prefs = ("NT($arch)\.5\.1", "NT($arch)\.5", "NT($arch)",
+		 "NT\.5\.1", "NT\.5", "NT");
     foreach my $pref (@prefs) {
 	foreach my $target (@targets) {
 	    $target = trim($target);
@@ -568,8 +568,8 @@ sub get_target_os_section {
     }
     printf DBG "arch: %s\n", $arch;
 
-    my @prefs = ("NT$arch\.5.1", "NT$arch\.5", "NT$arch",
-		 "NT\.5\.1", "NT.5", "NT");
+    my @prefs = ("NT$arch.5.1", "NT$arch.5", "NT$arch",
+		 "NT.5.1", "NT.5", "NT");
     foreach my $pref (@prefs) {
 	$lines = get_section($section . "." . $pref);
 	return $lines if ($lines);
