@@ -258,6 +258,9 @@ compat.h: $(KBUILD)/include/linux/version.h
 	@if ! grep -qw create_workqueue $(KBUILD)/include/linux/*.h; then \
 		echo "#define WRAP_WQ 1"; \
 	fi >> $@
+	@if [ -f $(KBUILD)/include/linux/percpu.h ]; then \
+		echo "#include <linux/percpu.h>"; \
+	fi >> $@
 
 prereq_check:
 	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \

@@ -1140,9 +1140,8 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	DBG_BLOCK(2) {
 		KIRQL irql = current_irql();
 		if (irql >= DISPATCH_LEVEL) {
-			TRACE2("wait in atomic context: %Lu, %lu, %d, %ld, %x",
-			       *timeout, wait_hz, in_atomic(), in_interrupt(),
-			       preempt_count());
+			TRACE2("wait in atomic context: %Lu, %lu, %d, %ld",
+			       *timeout, wait_hz, in_atomic(), in_interrupt());
 		}
 	}
 	assert_irql(_irql_ < DISPATCH_LEVEL);

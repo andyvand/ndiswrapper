@@ -44,7 +44,6 @@
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/highmem.h>
-#include <linux/percpu.h>
 
 #include "winnt_types.h"
 #include "compat.h"
