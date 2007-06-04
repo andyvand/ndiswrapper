@@ -612,8 +612,9 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	dev_kfree_skb_any(skb);
 	NdisFreePacket(packet);
 	if (netif_queue_stopped(wnd->net_dev) &&
-	    (packet->private.pool->max_descr -
-	     packet->private.pool->num_used_descr) >= 4) {
+	    ((packet->private.pool->max_descr -
+	      packet->private.pool->num_used_descr) >=
+	     (wnd->max_tx_packets / 4))) {
 		netif_tx_lock_bh(wnd->net_dev);
 		netif_wake_queue(wnd->net_dev);
 		netif_tx_unlock_bh(wnd->net_dev);
