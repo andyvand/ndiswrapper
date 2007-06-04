@@ -1,3 +1,7 @@
+Version 1.45 2007-06-03
+=======================	
+* Fixed crash with large transfers (bug in version 1.45)
+
 Version 1.45 2007-05-28
 =======================	
 * Fixes 'NOHZ: local_softirq_pending: 08' warnings from tickless
