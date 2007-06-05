@@ -592,6 +592,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
 	struct sk_buff *skb;
+	struct ndis_packet_pool *pool;
 
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	assert(packet->private.packet_flags);
@@ -610,10 +611,10 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		free_tx_sg_list(wnd, oob_data);
 	NdisFreeBuffer(buffer);
 	dev_kfree_skb_any(skb);
+	pool = packet->private.pool;
 	NdisFreePacket(packet);
 	if (netif_queue_stopped(wnd->net_dev) &&
-	    ((packet->private.pool->max_descr -
-	      packet->private.pool->num_used_descr) >=
+	    ((pool->max_descr - pool->num_used_descr) >=
 	     (wnd->max_tx_packets / 4))) {
 		netif_tx_lock_bh(wnd->net_dev);
 		netif_wake_queue(wnd->net_dev);
