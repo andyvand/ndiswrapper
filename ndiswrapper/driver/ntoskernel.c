@@ -2602,13 +2602,16 @@ int ntoskernel_init(void)
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = update_user_shared_data_proc;
 	shared_data_timer.data = (unsigned long)0;
-	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30));
 #endif
 	return 0;
 }
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
+#if defined(CONFIG_X86_64)
+	if (kuser_shared_data.reserved1)
+		mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30));
+#endif
 	return 0;
 }
 
