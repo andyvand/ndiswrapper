@@ -506,6 +506,7 @@ void fix_user_shared_data_addr(char *driver, unsigned long length)
 		if (*addr >= KI_USER_SHARED_DATA && *addr < max_addr) {
 			*addr -= KI_USER_SHARED_DATA;
 			*addr += (unsigned long)&kuser_shared_data;
+			kuser_shared_data.reserved1 = 1;
 		}
 	}
 }
