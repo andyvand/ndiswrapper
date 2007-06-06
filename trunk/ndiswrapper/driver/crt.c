@@ -259,6 +259,12 @@ noregparm void *WIN_FUNC(_win_memset,3)
 	return memset(s, c, count);
 }
 
+noregparm int WIN_FUNC(_win_memcmp,3)
+	(void *s1, void *s2,, SIZE_T n)
+{
+	return memcmp(s1, s2, n);
+}
+
 noregparm void WIN_FUNC(_win_srand,1)
 	(UINT seed)
 {
