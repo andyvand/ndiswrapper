@@ -1927,9 +1927,8 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	    NDIS_STATUS_SUCCESS && n > ETH_HLEN)
 		ndis_change_mtu(wnd->net_dev, n - ETH_HLEN);
 
-	if (mp_query_int(wnd, OID_GEN_MAC_OPTIONS, &wnd->mac_options) ==
-	    NDIS_STATUS_SUCCESS)
-		TRACE2("mac options supported: 0x%x", wnd->mac_options);
+	if (mp_query_int(wnd, OID_GEN_MAC_OPTIONS, &n) == NDIS_STATUS_SUCCESS)
+		TRACE2("mac options supported: 0x%x", n);
 
 	tx_header_offset = (typeof(tx_header_offset))buf;
 	tx_header_offset->protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
