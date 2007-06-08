@@ -103,16 +103,17 @@ NDIS_STATUS mp_request(enum ndis_request_type request,
 	if (!needed)
 		needed = &n;
 	mp = &wnd->wd->driver->ndis_driver->mp;
-	TRACE2("%p, %08X", mp->query, oid);
 	prepare_wait_condition(wnd->ndis_req_task, wnd->ndis_req_done, 0);
 	irql = serialize_lock_irql(wnd);
 	assert_irql(_irql_ == DISPATCH_LEVEL);
 	switch (request) {
 	case NdisRequestQueryInformation:
-		res = LIN2WIN6(mp->query, wnd->nmb->mp_ctx, oid, buf,
+		TRACE2("%p, %08X, %p", mp->queryinfo, oid, wnd->nmb->mp_ctx);
+		res = LIN2WIN6(mp->queryinfo, wnd->nmb->mp_ctx, oid, buf,
 			       buflen, written, needed);
 		break;
 	case NdisRequestSetInformation:
+		TRACE2("%p, %08X, %p", mp->setinfo, oid, wnd->nmb->mp_ctx);
 		res = LIN2WIN6(mp->setinfo, wnd->nmb->mp_ctx, oid, buf,
 			       buflen, written, needed);
 		break;
@@ -122,7 +123,6 @@ NDIS_STATUS mp_request(enum ndis_request_type request,
 		break;
 	}
 	serialize_unlock_irql(wnd, irql);
-
 	TRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
@@ -1927,9 +1927,9 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	    NDIS_STATUS_SUCCESS && n > ETH_HLEN)
 		ndis_change_mtu(wnd->net_dev, n - ETH_HLEN);
 
-	if (mp_query_int(wnd, OID_GEN_MAC_OPTIONS, &n) ==
-	    NDIS_STATUS_SUCCESS && n > 0)
-		TRACE2("mac options supported: 0x%x", n);
+	if (mp_query_int(wnd, OID_GEN_MAC_OPTIONS, &wnd->mac_options) ==
+	    NDIS_STATUS_SUCCESS)
+		TRACE2("mac options supported: 0x%x", wnd->mac_options);
 
 	tx_header_offset = (typeof(tx_header_offset))buf;
 	tx_header_offset->protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
