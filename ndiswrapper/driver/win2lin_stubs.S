@@ -265,4 +265,73 @@ ENTRY(win2lin_ ## name ## _ ## argc)		\
 
 #include "win2lin_stubs.h"
 
+	.text
+	.globl lin2win1
+	.globl lin2win2
+	.globl lin2win3
+	.globl lin2win4
+	.globl lin2win5
+	.globl lin2win6
+
+#
+# The linux to windows functions are called with argument 1
+# being the Windows function to call.
+#
+lin2win4:
+	mov	%r8, %r9	# Linux arg5 => Win arg4
+lin2win3:
+	mov	%rcx, %r8	# Linux arg4 => Win arg3
+lin2win2:
+				# Linux arg3 already in Win arg2 (%rdx)
+lin2win1:
+	mov	%rsi, %rcx	# Linux arg2 => Win arg1
+	sub	$0x20, %rsp
+	call	*%rdi		# call Windows function 
+	add	$0x20, %rsp
+	ret
+
+	# 0x28 / 0  - ret
+	#
+	# 0x20 - arg5   -0x8
+	# 0x18 - arg4   -0x10
+	# 0x10 - arg3   -0x18
+	# 0x8  - arg2   -0x20
+	# 0x0  - arg1   -0x28
+lin2win5:
+	# setup a new stack frame for Windows function and put the arguments
+	# where it expects them
+	sub	$0x28, %rsp	# reserve stack space
+	mov	%r9, 0x20(%rsp)	# Linux arg6 => Win arg5
+	mov	%r8, %r9	# Linux arg5 => Win arg4
+	mov	%rcx, %r8	# Linux arg4 => Win arg3
+				# Linux arg3 already in Win arg2 (%rdx)
+	mov	%rsi, %rcx	# Linux arg2 => Win arg1
+	call	*%rdi		# call Windows function
+	add	$0x28, %rsp
+	ret
+
+	# 0x38 / 8  - lin-arg7
+	# 0x30 / 0  - ret
+	#
+	# 0x28 - arg6   -0x8
+	# 0x20 - arg5   -0x10
+	# 0x18 - arg4   -0x18
+	# 0x10 - arg3   -0x20
+	# 0x8  - arg2   -0x28
+	# 0x0  - arg1   -0x30
+lin2win6:
+	# setup a new stack frame for Windows function and put the arguments
+	# where it expects them
+	sub	$0x30, %rsp	# reserve stack space
+	mov	0x38(%rsp), %rax # Linux arg7
+	mov	%rax, 0x28(%rsp) #  => Win arg6
+	mov	%r9, 0x20(%rsp) # Linux arg6 => Win arg5
+	mov	%r8, %r9	# Linux arg5 => Win arg4
+	mov	%rcx, %r8	# Linux arg4 => Win arg3
+				# Linux arg3 already in Win arg2 (%rdx)
+	mov	%rsi, %rcx	# Linux arg2 => Win arg1
+	call	*%rdi		# call Windows function
+	add	$0x30, %rsp
+	ret
+
 #endif // CONFIG_X86_64

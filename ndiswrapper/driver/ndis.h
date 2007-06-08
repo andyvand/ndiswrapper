@@ -416,7 +416,7 @@ struct miniport {
 			    enum ndis_medium medium[], UINT medium_array_size,
 			    void *handle, void *conf_handle) wstdcall;
 	ndis_isr_handler isr;
-	NDIS_STATUS (*query)(void *ctx, ndis_oid oid, void *buffer,
+	NDIS_STATUS (*queryinfo)(void *ctx, ndis_oid oid, void *buffer,
 			     ULONG buflen, ULONG *written,
 			     ULONG *needed) wstdcall;
 	void *reconfig;
@@ -815,8 +815,8 @@ struct ndis_mp_block {
 	void *status_complete;
 	void *td_complete;
 
-	void *query_complete;
-	void *set_complete;
+	void *queryinfo_complete;
+	void *setinfo_complete;
 	void *wan_tx_complete;
 	void *wan_rx;
 	void *wan_rx_complete;

@@ -95,14 +95,14 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 		int i;
 		void **func;
 		char *mp_funcs[] = {
-			"query", "reconfig", "reset", "send", "setinfo",
+			"queryinfo", "reconfig", "reset", "send", "setinfo",
 			"tx_data", "return_packet", "send_packets",
 			"alloc_complete", "co_create_vc", "co_delete_vc",
 			"co_activate_vc", "co_deactivate_vc",
 			"co_send_packets", "co_request", "cancel_send_packets",
 			"pnp_event_notify", "shutdown",
 		};
-		func = (void **)&ndis_driver->mp.query;
+		func = (void **)&ndis_driver->mp.queryinfo;
 		for (i = 0; i < (sizeof(mp_funcs) / sizeof(mp_funcs[0])); i++)
 			TRACE2("function '%s' is at %p", mp_funcs[i], func[i]);
 	}
@@ -2896,8 +2896,8 @@ int ndis_init_device(struct wrap_ndis_device *wnd)
 	nmb->send_resource_avail = WIN_FUNC_PTR(NdisMSendResourcesAvailable,1);
 	nmb->status = WIN_FUNC_PTR(NdisMIndicateStatus,4);
 	nmb->status_complete = WIN_FUNC_PTR(NdisMIndicateStatusComplete,1);
-	nmb->query_complete = WIN_FUNC_PTR(NdisMQueryInformationComplete,2);
-	nmb->set_complete = WIN_FUNC_PTR(NdisMSetInformationComplete,2);
+	nmb->queryinfo_complete = WIN_FUNC_PTR(NdisMQueryInformationComplete,2);
+	nmb->setinfo_complete = WIN_FUNC_PTR(NdisMSetInformationComplete,2);
 	nmb->reset_complete = WIN_FUNC_PTR(NdisMResetComplete,3);
 	nmb->eth_rx_indicate = WIN_FUNC_PTR(EthRxIndicateHandler,8);
 	nmb->eth_rx_complete = WIN_FUNC_PTR(EthRxComplete,1);
