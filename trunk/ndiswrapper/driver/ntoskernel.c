@@ -2489,13 +2489,11 @@ void WIN_FUNC(_purecall,0)
 	TODO();
 }
 
-#ifdef CONFIG_X86_64
 void WIN_FUNC(__chkstk,0)
 	(void)
 {
 	TODO();
 }
-#endif
 
 #include "ntoskernel_exports.h"
 
