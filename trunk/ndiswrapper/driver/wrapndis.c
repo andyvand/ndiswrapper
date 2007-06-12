@@ -142,51 +142,6 @@ NDIS_STATUS mp_request(enum ndis_request_type request,
 	EXIT3(return res);
 }
 
-/* MiniportQueryInformation */
-NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-			  void *buf, ULONG buflen, ULONG *written,
-			  ULONG *needed)
-{
-	return mp_request(NdisRequestQueryInformation, wnd, oid,
-			  buf, buflen, written, needed);
-}
-
-/* MiniportSetInformation */
-NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-			void *buf, ULONG buflen, ULONG *written,
-			ULONG *needed)
-{
-	return mp_request(NdisRequestSetInformation, wnd, oid,
-			  buf, buflen, written, needed);
-}
-
-NDIS_STATUS mp_query(struct wrap_ndis_device *wnd, ndis_oid oid,
-		     void *buf, ULONG buflen)
-{
-	return mp_request(NdisRequestQueryInformation, wnd, oid,
-			  buf, buflen, NULL, NULL);
-}
-
-NDIS_STATUS mp_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			 ULONG *data)
-{
-	return mp_request(NdisRequestQueryInformation, wnd, oid,
-			  data, sizeof(ULONG), NULL, NULL);
-}
-
-NDIS_STATUS mp_set(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
-		   ULONG buflen)
-{
-	return mp_request(NdisRequestSetInformation, wnd, oid,
-			  buf, buflen, NULL, NULL);
-}
-
-NDIS_STATUS mp_set_int(struct wrap_ndis_device *wnd, ndis_oid oid, ULONG data)
-{
-	return mp_request(NdisRequestSetInformation, wnd, oid,
-			  &data, sizeof(ULONG), NULL, NULL);
-}
-
 /* MiniportPnPEventNotify */
 static NDIS_STATUS mp_pnp_event(struct wrap_ndis_device *wnd,
 				enum ndis_device_pnp_event event,
@@ -776,8 +731,8 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	if (wnd->tx_ring_end == TX_RING_SIZE)
 		wnd->tx_ring_end = 0;
 	if (wnd->tx_ring_end == wnd->tx_ring_start) {
-		wnd->is_tx_ring_full = 1;
 		netif_tx_lock(dev);
+		wnd->is_tx_ring_full = 1;
 		netif_stop_queue(dev);
 		netif_tx_unlock(dev);
 	}
