@@ -1,3 +1,9 @@
+Version 1.47 2007-06-12
+=======================	
+* Fixed random (occassional) crash issues with 64-bit drivers (observed with
+  Broadcom driver)
+* Fixed compilation issues with version 1.46
+
 Version 1.46 2007-06-03
 =======================	
 * Fixed crash with large transfers (bug in version 1.45)
