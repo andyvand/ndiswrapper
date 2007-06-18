@@ -892,11 +892,15 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 		EXIT2(return NDIS_STATUS_RESOURCES);
 	}
 	if (dmasize == NDIS_DMA_24BITS) {
-		pci_set_dma_mask(wnd->wd->pci.pdev, DMA_24BIT_MASK);
-		pci_set_consistent_dma_mask(wnd->wd->pci.pdev, DMA_24BIT_MASK);
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_24BIT_MASK) ||
+		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
+						DMA_24BIT_MASK))
+			WARNING("setting dma mask failed");
 	} else if (dmasize == NDIS_DMA_32BITS) {
-		pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
-		pci_set_consistent_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK) ||
+		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
+						DMA_32BIT_MASK))
+			WARNING("setting dma mask failed");
 	}
 	/* since memory for buffer is allocated with kmalloc, buffer
 	 * is physically contiguous, so entire map will fit in one
@@ -2571,8 +2575,10 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
 #ifdef CONFIG_X86_64
 	if (dma_size != NDIS_DMA_64BITS) {
 		TRACE1("DMA size is not 64-bits");
-		pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
-		pci_set_consistent_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK) ||
+		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
+						DMA_32BIT_MASK))
+			WARNING("setting dma mask failed");
 	}
 #endif
 	if ((wnd->attributes & NDIS_ATTRIBUTE_BUS_MASTER) &&
