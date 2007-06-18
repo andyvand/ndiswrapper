@@ -249,7 +249,7 @@ typedef void *worker_param_t;
 
 struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+#ifdef module_param
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
 #define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
 #else
@@ -388,8 +388,16 @@ typedef u32 pm_message_t;
 #define DMA_30BIT_MASK 0x000000003fffffffULL
 #endif
 
+#ifndef DMA_31BIT_MASK
+#define DMA_31BIT_MASK 0x000000007fffffffULL
+#endif
+
 #ifndef DMA_32BIT_MASK
 #define DMA_32BIT_MASK 0x00000000ffffffffULL
+#endif
+
+#ifndef __GFP_DMA32
+#define __GFP_DMA32 GFP_DMA
 #endif
 
 #include "ndiswrapper.h"
