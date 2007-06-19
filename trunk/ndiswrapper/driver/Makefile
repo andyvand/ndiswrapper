@@ -261,6 +261,9 @@ compat.h: $(KBUILD)/include/linux/version.h
 	@if [ -f $(KSRC)/include/linux/percpu.h ]; then \
 		echo "#include <linux/percpu.h>"; \
 	fi >> $@
+	@if [ -f $(KSRC)/include/linux/netdevice.h ]; then \
+		echo "#include <linux/netdevice.h>"; \
+	fi >> $@
 
 prereq_check:
 	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
