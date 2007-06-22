@@ -5,12 +5,41 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
 		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S
 
+# By default, we try to compile the modules for the currently running
+# kernel.  But it's the first approximation, as we will re-read the
+# version from the kernel sources.
 KVERS ?= $(shell uname -r)
+
+# KBUILD is the path to the Linux kernel build tree.  It is usually the
+# same as the kernel source tree, except when the kernel was compiled in
+# a separate directory.
+KBUILD ?= $(shell readlink -f /lib/modules/$(KVERS)/build)
+
+# Some old kernels only install the "source" link
+ifeq (,$(KBUILD))
+KBUILD := $(shell readlink -f /lib/modules/$(KVERS)/source)
+endif
+
+ifeq (,$(KBUILD))
+$(error Kernel tree not found - please set KBUILD to configured kernel)
+endif
+
+# Kernel Makefile doesn't always know the exact kernel version, so we
+# get it from the kernel headers instead and pass it to make.
+
+VERSION_H := $(KBUILD)/include/linux/utsrelease.h
+ifeq (,$(wildcard $(VERSION_H)))
+VERSION_H := $(KBUILD)/include/linux/version.h
+endif
+ifeq (,$(wildcard $(VERSION_H)))
+$(error Cannot find kernel version in $(KBUILD), is it configured?)
+endif
+
+KVERS := $(shell sed -ne 's/"//g;s/^\#define UTS_RELEASE //p' $(VERSION_H))
 KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
 # distros use different paths for kernel include files
 
-KBUILD ?= /lib/modules/$(KVERS)/build
 KSRC ?= $(shell if \
 	[ -f /lib/modules/$(KVERS)/source/include/linux/kernel.h ]; then \
 		echo /lib/modules/$(KVERS)/source ; \
@@ -30,7 +59,11 @@ SRC_DIR=$(shell pwd)
 
 KREV := $(shell echo $(KVERS) | sed -e 's/[^\.]*\.[^\.]*\.\([0-9]*\).*/\1/')
 
--include $(KBUILD)/.config
+KCONFIG := $(KBUILD)/.config
+ifeq (,$(wildcard $(KCONFIG)))
+$(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
+endif
+include $(KBUILD)/.config
 
 CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
@@ -237,6 +270,9 @@ compat.h: $(KBUILD)/include/linux/version.h
 		echo "{ void *ret = kmalloc(size, flags);"; \
 		echo "if (ret) memset(ret, 0, size); return ret;}"; \
 	fi >> $@
+	@if [ -f $(KSRC)/include/linux/netdevice.h ]; then \
+		echo "#include <linux/netdevice.h>"; \
+	fi >> $@
 	@if ! grep -qw netif_tx_lock $(KSRC)/include/linux/netdevice.h; then \
 		echo "static inline void netif_tx_lock(struct net_device *dev)"; \
 		echo "{ spin_lock(&dev->xmit_lock); }"; \
@@ -260,9 +296,6 @@ compat.h: $(KBUILD)/include/linux/version.h
 	fi >> $@
 	@if [ -f $(KSRC)/include/linux/percpu.h ]; then \
 		echo "#include <linux/percpu.h>"; \
-	fi >> $@
-	@if [ -f $(KSRC)/include/linux/netdevice.h ]; then \
-		echo "#include <linux/netdevice.h>"; \
 	fi >> $@
 
 prereq_check:
