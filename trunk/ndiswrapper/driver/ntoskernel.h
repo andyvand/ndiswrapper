@@ -784,7 +784,7 @@ do {									\
 	KIRQL _irql_ = current_irql();					\
 	if (!(cond)) {							\
 		WARNING("assertion '%s' failed: %d", #cond, _irql_);	\
-		DBG_BLOCK(1) {						\
+		DBG_BLOCK(4) {						\
 			dump_stack();					\
 		}							\
 	}								\
