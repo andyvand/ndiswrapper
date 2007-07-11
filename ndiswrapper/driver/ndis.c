@@ -803,7 +803,7 @@ wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	ENTER6("lock %p, %lu", lock, lock->klock);
-	assert_irql(_irql_ <= DISPATCH_LEVEL);
+//	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	lock->irql = nt_spin_lock_irql(&lock->klock, DISPATCH_LEVEL);
 	EXIT6(return);
 }
@@ -812,6 +812,7 @@ wstdcall void WIN_FUNC(NdisReleaseSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	ENTER6("lock %p, %lu", lock, lock->klock);
+//	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock_irql(&lock->klock, lock->irql);
 	EXIT6(return);
 }
@@ -820,7 +821,7 @@ wstdcall void WIN_FUNC(NdisDprAcquireSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	ENTER6("lock %p", lock);
-	assert_irql(_irql_ == DISPATCH_LEVEL);
+//	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_lock(&lock->klock);
 	EXIT6(return);
 }
@@ -829,7 +830,7 @@ wstdcall void WIN_FUNC(NdisDprReleaseSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	ENTER6("lock %p", lock);
-	assert_irql(_irql_ == DISPATCH_LEVEL);
+//	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock(&lock->klock);
 	EXIT6(return);
 }

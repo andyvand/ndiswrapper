@@ -248,6 +248,35 @@ struct usbd_vendor_or_class_request {
 	USHORT reserved1;
 };
 
+struct urb_control_feature_request {
+	struct nt_urb_header header;
+	void *reserved;
+	ULONG reserved2;
+	ULONG reserved3;
+	void *reserved4;
+	struct mdl *reserved5;
+	union nt_urb *link;
+	struct urb_hcd_area hca;
+	USHORT reserved0;
+	USHORT feature_selector;
+	USHORT index;
+	USHORT reserved1;
+};
+
+struct urb_control_get_status_request {
+	struct nt_urb_header header;
+	void *reserved;
+	ULONG reserved0;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *mdl;
+	union nt_urb *link;
+	struct urb_hcd_area hca;
+	UCHAR reserved1[4];
+	USHORT index;
+	USHORT reserved2;
+};
+
 struct usbd_iso_packet_desc {
 	ULONG offset;
 	ULONG length;
@@ -278,6 +307,8 @@ union nt_urb {
 	struct usbd_vendor_or_class_request vendor_class_request;
 	struct usbd_isochronous_transfer isochronous;
 	struct usbd_pipe_request pipe_req;
+	struct urb_control_feature_request feat_req;
+	struct urb_control_get_status_request status_req;
 };
 
 struct usbd_bus_interface_usbdi {

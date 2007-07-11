@@ -775,6 +775,91 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
+static USBD_STATUS wrap_set_clear_feature(struct usb_device *udev,
+					  struct irp *irp)
+{
+	union nt_urb *nt_urb;
+	struct urb_control_feature_request *feat_req;
+	int ret = 0;
+	__u8 request, type;
+	__u16 feature;
+
+	nt_urb = IRP_URB(irp);
+	feat_req = &nt_urb->feat_req;
+	feature = feat_req->feature_selector;
+	switch (nt_urb->header.function) {
+	case URB_FUNCTION_SET_FEATURE_TO_DEVICE:
+		request = USB_REQ_SET_FEATURE;
+		type = USB_DT_DEVICE;
+		break;
+	case URB_FUNCTION_SET_FEATURE_TO_INTERFACE:
+		request = USB_REQ_SET_FEATURE;
+		type =  USB_DT_INTERFACE;
+		break;
+	case URB_FUNCTION_SET_FEATURE_TO_ENDPOINT:
+		request = USB_REQ_SET_FEATURE;
+		type =  USB_DT_ENDPOINT;
+		break;
+	case URB_FUNCTION_CLEAR_FEATURE_TO_DEVICE:
+		request = USB_REQ_CLEAR_FEATURE;
+		type =  USB_DT_DEVICE;
+		break;
+	case URB_FUNCTION_CLEAR_FEATURE_TO_INTERFACE:
+		request = USB_REQ_CLEAR_FEATURE;
+		type =  USB_DT_INTERFACE;
+		break;
+	case URB_FUNCTION_CLEAR_FEATURE_TO_ENDPOINT:
+		request = USB_REQ_CLEAR_FEATURE;
+		type =  USB_DT_ENDPOINT;
+		break;
+	default:
+		WARNING("invalid function: %x", nt_urb->header.function);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		return NT_URB_STATUS(nt_urb);
+	}
+	ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0), request, type,
+			      feature, feat_req->index, NULL, 0, 1000);
+	NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
+	USBEXIT(return NT_URB_STATUS(nt_urb));
+}
+
+static USBD_STATUS wrap_get_status_request(struct usb_device *udev,
+					   struct irp *irp)
+{
+	union nt_urb *nt_urb;
+	struct urb_control_get_status_request *status_req;
+	int ret = 0;
+	__u8 type;
+
+	nt_urb = IRP_URB(irp);
+	status_req = &nt_urb->status_req;
+	switch (nt_urb->header.function) {
+	case URB_FUNCTION_GET_STATUS_FROM_DEVICE:
+		type = USB_RECIP_DEVICE;
+		break;
+	case URB_FUNCTION_GET_STATUS_FROM_INTERFACE:
+		type = USB_RECIP_INTERFACE;
+		break;
+	case URB_FUNCTION_GET_STATUS_FROM_ENDPOINT:
+		type = USB_RECIP_ENDPOINT;
+		break;
+	default:
+		WARNING("invalid function: %x", nt_urb->header.function);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		return NT_URB_STATUS(nt_urb);
+	}
+	assert(status_req->transfer_buffer_length == sizeof(u16));
+	ret = usb_get_status(udev, type, status_req->index,
+			     status_req->transfer_buffer);
+	if (ret >= 0) {
+		assert(ret <= status_req->transfer_buffer_length);
+		status_req->transfer_buffer_length = ret;
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
+	} else
+		NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
+	USBEXIT(return NT_URB_STATUS(nt_urb));
+}
+
 static void set_intf_pipe_info(struct wrap_device *wd,
 			       struct usb_interface *usb_intf,
 			       struct usbd_interface_information *intf)
@@ -1028,6 +1113,21 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 	case URB_FUNCTION_ABORT_PIPE:
 		status = wrap_abort_pipe(udev, irp);
+		break;
+
+	case URB_FUNCTION_SET_FEATURE_TO_DEVICE:
+	case URB_FUNCTION_SET_FEATURE_TO_INTERFACE:
+	case URB_FUNCTION_SET_FEATURE_TO_ENDPOINT:
+	case URB_FUNCTION_CLEAR_FEATURE_TO_DEVICE:
+	case URB_FUNCTION_CLEAR_FEATURE_TO_INTERFACE:
+	case URB_FUNCTION_CLEAR_FEATURE_TO_ENDPOINT:
+		status = wrap_set_clear_feature(udev, irp);
+		break;
+
+	case URB_FUNCTION_GET_STATUS_FROM_DEVICE:
+	case URB_FUNCTION_GET_STATUS_FROM_INTERFACE:
+	case URB_FUNCTION_GET_STATUS_FROM_ENDPOINT:
+		status = wrap_get_status_request(udev, irp);
 		break;
 
 	default:
