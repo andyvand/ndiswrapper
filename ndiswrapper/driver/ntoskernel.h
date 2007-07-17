@@ -733,12 +733,10 @@ do {									\
 
 static inline KIRQL current_irql(void)
 {
-#ifdef DEBUG_IRQL
 	if (in_irq() || irqs_disabled())
 		EXIT4(return DIRQL);
 	if (in_interrupt())
 		EXIT4(return SOFT_IRQL);
-#endif
 	if (warp_in_atomic())
 		EXIT6(return DISPATCH_LEVEL);
 	else
