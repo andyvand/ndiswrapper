@@ -867,8 +867,6 @@ struct wrap_ndis_device {
 	char nick[IW_ESSID_MAX_SIZE];
 	struct ndis_essid essid;
 	struct auth_encr_capa capa;
-	enum authentication_mode auth_mode;
-	enum encryption_status encr_mode;
 	enum network_infrastructure infrastructure_mode;
 	int num_pmkids;
 	mac_address mac;
@@ -882,7 +880,7 @@ struct wrap_ndis_device {
 	int iw_auth_cipher_pairwise;
 	int iw_auth_cipher_group;
 	int iw_auth_key_mgmt;
-	int iw_auth_80211_auth_alg;
+	int iw_auth_80211_alg;
 	struct ndis_packet_pool *tx_packet_pool;
 	struct ndis_buffer_pool *tx_buffer_pool;
 	int multicast_size;

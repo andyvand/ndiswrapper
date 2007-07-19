@@ -171,21 +171,27 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len);
 int set_infra_mode(struct wrap_ndis_device *wnd,
 		   enum network_infrastructure mode);
 int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
-int set_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode);
-int set_encr_mode(struct wrap_ndis_device *wnd, ULONG encr_mode);
-int get_auth_mode(struct wrap_ndis_device *wnd);
-int get_encr_mode(struct wrap_ndis_device *wnd);
-int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
+int set_ndis_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode);
+int set_iw_auth_mode(struct wrap_ndis_device *wnd, int wpa_version,
+		     int auth_80211_alg);
+int set_auth_mode(struct wrap_ndis_device *wnd);
+int set_ndis_encr_mode(struct wrap_ndis_device *wnd, int cipher_pairwise,
+		       int cipher_groupwise);
+int get_ndis_encr_mode(struct wrap_ndis_device *wnd);
+int set_encr_mode(struct wrap_ndis_device *wnd);
+int set_iw_encr_mode(struct wrap_ndis_device *wnd, int cipher_pairwise,
+		     int cipher_groupwise);
+int get_ndis_auth_mode(struct wrap_ndis_device *wnd);
+int set_priv_filter(struct wrap_ndis_device *wnd);
 int set_scan(struct wrap_ndis_device *wnd);
 NDIS_STATUS disassociate(struct wrap_ndis_device *wnd, int reset_ssid);
+void set_default_iw_params(struct wrap_ndis_device *wnd);
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
 #define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
 #define PRIV_USB_RESET	 		SIOCIWFIRSTPRIV+19
 #define PRIV_MEDIA_STREAM_MODE 		SIOCIWFIRSTPRIV+20
-#define PRIV_SET_ENCR_MODE		SIOCIWFIRSTPRIV+21
-#define PRIV_SET_AUTH_MODE		SIOCIWFIRSTPRIV+22
 #define PRIV_RELOAD_DEFAULTS		SIOCIWFIRSTPRIV+23
 
 #define RSN_INFO_ELEM		0x30
@@ -269,6 +275,10 @@ struct wpa_driver_capa {
 #define WPA_INIT			SIOCIWFIRSTPRIV+9
 #define WPA_DEINIT			SIOCIWFIRSTPRIV+10
 #define WPA_GET_CAPA			SIOCIWFIRSTPRIV+11
+
+#define IW_AUTH_WPA_VERSION_DISABLED 0x00000001
+#define IW_AUTH_ALG_OPEN_SYSTEM 0x00000001
+#define IW_AUTH_CIPHER_NONE 0x00000001
 
 #endif
 
