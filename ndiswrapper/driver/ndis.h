@@ -875,7 +875,6 @@ struct wrap_ndis_device {
 	work_struct_t wrap_ndis_work;
 	unsigned long wrap_ndis_pending_work;
 	UINT attributes;
-	int iw_auth_set;
 	int iw_auth_wpa_version;
 	int iw_auth_cipher_pairwise;
 	int iw_auth_cipher_group;
