@@ -1218,35 +1218,39 @@ static void get_encryption_capa(struct wrap_ndis_device *wnd, char *buf,
 		mp_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE, mode);
 	}
 	/* check if WEP is supported */
-	if (set_encr_mode(wnd, Ndis802_11Encryption1Enabled) == 0 &&
-	    get_encr_mode(wnd) == Ndis802_11Encryption1KeyAbsent)
+	if (set_iw_encr_mode(wnd, IW_AUTH_CIPHER_WEP104,
+			     IW_AUTH_CIPHER_NONE) == 0 &&
+	    get_ndis_encr_mode(wnd) == Ndis802_11Encryption1KeyAbsent)
 		set_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr);
 
 	/* check if WPA is supported */
-	if (set_auth_mode(wnd, Ndis802_11AuthModeWPA) == 0 &&
-	    get_auth_mode(wnd) == Ndis802_11AuthModeWPA)
-		set_bit(Ndis802_11AuthModeWPA, &wnd->capa.auth);
+	if (set_ndis_auth_mode(wnd, Ndis802_11AuthModeWPA) == 0 &&
+	    get_ndis_auth_mode(wnd) == Ndis802_11AuthModeWPA)
+		set_bit(Ndis802_11AuthModeWPA, &wnd->capa.encr);
 	else
 		EXIT1(return);
 
-	if (set_auth_mode(wnd, Ndis802_11AuthModeWPAPSK) == 0 &&
-	    get_auth_mode(wnd) == Ndis802_11AuthModeWPAPSK)
-		set_bit(Ndis802_11AuthModeWPAPSK, &wnd->capa.auth);
+	if (set_ndis_auth_mode(wnd, Ndis802_11AuthModeWPAPSK) == 0 &&
+	    get_ndis_auth_mode(wnd) == Ndis802_11AuthModeWPAPSK)
+		set_bit(Ndis802_11AuthModeWPAPSK, &wnd->capa.encr);
 
 	/* check for highest encryption */
 	mode = 0;
-	if (set_encr_mode(wnd, Ndis802_11Encryption3Enabled) == 0 &&
-	    (i = get_encr_mode(wnd)) > 0 &&
+	if (set_iw_encr_mode(wnd, IW_AUTH_CIPHER_CCMP,
+			     IW_AUTH_CIPHER_NONE) == 0 &&
+	    (i = get_ndis_encr_mode(wnd)) > 0 &&
 	    (i == Ndis802_11Encryption3KeyAbsent ||
 	     i == Ndis802_11Encryption3Enabled))
 		mode = Ndis802_11Encryption3Enabled;
-	else if (set_encr_mode(wnd, Ndis802_11Encryption2Enabled) == 0 &&
-		 (i = get_encr_mode(wnd)) > 0 &&
+	else if (set_iw_encr_mode(wnd, IW_AUTH_CIPHER_TKIP,
+				  IW_AUTH_CIPHER_NONE) == 0 &&
+		 (i = get_ndis_encr_mode(wnd)) > 0 &&
 		 (i == Ndis802_11Encryption2KeyAbsent ||
 		  i == Ndis802_11Encryption2Enabled))
 		mode = Ndis802_11Encryption2Enabled;
-	else if (set_encr_mode(wnd, Ndis802_11Encryption1Enabled) == 0 &&
-		 (i = get_encr_mode(wnd)) > 0 &&
+	else if (set_iw_encr_mode(wnd, IW_AUTH_CIPHER_WEP104,
+				  IW_AUTH_CIPHER_NONE) == 0 &&
+		 (i = get_ndis_encr_mode(wnd)) > 0 &&
 		 (i == Ndis802_11Encryption1KeyAbsent ||
 		  i == Ndis802_11Encryption1Enabled))
 		mode = Ndis802_11Encryption1Enabled;
@@ -1276,8 +1280,8 @@ static void get_encryption_capa(struct wrap_ndis_device *wnd, char *buf,
 		set_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr);
 	/* not all drivers support OID_802_11_CAPABILITY, so we don't
 	 * know for sure if driver support WPA or WPAPSK; assume
-	 * WPA */
-	set_bit(Ndis802_11AuthModeWPA, &wnd->capa.auth);
+	 * WPAPSK */
+	set_bit(Ndis802_11AuthModeWPAPSK, &wnd->capa.auth);
 
 	memset(buf, 0, buf_len);
 	c = (struct ndis_capability *)buf;
@@ -1916,10 +1920,7 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
 		       ", WPA2PSK" : "");
 
-		set_infra_mode(wnd, Ndis802_11Infrastructure);
-		set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
-		set_auth_mode(wnd, Ndis802_11AuthModeOpen);
-		set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
+		set_default_iw_params(wnd);
 	}
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
@@ -2072,8 +2073,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->tx_ring_start = 0;
 	wnd->tx_ring_end = 0;
 	wnd->is_tx_ring_full = 0;
-	wnd->encr_mode = Ndis802_11EncryptionDisabled;
-	wnd->auth_mode = Ndis802_11AuthModeOpen;
 	wnd->capa.encr = 0;
 	wnd->capa.auth = 0;
 	wnd->attributes = 0;
