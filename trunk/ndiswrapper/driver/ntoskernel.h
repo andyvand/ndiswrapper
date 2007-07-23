@@ -400,6 +400,14 @@ typedef u32 pm_message_t;
 #define __GFP_DMA32 GFP_DMA
 #endif
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,22)
+#define wrap_kmem_cache_create(name, size, align, flags)	\
+	kmem_cache_create(name, size, align, flags, NULL, NULL)
+#else
+#define wrap_kmem_cache_create(name, size, align, flags)	\
+	kmem_cache_create(name, size, align, flags, NULL)
+#endif
+
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 #include "wrapmem.h"

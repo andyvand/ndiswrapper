@@ -1150,7 +1150,8 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 	lock = usb_lock_device_for_reset(wd->usb.udev, wd->usb.intf);
 	if (lock < 0) {
 		WARNING("locking failed: %d", lock);
-		return wrap_urb_status(lock);
+//		return wrap_urb_status(lock);
+		return USBD_STATUS_SUCCESS;
 	}
 #endif
 	ret = usb_reset_device(wd->usb.udev);
@@ -1161,7 +1162,8 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 	if (lock)
 		usb_unlock_device(wd->usb.udev);
 #endif
-	return wrap_urb_status(ret);
+//	return wrap_urb_status(ret);
+	return USBD_STATUS_SUCCESS;
 }
 
 static USBD_STATUS wrap_get_port_status(struct irp *irp)

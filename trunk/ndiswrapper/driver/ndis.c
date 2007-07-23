@@ -88,8 +88,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 		EXIT1(return NDIS_STATUS_RESOURCES);
 	wrap_driver->ndis_driver = ndis_driver;
 	TRACE1("driver: %p", ndis_driver);
-	memcpy(&ndis_driver->mp, mp, length > sizeof(*mp) ?
-	       sizeof(*mp) : length);
+	memcpy(&ndis_driver->mp, mp, min(sizeof(*mp), length));
 
 	DBG_BLOCK(2) {
 		int i;
@@ -786,7 +785,7 @@ wstdcall void WIN_FUNC(NdisMUnmapIoSpace,3)
 wstdcall void WIN_FUNC(NdisAllocateSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	TRACE4("lock %p, %lu", lock, lock->klock);
+	TRACE4("lock %p, %p", lock, &lock->klock);
 	KeInitializeSpinLock(&lock->klock);
 	lock->irql = PASSIVE_LEVEL;
 	EXIT4(return);
@@ -795,14 +794,14 @@ wstdcall void WIN_FUNC(NdisAllocateSpinLock,1)
 wstdcall void WIN_FUNC(NdisFreeSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	TRACE4("lock %p, %lu", lock, lock->klock);
+	TRACE4("lock %p, %p", lock, &lock->klock);
 	EXIT4(return);
 }
 
 wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	ENTER6("lock %p, %lu", lock, lock->klock);
+	ENTER6("lock %p, %p", lock, &lock->klock);
 //	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	lock->irql = nt_spin_lock_irql(&lock->klock, DISPATCH_LEVEL);
 	EXIT6(return);
@@ -811,7 +810,7 @@ wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
 wstdcall void WIN_FUNC(NdisReleaseSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	ENTER6("lock %p, %lu", lock, lock->klock);
+	ENTER6("lock %p, %p", lock, &lock->klock);
 //	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock_irql(&lock->klock, lock->irql);
 	EXIT6(return);
@@ -820,7 +819,7 @@ wstdcall void WIN_FUNC(NdisReleaseSpinLock,1)
 wstdcall void WIN_FUNC(NdisDprAcquireSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	ENTER6("lock %p", lock);
+	ENTER6("lock %p", &lock->klock);
 //	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_lock(&lock->klock);
 	EXIT6(return);
@@ -829,7 +828,7 @@ wstdcall void WIN_FUNC(NdisDprAcquireSpinLock,1)
 wstdcall void WIN_FUNC(NdisDprReleaseSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
-	ENTER6("lock %p", lock);
+	ENTER6("lock %p", &lock->klock);
 //	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock(&lock->klock);
 	EXIT6(return);
@@ -1019,10 +1018,11 @@ wstdcall void WIN_FUNC(NdisMAllocateSharedMemory,5)
 
 	ENTER3("size: %u, cached: %d", size, cached);
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &dma_addr);
-	if (!*virt)
+	if (*virt)
+		*phys = dma_addr;
+	else
 		WARNING("couldn't allocate %d bytes of %scached DMA memory",
 			size, cached ? "" : "un-");
-	*phys = dma_addr;
 	EXIT3(return);
 }
 
@@ -1031,7 +1031,7 @@ wstdcall void WIN_FUNC(NdisMFreeSharedMemory,5)
 	 void *virt, NDIS_PHY_ADDRESS addr)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
-	ENTER3("");
+	ENTER3("%p, %Lx, %u", virt, addr, size);
 	PCI_DMA_FREE_COHERENT(wd->pci.pdev, size, virt, addr);
 	EXIT3(return);
 }

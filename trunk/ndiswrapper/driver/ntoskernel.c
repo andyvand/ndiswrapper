@@ -600,6 +600,7 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
+	InitializeListHead(&kdpc->list);
 }
 
 static void kdpc_worker(worker_param_t dummy)
@@ -2592,9 +2593,10 @@ int ntoskernel_init(void)
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
-	mdl_cache = kmem_cache_create("wrap_mdl",
-				      sizeof(struct wrap_mdl) + MDL_CACHE_SIZE,
-				      0, 0, NULL, NULL);
+	mdl_cache =
+		wrap_kmem_cache_create("wrap_mdl",
+				       sizeof(struct wrap_mdl) + MDL_CACHE_SIZE,
+				       0, 0);
 	TRACE2("%p", mdl_cache);
 	if (!mdl_cache) {
 		ERROR("couldn't allocate MDL cache");
