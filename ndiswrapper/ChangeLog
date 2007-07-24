@@ -1,3 +1,10 @@
+Version 1.48 2007-XX-XX
+=======================	
+* Support for 2.6.23-rc1 kernel
+* Disassocation with wpa_supplicant is fixed (earlier, after disassociation,
+  the driver and ndiswrapper would be configured differently, requiring
+  unloading and reloading of ndiswrapper).
+
 Version 1.47 2007-06-12
 =======================	
 * Fixed random (occassional) crash issues with 64-bit drivers (observed with
