@@ -1883,23 +1883,14 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int priv_deauthenticate(struct net_device *dev,
+			       struct iw_request_info *info,
+			       union iwreq_data *wrqu, char *extra)
 {
 	int res;
-	struct wrap_ndis_device *wnd;
-
 	ENTER2("");
-	wnd = netdev_priv(dev);
-	res = 0;
-#if defined(CONFIG_USB) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	res = usb_reset_configuration(wnd->wd->usb.udev);
-	if (res) {
-		WARNING("reset failed: %08X", res);
-		return -EOPNOTSUPP;
-	}
-#endif
-	return 0;
+	res = deauthenticate(netdev_priv(dev));
+	return res;
 }
 
 static int priv_power_profile(struct net_device *dev,
@@ -2383,9 +2374,9 @@ static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "power_profile"},
+	{PRIV_DEAUTHENTICATE, 0, 0, "deauthenticate"},
 	{PRIV_NETWORK_TYPE, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "network_type"},
-	{PRIV_USB_RESET, 0, 0, "usb_reset"},
 	{PRIV_MEDIA_STREAM_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "media_stream"},
 
@@ -2408,8 +2399,8 @@ static const iw_handler priv_handler[] = {
 #endif
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
+	[PRIV_DEAUTHENTICATE	- SIOCIWFIRSTPRIV] = priv_deauthenticate,
 	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
-	[PRIV_USB_RESET		- SIOCIWFIRSTPRIV] = priv_usb_reset,
 	[PRIV_MEDIA_STREAM_MODE	- SIOCIWFIRSTPRIV] = priv_media_stream_mode,
 	[PRIV_RELOAD_DEFAULTS 	- SIOCIWFIRSTPRIV] = priv_reload_defaults,
 };
