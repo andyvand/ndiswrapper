@@ -1147,7 +1147,8 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			TRACE3("pool %p is full: %d(%d)", pool,
 			       pool->num_allocated_descr, pool->max_descr);
 #ifndef ALLOW_POOL_OVERFLOW
-			*status = NDIS_STATUS_RESOURCES;
+			*status = NDIS_STATUS_FAILURE;
+			*buffer = NULL;
 			return;
 #endif
 		}
@@ -1443,6 +1444,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		       pool->num_used_descr, pool->max_descr);
 #ifndef ALLOW_POOL_OVERFLOW
 		*status = NDIS_STATUS_RESOURCES;
+		*ndis_packet = NULL;
 		return;
 #endif
 	}
