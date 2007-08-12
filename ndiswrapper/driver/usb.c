@@ -527,12 +527,12 @@ static void wrap_urb_complete_worker(worker_param_t dummy)
 		case -ECONNRESET:
 			/* urb canceled */
 			irp->io_status.info = 0;
-			USBTRACE("urb %p canceled", urb);
+			TRACE2("urb %p canceled", urb);
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
 			irp->io_status.status = STATUS_CANCELLED;
 			break;
 		default:
-			USBTRACE("irp: %p, urb: %p, status: %d/%d",
+			TRACE2("irp: %p, urb: %p, status: %d/%d",
 				 irp, urb, urb->status, wrap_urb->state);
 			irp->io_status.info = 0;
 			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
@@ -562,7 +562,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 	udev = IRP_WRAP_DEVICE(irp)->usb.udev;
 	bulk_int_tx = &nt_urb->bulk_int_transfer;
 	pipe_handle = bulk_int_tx->pipe_handle;
-	USBTRACE("flags: %X, length: %u, buffer: %p, handle: %p",
+	USBTRACE("flags: 0x%x, length: %u, buffer: %p, handle: %p",
 		 bulk_int_tx->transfer_flags,
 		 bulk_int_tx->transfer_buffer_length,
 		 bulk_int_tx->transfer_buffer, pipe_handle);

@@ -44,6 +44,8 @@ typedef ULONG ndis_rts_threshold;
 typedef ULONG ndis_antenna;
 typedef ULONG ndis_oid;
 
+typedef UCHAR ndis_pmkid_vavlue[16];
+
 typedef uint64_t NDIS_PHY_ADDRESS;
 
 struct ndis_sg_element {
@@ -725,7 +727,16 @@ struct auth_encr_capa {
 	unsigned long encr;
 };
 
-enum driver_type { DRIVER_WIRELESS = 1, DRIVER_ETHERNET, };
+struct ndis_pmkid_candidate {
+	mac_address bssid;
+	DWORD flags;
+};
+
+struct ndis_pmkid_candidate_list {
+	ULONG version;
+	ULONG num_candidates;
+	struct ndis_pmkid_candidate candidates[1];
+};
 
 /*
  * This struct contains function pointers that the drivers references
@@ -891,17 +902,6 @@ struct wrap_ndis_device {
 	int drv_ndis_version;
 	struct ndis_pnp_capabilities pnp_capa;
 	char netdev_name[IFNAMSIZ];
-};
-
-struct ndis_pmkid_candidate {
-	mac_address bssid;
-	unsigned long flags;
-};
-
-struct ndis_pmkid_candidate_list {
-	unsigned long version;
-	unsigned long num_candidates;
-	struct ndis_pmkid_candidate candidates[1];
 };
 
 BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx) wstdcall;

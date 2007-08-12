@@ -156,7 +156,7 @@ struct ndis_auth_req {
 
 struct ndis_bssid_info {
 	mac_address bssid;
-	UCHAR pmkid[16];
+	ndis_pmkid_vavlue pmkid;
 };
 
 struct ndis_pmkid {
