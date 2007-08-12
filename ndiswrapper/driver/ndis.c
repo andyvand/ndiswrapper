@@ -1730,7 +1730,7 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 	(struct ndis_mp_timer *timer, UINT period_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(period_ms);
+	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
 	TIMERENTER("%p, %u, %ld", timer, period_ms, expires);
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
@@ -1764,7 +1764,7 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 wstdcall void WIN_FUNC(NdisSetTimer,2)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(duetime_ms);
+	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
 	TIMERENTER("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
 		   duetime_ms, expires);

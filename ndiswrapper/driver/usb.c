@@ -167,7 +167,7 @@ static USBD_STATUS wrap_urb_status(int urb_status)
 	case 0:
 		return USBD_STATUS_SUCCESS;
 	case -EPROTO:
-		return USBD_STATUS_BTSTUFF;
+		return USBD_STATUS_TIMEOUT;
 	case -EILSEQ:
 		return USBD_STATUS_CRC;
 	case -EPIPE:
