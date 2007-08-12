@@ -2027,6 +2027,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 		si = buf;
 		TRACE2("status_type=%d", si->status_type);
 		switch (si->status_type) {
+			int pairwise_error = 0, group_error = 0;
 		case Ndis802_11StatusType_MediaStreamMode:
 			break;
 #ifdef CONFIG_WIRELESS_EXT
@@ -2040,11 +2041,33 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 					TRACE2("reqauth");
 				if (auth_req->flags & 0x02)
 					TRACE2("keyupdate");
-				if (auth_req->flags & 0x06)
+				if (auth_req->flags & 0x06) {
+					pairwise_error = 1;
 					TRACE2("pairwise_error");
-				if (auth_req->flags & 0x0E)
+				}
+				if (auth_req->flags & 0x0E) {
+					group_error = 1;
 					TRACE2("group_error");
-				/* TODO: report to wpa_supplicant */
+				}
+				if (pairwise_error || group_error) {
+					union iwreq_data wrqu;
+					struct iw_michaelmicfailure micfailure;
+
+					memset(&micfailure, 0, sizeof(micfailure));
+					if (pairwise_error)
+						micfailure.flags |=
+							IW_MICFAILURE_PAIRWISE;
+					if (group_error)
+						micfailure.flags |=
+							IW_MICFAILURE_GROUP;
+					memcpy(micfailure.src_addr.sa_data,
+					       auth_req->bssid, ETH_ALEN);
+					memset(&wrqu, 0, sizeof(wrqu));
+					wrqu.data.length = sizeof(micfailure);
+					wireless_send_event(wnd->net_dev,
+							    IWEVMICHAELMICFAILURE,
+							    &wrqu, (u8 *)&micfailure);
+				}
 				len -= auth_req->length;
 				buf = (char *)buf + auth_req->length;
 			}
