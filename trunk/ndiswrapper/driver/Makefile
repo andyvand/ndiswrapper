@@ -99,7 +99,7 @@ ifdef USB_DEBUG
 CFLAGS += -DUSB_DEBUG
 endif
 
-# to debug I/O layer, add option "USB_DEBUG=1 DEBUG=<n>"
+# to debug I/O layer, add option "IO_DEBUG=1 DEBUG=<n>"
 ifdef IO_DEBUG
 CFLAGS += -DIO_DEBUG
 endif
