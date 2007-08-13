@@ -258,6 +258,8 @@ static void mp_halt(struct wrap_ndis_device *wnd)
 		WARNING("device %p is not initialized - not halting", wnd);
 		return;
 	}
+	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
+		disassociate(wnd, 0);
 	hangcheck_del(wnd);
 	del_iw_stats_timer(wnd);
 	mp = &wnd->wd->driver->ndis_driver->mp;
@@ -1948,11 +1950,6 @@ static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
-		up(&wnd->ndis_req_mutex);
-		disassociate(wnd, 0);
-		down_interruptible(&wnd->ndis_req_mutex);
-	}
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	wnd->tx_ok = 0;
 	if (wnd->max_tx_packets)
