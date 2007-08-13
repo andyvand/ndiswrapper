@@ -879,7 +879,9 @@ struct wrap_ndis_device {
 	struct ndis_essid essid;
 	struct auth_encr_capa capa;
 	enum network_infrastructure infrastructure_mode;
+	int max_pmkids;
 	int num_pmkids;
+	struct ndis_pmkid *pmkids;
 	mac_address mac;
 	struct proc_dir_entry *procfs_iface;
 
