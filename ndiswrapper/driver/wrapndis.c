@@ -1284,13 +1284,14 @@ static void get_encryption_capa(struct wrap_ndis_device *wnd, char *buf,
 	 * know for sure if driver support WPA or WPAPSK; assume
 	 * WPAPSK */
 	set_bit(Ndis802_11AuthModeWPAPSK, &wnd->capa.auth);
+	wnd->max_pmkids = 1;
 
 	memset(buf, 0, buf_len);
 	c = (struct ndis_capability *)buf;
 	res = mp_query(wnd, OID_802_11_CAPABILITY, buf, buf_len);
 	if (!(res == NDIS_STATUS_SUCCESS && c->version == 2))
 		EXIT1(return);
-	wnd->num_pmkids = c->num_PMKIDs;
+	wnd->max_pmkids = c->num_PMKIDs;
 
 	for (i = 0; i < c->num_auth_encr_pair; i++) {
 		struct ndis_auth_encr_pair *ae;
