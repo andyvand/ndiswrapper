@@ -1607,37 +1607,7 @@ static int iw_set_auth(struct net_device *dev,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	TRACE2("index=%d value=%d", wrqu->param.flags & IW_AUTH_INDEX,
 	       wrqu->param.value);
-	switch (wrqu->param.flags & IW_AUTH_INDEX) {
-	case IW_AUTH_WPA_VERSION:
-		wnd->iw_auth_wpa_version = wrqu->param.value;
-		break;
-	case IW_AUTH_CIPHER_PAIRWISE:
-		wnd->iw_auth_cipher_pairwise = wrqu->param.value;
-		break;
-	case IW_AUTH_CIPHER_GROUP:
-		wnd->iw_auth_cipher_group = wrqu->param.value;
-		break;
-	case IW_AUTH_KEY_MGMT:
-		wnd->iw_auth_key_mgmt = wrqu->param.value;
-		break;
-	case IW_AUTH_80211_AUTH_ALG:
-		wnd->iw_auth_80211_alg = wrqu->param.value;
-		break;
-	case IW_AUTH_WPA_ENABLED:
-		break;
-	case IW_AUTH_DROP_UNENCRYPTED:
-		break;
-	case IW_AUTH_TKIP_COUNTERMEASURES:
-	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
-	case IW_AUTH_PRIVACY_INVOKED:
-		TRACE2("%d not implemented", wrqu->param.flags & IW_AUTH_INDEX);
-		/* TODO */
-		break;
-	default:
-		WARNING("invalid cmd %d", wrqu->param.flags & IW_AUTH_INDEX);
-		return -EOPNOTSUPP;
-	}
-	return 0;
+	return set_iw_auth_mode(wnd, wrqu->param.value, wrqu->param.value);
 }
 
 static int iw_get_auth(struct net_device *dev,

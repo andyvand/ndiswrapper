@@ -2027,7 +2027,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 		si = buf;
 		TRACE2("status_type=%d", si->status_type);
 		switch (si->status_type) {
-			int pairwise_error = 0, group_error = 0;
 		case Ndis802_11StatusType_MediaStreamMode:
 			break;
 #ifdef CONFIG_WIRELESS_EXT
@@ -2035,6 +2034,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			buf = (char *)buf + sizeof(*si);
 			len -= sizeof(*si);
 			while (len > 0) {
+				int pairwise_error = 0, group_error = 0;
 				auth_req = (struct ndis_auth_req *)buf;
 				TRACE1(MACSTRSEP, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
@@ -2049,6 +2049,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 					group_error = 1;
 					TRACE2("group_error");
 				}
+#if WIRELESS_EXT > 17
 				if (pairwise_error || group_error) {
 					union iwreq_data wrqu;
 					struct iw_michaelmicfailure micfailure;
@@ -2068,6 +2069,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 							    IWEVMICHAELMICFAILURE,
 							    &wrqu, (u8 *)&micfailure);
 				}
+#endif
 				len -= auth_req->length;
 				buf = (char *)buf + auth_req->length;
 			}
