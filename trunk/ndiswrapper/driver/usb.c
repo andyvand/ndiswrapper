@@ -893,13 +893,41 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 		pipe->bEndpointAddress = ep->bEndpointAddress;
 		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		if (pipe->type == UsbdPipeTypeInterrupt) {
-			/* for low speed devices, Linux sets bInterval
-			 * as frames per second, whereas Windows
-			 * interprets it as milliseconds */
+			/* Windows and Linux differ in how the
+			 * bInterval is interpretted */
+			/* for low speed:
+			   interval (Windows) -> frames per ms (Linux)
+			   0 to 15    -> 8
+			   16 to 35   -> 16
+			   36 to 255  -> 32
+
+			   for full speed: interval -> frames per ms
+			   1          -> 1
+			   2 to 3     -> 2
+			   4 to 7     -> 4
+			   8 to 15    -> 8
+			   16 to 31   -> 16
+			   32 to 255  -> 32
+
+			   for high speed: interval -> microframes
+			   1          -> 1
+			   2          -> 2
+			   3          -> 4
+			   4          -> 8
+			   5          -> 16
+			   6          -> 32
+			   7 to 255   -> 32
+			*/
 			if (wd->usb.udev->speed == USB_SPEED_LOW)
-				pipe->bInterval = 1 << (ep->bInterval - 1);
-			else
+				pipe->bInterval = ep->bInterval + 5;
+			else if (wd->usb.udev->speed == USB_SPEED_FULL)
 				pipe->bInterval = ep->bInterval;
+			else {
+				int i, j;
+				for (i = j = 1; j < ep->bInterval; i++)
+					j *= 2;
+				pipe->bInterval = i;
+			}
 		}
 		pipe->handle = ep;
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
