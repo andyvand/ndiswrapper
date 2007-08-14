@@ -1989,6 +1989,8 @@ static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeBufferPool(wnd->tx_buffer_pool);
 		wnd->tx_buffer_pool = NULL;
 	}
+	if (wnd->pmkids)
+		kfree(wnd->pmkids);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	kfree(wnd->nmb);
