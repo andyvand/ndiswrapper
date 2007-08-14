@@ -1808,52 +1808,51 @@ static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 		if (wnd->num_pmkids >= wnd->max_pmkids)
 			return -EOPNOTSUPP;
 		length = sizeof(*pmkids) +
-			wnd->num_pmkids * sizeof(pmkids->bssid_info);
+			wnd->num_pmkids * sizeof(*bssid_info);
 		pmkids = kmalloc(length, GFP_KERNEL);
 		if (!pmkids)
 			return -ENOMEM;
 		if (wnd->pmkids) {
 			memcpy(pmkids->bssid_info, wnd->pmkids->bssid_info,
-			       length - sizeof(pmkids->bssid_info));
-			pmkids->length = length;
-			pmkids->bssid_info_count = wnd->num_pmkids + 1;
+			       length - sizeof(*bssid_info));
 			kfree(wnd->pmkids);
 			wnd->pmkids = pmkids;
 		}
 		bssid_info = &pmkids->bssid_info[wnd->num_pmkids];
 		memcpy(bssid_info->bssid, pmksa->bssid.sa_data, ETH_ALEN);
 		memcpy(bssid_info->pmkid, pmksa->pmkid, IW_PMKID_LEN);
-		wnd->num_pmkids++;
+		pmkids->length = length;
+		pmkids->bssid_info_count = ++wnd->num_pmkids;
 	} else if (pmksa->cmd == IW_PMKSA_REMOVE) {
 		int i;
 		if (wnd->num_pmkids <= 1)
 			return -EINVAL;
 		assert(wnd->pmkids);
 		length = sizeof(*pmkids) +
-			(wnd->num_pmkids - 1) * sizeof(pmkids->bssid_info);
+			(wnd->num_pmkids - 1) * sizeof(*bssid_info);
 		pmkids = kmalloc(length, GFP_KERNEL);
 		if (!pmkids)
 			return -ENOMEM;
-		bssid_info = &wnd->pmkids->bssid_info[0];
+		bssid_info = &pmkids->bssid_info[0];
 		for (i = 0; i < wnd->num_pmkids; i++) {
-			if (memcmp(bssid_info->bssid, pmksa->bssid.sa_data,
-				   ETH_ALEN) == 0 &&
-			    memcmp(bssid_info->pmkid, pmksa->pmkid,
-				   IW_PMKID_LEN) == 0)
+			struct bssid_info *bi = &wnd->pmkids->bssid_info[i];
+			if ((memcmp(bi->bssid, pmksa->bssid.sa_data,
+				    ETH_ALEN) == 0) &&
+			    (memcmp(bi->pmkid, pmksa->pmkid, IW_PMKID_LEN) == 0))
 				continue;
-			memcpy(&pmkids->bssid_info[i], bssid_info,
-			       sizeof(*bssid_info));
+			memcpy(bssid_info, bi, sizeof(*bssid_info));
+			bssid_info++;
 		}
-		kfree(wnd->pmkids);
 		pmkids->length = length;
-		pmkids->bssid_info_count = wnd->num_pmkids - 1;
+		kfree(wnd->pmkids);
 		wnd->pmkids = pmkids;
-		wnd->num_pmkids--;
+		pmkids->bssid_info_count = --wnd->num_pmkids;
 	} else if (pmksa->cmd == IW_PMKSA_FLUSH) {
 		if (wnd->pmkids)
 			kfree(wnd->pmkids);
 		wnd->pmkids = NULL;
 		wnd->num_pmkids = 0;
+		return 0;
 	} else {
 		TRACE1("invalid cmd: 0x%x", pmksa->cmd);
 		return -EINVAL;
