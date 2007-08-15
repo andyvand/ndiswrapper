@@ -1835,7 +1835,7 @@ static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 			return -ENOMEM;
 		bssid_info = &pmkids->bssid_info[0];
 		for (i = 0; i < wnd->num_pmkids; i++) {
-			struct bssid_info *bi = &wnd->pmkids->bssid_info[i];
+			struct ndis_bssid_info *bi = &wnd->pmkids->bssid_info[i];
 			if ((memcmp(bi->bssid, pmksa->bssid.sa_data,
 				    ETH_ALEN) == 0) &&
 			    (memcmp(bi->pmkid, pmksa->pmkid, IW_PMKID_LEN) == 0))
