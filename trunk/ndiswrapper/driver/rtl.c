@@ -21,8 +21,6 @@ wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
 	size_t i;
 	char *x, *y;
 
-	ENTER1("");
-
 	x = (char *)a;
 	y = (char *)b;
 	/* MSDN says this should return number of bytes that compare as

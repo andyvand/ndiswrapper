@@ -148,8 +148,6 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 		WARNING("getting operating mode to failed (%08X)", res);
 		EXIT2(return -EINVAL);
 	}
-	if (wnd->infrastructure_mode == mode)
-		EXIT2(return 0);
 
 	res = mp_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
