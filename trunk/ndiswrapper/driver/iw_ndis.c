@@ -148,20 +148,23 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 		WARNING("getting operating mode to failed (%08X)", res);
 		EXIT2(return -EINVAL);
 	}
-
 	res = mp_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
 		WARNING("setting operating mode to %d failed (%08X)",
 			mode, res);
 		EXIT2(return -EINVAL);
 	}
+	set_essid(wnd, "", 0);
 	/* NDIS drivers clear keys when infrastructure mode is
 	 * changed. But Linux tools assume otherwise. So set the
 	 * keys */
-	for (i = 0; i < MAX_ENCR_KEYS; i++) {
-		if (wnd->encr_info.keys[i].length > 0)
-			add_wep_key(wnd, wnd->encr_info.keys[i].key,
-				    wnd->encr_info.keys[i].length, i);
+	if (wnd->iw_auth_key_mgmt == 0 ||
+	    wnd->iw_auth_key_mgmt == IW_AUTH_KEY_MGMT_802_1X) {
+		for (i = 0; i < MAX_ENCR_KEYS; i++) {
+			if (wnd->encr_info.keys[i].length > 0)
+				add_wep_key(wnd, wnd->encr_info.keys[i].key,
+					    wnd->encr_info.keys[i].length, i);
+		}
 	}
 	wnd->infrastructure_mode = mode;
 	EXIT2(return 0);
@@ -1538,7 +1541,7 @@ NDIS_STATUS disassociate(struct wrap_ndis_device *wnd, int reset_ssid)
 			buf[i] = 'a' + (buf[i] % 26);
 		set_essid(wnd, buf, sizeof(buf));
 	}
-	return 0;
+	return res;
 }
 
 ULONG ndis_priv_mode(struct wrap_ndis_device *wnd)
@@ -1626,7 +1629,8 @@ static int iw_set_auth(struct net_device *dev,
 	case IW_AUTH_DROP_UNENCRYPTED:
 	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
 	case IW_AUTH_PRIVACY_INVOKED:
-		TRACE2("%d not implemented", wrqu->param.flags & IW_AUTH_INDEX);
+		TRACE2("%d not implemented: %d",
+		       wrqu->param.flags & IW_AUTH_INDEX, wrqu->param.value);
 		break;
 	default:
 		WARNING("invalid cmd %d", wrqu->param.flags & IW_AUTH_INDEX);

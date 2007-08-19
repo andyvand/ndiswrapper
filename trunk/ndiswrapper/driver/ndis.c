@@ -2090,7 +2090,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			}
 
 			end = (u8 *)buf + len;
-			TRACE2("PMKID_CANDIDATE_LIST ver %ld num_cand %ld",
+			TRACE2("PMKID_CANDIDATE_LIST ver %d num_cand %d",
 			       cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
 #if WIRELESS_EXT > 17
@@ -2103,7 +2103,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 					TRACE2("Truncated PMKID_CANDIDATE_LIST");
 					break;
 				}
-				TRACE2("%ld: " MACSTRSEP " 0x%lx",
+				TRACE2("%ld: " MACSTRSEP " 0x%x",
 				       i, MAC2STR(c->bssid), c->flags);
 #if WIRELESS_EXT > 17
 				memset(&pcand, 0, sizeof(pcand));
