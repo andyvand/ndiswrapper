@@ -245,6 +245,7 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 		wnd->ndis_wolopts = 0;
 	}
+	mp_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	EXIT1(return NDIS_STATUS_SUCCESS);
 }
 
