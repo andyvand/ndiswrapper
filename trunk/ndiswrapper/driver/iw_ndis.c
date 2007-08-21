@@ -154,7 +154,6 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 			mode, res);
 		EXIT2(return -EINVAL);
 	}
-	set_essid(wnd, "", 0);
 	/* NDIS drivers clear keys when infrastructure mode is
 	 * changed. But Linux tools assume otherwise. So set the
 	 * keys */
