@@ -1129,6 +1129,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
 	if (!pool) {
 		*status = NDIS_STATUS_FAILURE;
+		*buffer = NULL;
 		EXIT4(return);
 	}
 	nt_spin_lock_bh(&pool->lock);
@@ -1156,9 +1157,10 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
 			*status = NDIS_STATUS_FAILURE;
+			*buffer = NULL;
 			EXIT4(return);
 		}
-		TRACE4("allocated buffer %p for %p, %d", descr, virt, length);
+		TRACE4("buffer %p for %p, %d", descr, virt, length);
 		atomic_inc_var(pool->num_allocated_descr);
 	}
 	/* TODO: make sure this mdl can map given buffer */
