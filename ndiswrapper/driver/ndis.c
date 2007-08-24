@@ -469,7 +469,6 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	 enum ndis_parameter_type type)
 {
 	struct ansi_string ansi;
-	char *keyname;
 	int ret;
 
 	ENTER2("nmb: %p", nmb);
@@ -480,16 +479,15 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 		RtlFreeAnsiString(&ansi);
 		EXIT2(return);
 	}
-	TRACE3("%d, %s", type, ansi.buf);
-	keyname = ansi.buf;
+	TRACE2("%d, %s", type, ansi.buf);
 
-	if (read_setting(&nmb->wnd->wd->settings, keyname,
+	if (read_setting(&nmb->wnd->wd->settings, ansi.buf,
 			 ansi.length, param, type) == 0 ||
-	    read_setting(&nmb->wnd->wd->driver->settings, keyname,
+	    read_setting(&nmb->wnd->wd->driver->settings, ansi.buf,
 			 ansi.length, param, type) == 0)
 		*status = NDIS_STATUS_SUCCESS;
 	else {
-		TRACE2("setting %s not found (type:%d)", keyname, type);
+		TRACE2("setting %s not found (type:%d)", ansi.buf, type);
 		*status = NDIS_STATUS_FAILURE;
 	}
 	RtlFreeAnsiString(&ansi);
@@ -1145,7 +1143,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
 		if (pool->num_allocated_descr > pool->max_descr) {
-			TRACE3("pool %p is full: %d(%d)", pool,
+			TRACE2("pool %p is full: %d(%d)", pool,
 			       pool->num_allocated_descr, pool->max_descr);
 #ifndef ALLOW_POOL_OVERFLOW
 			*status = NDIS_STATUS_FAILURE;
@@ -1438,6 +1436,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	ENTER4("pool: %p", pool);
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
+		*ndis_packet = NULL;
 		EXIT4(return);
 	}
 	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
@@ -1468,6 +1467,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		if (!packet) {
 			WARNING("couldn't allocate packet");
 			*status = NDIS_STATUS_RESOURCES;
+			*ndis_packet = NULL;
 			return;
 		}
 		atomic_inc_var(pool->num_allocated_descr);
@@ -1792,9 +1792,10 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	struct ndis_configuration_parameter *param;
 	struct unicode_string key;
 	struct ansi_string ansi;
+	int int_mac[ETH_ALEN];
 	int ret;
 
-	ENTER1("");
+	ENTER2("%p", nmb);
 	RtlInitAnsiString(&ansi, "NetworkAddress");
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
@@ -1803,29 +1804,24 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 
 	NdisReadConfiguration(status, &param, nmb, &key, NdisParameterString);
 	RtlFreeUnicodeString(&key);
+	if (*status != NDIS_STATUS_SUCCESS)
+		EXIT1(return);
+	ret = RtlUnicodeStringToAnsiString(&ansi, &param->data.string, TRUE);
+	if (ret != STATUS_SUCCESS)
+		EXIT1(return);
 
-	if (*status == NDIS_STATUS_SUCCESS) {
-		int int_mac[ETH_ALEN];
-		ret = RtlUnicodeStringToAnsiString(&ansi, &param->data.string,
-						   TRUE);
-		if (ret != STATUS_SUCCESS)
-			EXIT1(return);
-
-		ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
-		RtlFreeAnsiString(&ansi);
-		if (ret == ETH_ALEN) {
-			int i;
-			for (i = 0; i < ETH_ALEN; i++)
-				wnd->mac[i] = int_mac[i];
-			printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP
-			       "\n", wnd->net_dev->name, DRIVER_NAME,
-			       MAC2STR(wnd->mac));
-			*len = ETH_ALEN;
-			*addr = wnd->mac;
-			*status = NDIS_STATUS_SUCCESS;
-		}
+	ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
+	RtlFreeAnsiString(&ansi);
+	if (ret == ETH_ALEN) {
+		int i;
+		for (i = 0; i < ETH_ALEN; i++)
+			wnd->mac[i] = int_mac[i];
+		printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP "\n",
+		       wnd->net_dev->name, DRIVER_NAME, MAC2STR(wnd->mac));
+		*len = ETH_ALEN;
+		*addr = wnd->mac;
+		*status = NDIS_STATUS_SUCCESS;
 	}
-
 	EXIT1(return);
 }
 
