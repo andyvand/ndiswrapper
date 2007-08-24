@@ -272,6 +272,10 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
 	}
 
+	list_for_each_entry(setting, &wnd->wd->driver->settings, list) {
+		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
+	}
+
 	return (p - page);
 }
 
