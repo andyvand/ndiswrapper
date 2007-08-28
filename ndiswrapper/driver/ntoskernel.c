@@ -543,8 +543,8 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
 	unsigned long expires_hz, repeat_hz;
 
 	TIMERENTER("%p, %Ld, %d", nt_timer, duetime_ticks, period_ms);
-	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks) + 1;
-	repeat_hz = MSEC_TO_HZ(period_ms) + 1;
+	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	repeat_hz = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(nt_timer, expires_hz, repeat_hz, kdpc);
 }
 
@@ -1136,7 +1136,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	if (timeout == NULL)
 		wait_hz = 0;
 	else
-		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
+		wait_hz = SYSTEM_TIME_TO_HZ(*timeout);
 
 	DBG_BLOCK(2) {
 		KIRQL irql = current_irql();
@@ -1366,7 +1366,7 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 	if (wait_mode != 0)
 		ERROR("invalid wait_mode %d", wait_mode);
 
-	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
+	timeout = SYSTEM_TIME_TO_HZ(*interval);
 	EVENTTRACE("%p, %Ld, %ld", current, *interval, timeout);
 	if (timeout <= 0)
 		EVENTEXIT(return STATUS_SUCCESS);

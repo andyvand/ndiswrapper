@@ -148,6 +148,8 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 		WARNING("getting operating mode to failed (%08X)", res);
 		EXIT2(return -EINVAL);
 	}
+	if (wnd->infrastructure_mode == mode)
+		EXIT2(return 0);
 	res = mp_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
 		WARNING("setting operating mode to %d failed (%08X)",
@@ -1297,7 +1299,6 @@ static int iw_set_power_mode(struct net_device *dev,
 	NDIS_STATUS res;
 	ULONG power_mode;
 
-	ENTER2("");
 	if (wrqu->power.disabled == 1)
 		power_mode = NDIS_POWER_OFF;
 	else if (wrqu->power.flags & IW_POWER_MIN)
@@ -1305,6 +1306,7 @@ static int iw_set_power_mode(struct net_device *dev,
 	else // if (wrqu->power.flags & IW_POWER_MAX)
 		power_mode = NDIS_POWER_MAX;
 
+	TRACE2("%d", power_mode);
 	res = mp_set(wnd, OID_802_11_POWER_MODE,
 		     &power_mode, sizeof(power_mode));
 	if (res)

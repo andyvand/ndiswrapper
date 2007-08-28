@@ -1732,7 +1732,7 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 	(struct ndis_mp_timer *timer, UINT period_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
+	unsigned long expires = MSEC_TO_HZ(period_ms);
 
 	TIMERENTER("%p, %u, %ld", timer, period_ms, expires);
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
@@ -1766,7 +1766,7 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 wstdcall void WIN_FUNC(NdisSetTimer,2)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
+	unsigned long expires = MSEC_TO_HZ(duetime_ms);
 
 	TIMERENTER("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
 		   duetime_ms, expires);
@@ -2006,15 +2006,11 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	ENTER2("status=0x%x len=%d", status, len);
 	switch (status) {
 	case NDIS_STATUS_MEDIA_DISCONNECT:
-		if (!netif_carrier_ok(wnd->net_dev))
-			break;
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
-		if (netif_carrier_ok(wnd->net_dev))
-			break;
 		netif_carrier_on(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
