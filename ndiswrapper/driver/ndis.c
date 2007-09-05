@@ -2010,8 +2010,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_DISCONNECT:
-		netif_stop_queue(wnd->net_dev);
 		netif_carrier_off(wnd->net_dev);
+		netif_stop_queue(wnd->net_dev);
 		set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
