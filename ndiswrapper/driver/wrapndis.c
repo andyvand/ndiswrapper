@@ -802,7 +802,7 @@ static int ndis_net_dev_open(struct net_device *net_dev)
 		WARNING("couldn't set packet filter");
 		return -ENODEV;
 	}
-	netif_wake_queue(net_dev);
+	netif_start_queue(net_dev);
 	netif_poll_enable(net_dev);
 	EXIT1(return 0);
 }

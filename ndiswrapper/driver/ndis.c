@@ -88,7 +88,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 		EXIT1(return NDIS_STATUS_RESOURCES);
 	wrap_driver->ndis_driver = ndis_driver;
 	TRACE1("driver: %p", ndis_driver);
-	memcpy(&ndis_driver->mp, mp, min(sizeof(*mp), length));
+	memcpy(&ndis_driver->mp, mp, min_t(int, sizeof(*mp), length));
 
 	DBG_BLOCK(2) {
 		int i;
