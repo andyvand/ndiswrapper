@@ -798,10 +798,7 @@ static int ndis_net_dev_open(struct net_device *net_dev)
 	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
 
 	ENTER1("%p", wnd);
-	if (set_packet_filter(wnd, wnd->packet_filter)) {
-		WARNING("couldn't set packet filter");
-		return -ENODEV;
-	}
+	netif_start_queue(net_dev);
 	netif_poll_enable(net_dev);
 	EXIT1(return 0);
 }
@@ -997,8 +994,10 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 
 	ENTER2("");
 	netif_carrier_on(wnd->net_dev);
+	wnd->tx_ok = 1;
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan) {
-		netif_start_queue(wnd->net_dev);
+		if (netif_queue_stopped(wnd->net_dev))
+			netif_wake_queue(wnd->net_dev);
 		EXIT2(return);
 	}
 
@@ -1070,7 +1069,8 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 	TRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
 #endif
-	netif_start_queue(wnd->net_dev);
+	if (netif_queue_stopped(wnd->net_dev))
+		netif_wake_queue(wnd->net_dev);
 	EXIT2(return);
 }
 
@@ -1913,7 +1913,6 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 			tx_header_offset, sizeof(*tx_header_offset));
 	TRACE2("%08X", status);
 
-	wnd->tx_ok = 1;
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		mp_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 		get_encryption_capa(wnd, buf, buf_len);
