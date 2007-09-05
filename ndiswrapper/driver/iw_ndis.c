@@ -1744,7 +1744,7 @@ static int iw_set_encodeext(struct net_device *dev,
 	} else {
 		/* pairwise key */
 		ndis_key.index |= (1 << 30);
-		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
+		memcpy(ndis_key.bssid, addr, ETH_ALEN);
 	}
 
 	TRACE2("bssid " MACSTRSEP, MAC2STR(ndis_key.bssid));
@@ -1770,7 +1770,7 @@ static int iw_set_encodeext(struct net_device *dev,
 	}
 	wnd->encr_info.keys[keyidx].length = ext.key_len;
 	memcpy(&wnd->encr_info.keys[keyidx].key,
-	       &ndis_key.key, ext.key_len);
+	       ndis_key.key, ext.key_len);
 	if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
 		wnd->encr_info.tx_key_index = keyidx;
 	TRACE2("key %d added", keyidx);

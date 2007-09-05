@@ -802,7 +802,6 @@ static int ndis_net_dev_open(struct net_device *net_dev)
 		WARNING("couldn't set packet filter");
 		return -ENODEV;
 	}
-	netif_start_queue(net_dev);
 	netif_poll_enable(net_dev);
 	EXIT1(return 0);
 }
@@ -958,14 +957,38 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 	EXIT2(return);
 }
 
-static void link_status_handler(struct wrap_ndis_device *wnd)
+static void link_status_off(struct wrap_ndis_device *wnd)
+{
+	union iwreq_data wrqu;
+	int i;
+
+	memset(&wrqu, 0, sizeof(wrqu));
+	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
+	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
+	/* In IBSS (ad-hoc) mode, it may be desirable to have
+	 * one node configured for association, but drivers
+	 * disassociate if last node disassociates; to
+	 * configure again, set essid */
+	if (wnd->infrastructure_mode == Ndis802_11IBSS &&
+	    wnd->essid.length > 0) {
+		set_essid(wnd, wnd->essid.essid, wnd->essid.length);
+		for (i = 0; i < MAX_ENCR_KEYS; i++) {
+			if (wnd->encr_info.keys[i].length <= 0)
+				continue;
+			add_wep_key(wnd, wnd->encr_info.keys[i].key,
+				    wnd->encr_info.keys[i].length, i);
+		}
+	}
+	EXIT2(return);
+}
+
+static void link_status_on(struct wrap_ndis_device *wnd)
 {
 #ifdef CONFIG_WIRELESS_EXT
 	struct ndis_assoc_info *ndis_assoc_info;
 	union iwreq_data wrqu;
 	NDIS_STATUS res;
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX + 32;
-	int i;
 #if WIRELESS_EXT <= 17
 	unsigned char *wpa_assoc_info, *ies;
 	unsigned char *p;
@@ -974,26 +997,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	ENTER2("link: %d", netif_carrier_ok(wnd->net_dev));
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		EXIT2(return);
-	if (!netif_carrier_ok(wnd->net_dev)) {
-		memset(&wrqu, 0, sizeof(wrqu));
-		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
-		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-		/* In IBSS (ad-hoc) mode, it may be desirable to have
-		 * one node configured for association, but drivers
-		 * disassociate if last node disassociates; to
-		 * configure again, set essid */
-		if (wnd->infrastructure_mode == Ndis802_11IBSS &&
-		    wnd->essid.length > 0) {
-			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
-			for (i = 0; i < MAX_ENCR_KEYS; i++) {
-				if (wnd->encr_info.keys[i].length <= 0)
-					continue;
-				add_wep_key(wnd, wnd->encr_info.keys[i].key,
-					    wnd->encr_info.keys[i].length, i);
-			}
-		}
-		EXIT2(return);
-	}
 
 	ndis_assoc_info = kzalloc(assoc_size, GFP_KERNEL);
 	if (!ndis_assoc_info) {
@@ -1145,15 +1148,19 @@ static void wrap_ndis_worker(worker_param_t param)
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
 		WORKEXIT(return);
 
-	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))
-		set_multicast_list(wnd);
+	if (test_and_clear_bit(LINK_STATUS_OFF,
+			       &wnd->wrap_ndis_pending_work))
+		link_status_off(wnd);
+
+	if (test_and_clear_bit(LINK_STATUS_ON,
+			       &wnd->wrap_ndis_pending_work))
+		link_status_on(wnd);
 
 	if (test_and_clear_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work))
 		update_iw_stats(wnd);
 
-	if (test_and_clear_bit(LINK_STATUS_CHANGED,
-			       &wnd->wrap_ndis_pending_work))
-		link_status_handler(wnd);
+	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))
+		set_multicast_list(wnd);
 
 	if (test_and_clear_bit(HANGCHECK, &wnd->wrap_ndis_pending_work)) {
 		struct miniport *mp;
