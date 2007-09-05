@@ -280,8 +280,8 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		if (ret) {
 			up(&loader_mutex);
 			ERROR("couldn't load file %s/%s; check system log "
-			      "for messages from 'loadndisdriver'",
-			      driver->name, driver->bin_files[i].name);
+			      "for messages from 'loadndisdriver' (%d)",
+			      driver->name, driver->bin_files[i].name, ret);
 			EXIT1(return NULL);
 		}
 		wait_for_completion(&loader_complete);
