@@ -92,6 +92,7 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	int irp_size;
 
 	IOENTER("count: %d", stack_count);
+	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
 	irp = kmalloc(irp_size, irql_gfp());
 	if (irp)
