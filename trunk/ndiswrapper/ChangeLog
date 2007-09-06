@@ -4,6 +4,8 @@ Version 1.48 2007-XX-XX
 * Disassocation with wpa_supplicant is fixed (earlier, after disassociation,
   the driver and ndiswrapper would be configured differently, requiring
   unloading and reloading of ndiswrapper).
+* (Re)Association / (Re)Authentication issues with wpa_supplicant with
+  2.6.23 kernels fixed
 
 Version 1.47 2007-06-12
 =======================	
