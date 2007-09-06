@@ -136,7 +136,7 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 }
 
 int set_infra_mode(struct wrap_ndis_device *wnd,
-		   enum network_infrastructure mode)
+		   enum ndis_infrastructure_mode mode)
 {
 	NDIS_STATUS res;
 	unsigned int i;
@@ -176,9 +176,9 @@ static int iw_set_infra_mode(struct net_device *dev,
 			     union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	enum network_infrastructure ndis_mode;
+	enum ndis_infrastructure_mode ndis_mode;
 
-	ENTER2("");
+	ENTER2("%d", wrqu->mode);
 	switch (wrqu->mode) {
 	case IW_MODE_ADHOC:
 		ndis_mode = Ndis802_11IBSS;

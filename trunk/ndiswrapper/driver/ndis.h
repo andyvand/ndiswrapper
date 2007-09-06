@@ -626,7 +626,7 @@ struct ndis_essid {
 	UCHAR essid[NDIS_ESSID_MAX_SIZE];
 };
 
-enum network_infrastructure {
+enum ndis_infrastructure_mode {
 	Ndis802_11IBSS, Ndis802_11Infrastructure, Ndis802_11AutoUnknown,
 	Ndis802_11InfrastructureMax
 };
@@ -878,7 +878,7 @@ struct wrap_ndis_device {
 	char nick[IW_ESSID_MAX_SIZE];
 	struct ndis_essid essid;
 	struct auth_encr_capa capa;
-	enum network_infrastructure infrastructure_mode;
+	enum ndis_infrastructure_mode infrastructure_mode;
 	int max_pmkids;
 	int num_pmkids;
 	struct ndis_pmkid *pmkids;

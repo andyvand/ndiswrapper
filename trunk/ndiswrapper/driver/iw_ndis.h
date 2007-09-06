@@ -169,7 +169,7 @@ int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		int index);
 int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len);
 int set_infra_mode(struct wrap_ndis_device *wnd,
-		   enum network_infrastructure mode);
+		   enum ndis_infrastructure_mode mode);
 int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
 int set_ndis_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode);
 int set_iw_auth_mode(struct wrap_ndis_device *wnd, int wpa_version,

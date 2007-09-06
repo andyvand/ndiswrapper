@@ -346,7 +346,6 @@ endif
 
 stack_check:
 	@if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ] && \
-	     ! grep -q CONFIG_4KSTACKS $(KBUILD)/.config || \
 	       grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
 	    echo; echo; \
 	    echo "*** WARNING: This kernel seems to use 4K stack size"\
