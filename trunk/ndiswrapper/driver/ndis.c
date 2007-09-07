@@ -2013,6 +2013,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 		wnd->tx_ok = 0;
 		netif_carrier_off(wnd->net_dev);
 		netif_stop_queue(wnd->net_dev);
+		clear_bit(LINK_STATUS_ON, &wnd->wrap_ndis_pending_work);
 		set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
@@ -2513,15 +2514,15 @@ wstdcall void NdisMSetInformationComplete(struct ndis_mp_block *nmb,
 					  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	ENTER2("status = %08X", status);
 
+	ENTER2("status = %08X", status);
 	wnd->ndis_req_status = status;
 	wnd->ndis_req_done = 1;
 	if (wnd->ndis_req_task)
 		wake_up_process(wnd->ndis_req_task);
 	else
 		WARNING("invalid task");
-	EXIT3(return);
+	EXIT2(return);
 }
 
 /* called via function pointer */
@@ -2530,14 +2531,14 @@ wstdcall void NdisMResetComplete(struct ndis_mp_block *nmb,
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
-	ENTER3("status: %08X, %u", status, address_reset);
+	ENTER2("status: %08X, %u", status, address_reset);
 	wnd->ndis_req_status = status;
 	wnd->ndis_req_done = address_reset + 1;
 	if (wnd->ndis_req_task)
 		wake_up_process(wnd->ndis_req_task);
 	else
 		WARNING("invalid task");
-	EXIT3(return);
+	EXIT2(return);
 }
 
 wstdcall void WIN_FUNC(NdisMSleep,1)

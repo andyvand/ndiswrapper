@@ -795,9 +795,7 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 
 static int ndis_net_dev_open(struct net_device *net_dev)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
-
-	ENTER1("%p", wnd);
+	ENTER1("%p", netdev_priv(net_dev));
 	netif_start_queue(net_dev);
 	netif_poll_enable(net_dev);
 	EXIT1(return 0);
