@@ -993,6 +993,7 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	ENTER2("");
 	netif_carrier_on(wnd->net_dev);
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan) {
+		wnd->tx_ok = 1;
 		if (netif_queue_stopped(wnd->net_dev))
 			netif_wake_queue(wnd->net_dev);
 		EXIT2(return);
