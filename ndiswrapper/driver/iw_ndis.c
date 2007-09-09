@@ -1521,8 +1521,8 @@ static int deauthenticate(struct wrap_ndis_device *wnd)
 	int ret;
 
 	ENTER2("");
-	set_default_iw_params(wnd);
 	ret = disassociate(wnd, 1);
+	set_default_iw_params(wnd);
 	EXIT2(return ret);
 }
 

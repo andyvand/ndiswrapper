@@ -992,7 +992,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 
 	ENTER2("");
 	netif_carrier_on(wnd->net_dev);
-	wnd->tx_ok = 1;
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan) {
 		if (netif_queue_stopped(wnd->net_dev))
 			netif_wake_queue(wnd->net_dev);
@@ -1067,6 +1066,7 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 	TRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
 #endif
+	wnd->tx_ok = 1;
 	if (netif_queue_stopped(wnd->net_dev))
 		netif_wake_queue(wnd->net_dev);
 	EXIT2(return);

@@ -1453,14 +1453,8 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
 	nt_spin_lock_bh(&pool->lock);
-	if ((packet = pool->free_descr)) {
+	if ((packet = pool->free_descr))
 		pool->free_descr = (void *)packet->reserved[0];
-		DBG_BLOCK(1) {
-			if (packet->private.packet_flags)
-				WARNING("invalid packet: %p, %p, %p", pool,
-					packet, pool->free_descr);
-		}
-	}
 	nt_spin_unlock_bh(&pool->lock);
 	if (!packet) {
 		packet = kmalloc(packet_length, irql_gfp());
@@ -1514,12 +1508,6 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		pool->num_allocated_descr--;
 		kfree(packet);
 	} else {
-		DBG_BLOCK(1) {
-			if (!packet->private.packet_flags)
-				WARNING("invalid packet: %p, %p, %p", pool,
-					packet, pool->free_descr);
-			packet->private.packet_flags = 0;
-		}
 		TRACE4("%p, %p, %p", pool, packet, pool->free_descr);
 		packet->reserved[0] =
 			(typeof(packet->reserved[0]))pool->free_descr;
