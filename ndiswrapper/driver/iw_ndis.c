@@ -53,6 +53,17 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 		buf[ssid_len] = 0;
 		TRACE2("ssid = '%s'", buf);
 	}
+
+	/* wpa_supplicant may require association event to be sent,
+	 * but if the driver is already associated to the same essid,
+	 * it may not. So disassociate in that case, without sending
+	 * disasociation event. */
+	if (wnd->essid.length == req.length &&
+	    memcmp(wnd->essid.essid, req.essid, req.length) == 0) {
+		wnd->tx_ok = 0;
+		disassociate(wnd, 0);
+	}
+
 	res = mp_set(wnd, OID_802_11_SSID, &req, sizeof(req));
 	if (res) {
 		WARNING("setting essid failed (%08X)", res);

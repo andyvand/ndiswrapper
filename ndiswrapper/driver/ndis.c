@@ -1998,12 +1998,14 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_DISCONNECT:
-		wnd->tx_ok = 0;
-		netif_carrier_off(wnd->net_dev);
-		netif_stop_queue(wnd->net_dev);
-		clear_bit(LINK_STATUS_ON, &wnd->wrap_ndis_pending_work);
-		set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
-		schedule_wrapndis_work(&wnd->wrap_ndis_work);
+		if (xchg(&wnd->tx_ok, 0)) {
+			memset(&wnd->essid, 0, sizeof(wnd->essid));
+			netif_carrier_off(wnd->net_dev);
+			netif_stop_queue(wnd->net_dev);
+			clear_bit(LINK_STATUS_ON, &wnd->wrap_ndis_pending_work);
+			set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
+			schedule_wrapndis_work(&wnd->wrap_ndis_work);
+		}
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)
