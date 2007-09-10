@@ -968,10 +968,9 @@ static void link_status_off(struct wrap_ndis_device *wnd)
 	    wnd->essid.length > 0) {
 		set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 		for (i = 0; i < MAX_ENCR_KEYS; i++) {
-			if (wnd->encr_info.keys[i].length <= 0)
-				continue;
-			add_wep_key(wnd, wnd->encr_info.keys[i].key,
-				    wnd->encr_info.keys[i].length, i);
+			if (wnd->encr_info.keys[i].length > 0)
+				add_wep_key(wnd, wnd->encr_info.keys[i].key,
+					    wnd->encr_info.keys[i].length, i);
 		}
 	}
 	EXIT2(return);
@@ -992,12 +991,11 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 
 	ENTER2("");
 	netif_carrier_on(wnd->net_dev);
-	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan) {
-		wnd->tx_ok = 1;
-		if (netif_queue_stopped(wnd->net_dev))
-			netif_wake_queue(wnd->net_dev);
+	wnd->tx_ok = 1;
+	if (netif_queue_stopped(wnd->net_dev))
+		netif_wake_queue(wnd->net_dev);
+	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		EXIT2(return);
-	}
 
 #ifdef CONFIG_WIRELESS_EXT
 	ndis_assoc_info = kzalloc(assoc_size, GFP_KERNEL);
@@ -1062,14 +1060,11 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 #endif
 	kfree(ndis_assoc_info);
 
-	get_ap_address(wnd, (char *)&wrqu.ap_addr.sa_data);
+	get_ap_address(wnd, wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
-	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 	TRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
+	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 #endif
-	wnd->tx_ok = 1;
-	if (netif_queue_stopped(wnd->net_dev))
-		netif_wake_queue(wnd->net_dev);
 	EXIT2(return);
 }
 
@@ -1153,12 +1148,10 @@ static void wrap_ndis_worker(worker_param_t param)
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
 		WORKEXIT(return);
 
-	if (test_and_clear_bit(LINK_STATUS_OFF,
-			       &wnd->wrap_ndis_pending_work))
+	if (test_and_clear_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work))
 		link_status_off(wnd);
 
-	if (test_and_clear_bit(LINK_STATUS_ON,
-			       &wnd->wrap_ndis_pending_work))
+	if (test_and_clear_bit(LINK_STATUS_ON, &wnd->wrap_ndis_pending_work))
 		link_status_on(wnd);
 
 	if (test_and_clear_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work))

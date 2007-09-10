@@ -602,6 +602,12 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisUnicodeStringToAnsiString,2)
 		return NDIS_STATUS_FAILURE;
 }
 
+wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
+	(struct unicode_string *dst, struct unicode_string *src)
+{
+	EXIT2(return RtlUpcaseUnicodeString(dst, src, FALSE));
+}
+
 wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
 	(struct ndis_mp_block *nmb, void *mp_ctx,
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptertype)
@@ -899,6 +905,15 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
 						DMA_32BIT_MASK))
 			WARNING("setting dma mask failed");
+#ifdef CONFIG_X86_64
+	} else if (dmasize == NDIS_DMA_64BITS) {
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_64BIT_MASK) ||
+		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
+						DMA_64BIT_MASK))
+			WARNING("setting dma mask failed");
+		else
+			wnd->net_dev->features |= NETIF_F_HIGHDMA;
+#endif
 	}
 	/* since memory for buffer is allocated with kmalloc, buffer
 	 * is physically contiguous, so entire map will fit in one
@@ -2000,8 +2015,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		netif_carrier_off(wnd->net_dev);
 		netif_stop_queue(wnd->net_dev);
+		memset(&wnd->essid, 0, sizeof(wnd->essid));
 		if (xchg(&wnd->tx_ok, 0)) {
-			memset(&wnd->essid, 0, sizeof(wnd->essid));
 			clear_bit(LINK_STATUS_ON, &wnd->wrap_ndis_pending_work);
 			set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
 			schedule_wrapndis_work(&wnd->wrap_ndis_work);
