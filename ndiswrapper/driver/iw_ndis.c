@@ -547,10 +547,7 @@ int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 {
 	NDIS_STATUS res;
 
-	res = NDIS_STATUS_ADAPTER_NOT_READY;
-	/* this OID is valid only when associated */
-	if (netif_carrier_ok(wnd->net_dev))
-		res = mp_query(wnd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
+	res = mp_query(wnd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
 	TRACE2(MACSTRSEP, MAC2STR(ap_addr));
 	if (res) {
 		TRACE2("res: %08X", res);
@@ -1685,16 +1682,15 @@ static int iw_set_encodeext(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
 {
-	struct iw_encode_ext ext;
+	struct iw_encode_ext *ext = (struct iw_encode_ext *)extra;
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct ndis_add_key ndis_key;
 	int i, keyidx;
 	NDIS_STATUS res;
 	u8 *addr;
-	u8 key[IW_ENCODING_TOKEN_MAX];
 
-	ENTER2("");
-	keyidx = wrqu->encoding.flags & IW_ENCODE_INDEX;
+	keyidx = wrqu->data.flags & IW_ENCODE_INDEX;
+	ENTER2("%d", keyidx);
 	if (keyidx > 0)
 		keyidx--;
 	else
@@ -1703,49 +1699,40 @@ static int iw_set_encodeext(struct net_device *dev,
 	if (keyidx < 0 || keyidx >= MAX_ENCR_KEYS)
 		return -EINVAL;
 
-	if (copy_from_user(&ext, wrqu->encoding.pointer, sizeof(ext)))
-		EXIT2(return -EFAULT);
-
-	if (copy_from_user(key, wrqu->encoding.pointer + sizeof(ext),
-			   ext.key_len))
-		EXIT2(return -EFAULT);
-
-	if (ext.alg == WPA_ALG_WEP) {
+	if (ext->alg == WPA_ALG_WEP) {
 		if (!test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr))
 			EXIT2(return -1);
-		if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
 			wnd->encr_info.tx_key_index = keyidx;
-		if (add_wep_key(wnd, key, ext.key_len, keyidx))
+		if (add_wep_key(wnd, ext->key, ext->key_len, keyidx))
 			EXIT2(return -1);
 		else
 			EXIT2(return 0);
 	}
 	if ((wrqu->encoding.flags & IW_ENCODE_DISABLED) ||
-	    ext.alg == IW_ENCODE_ALG_NONE || ext.key_len == 0)
+	    ext->alg == IW_ENCODE_ALG_NONE || ext->key_len == 0)
 		EXIT2(return remove_key(wnd, keyidx, ndis_key.bssid));
 
-	if (ext.key_len > sizeof(ndis_key.key)) {
-		TRACE2("incorrect key length (%u)", ext.key_len);
+	if (ext->key_len > sizeof(ndis_key.key)) {
+		TRACE2("incorrect key length (%u)", ext->key_len);
 		EXIT2(return -1);
 	}
 
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.struct_size =
-		sizeof(ndis_key) - sizeof(ndis_key.key) + ext.key_len;
-	ndis_key.length = ext.key_len;
+		sizeof(ndis_key) - sizeof(ndis_key.key) + ext->key_len;
+	ndis_key.length = ext->key_len;
 	ndis_key.index = keyidx;
 
-	if (ext.ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
+	if (ext->ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
+		TRACE2("");
 		for (i = ndis_key.rsc = 0 ; i < 6 ; i++)
-			ndis_key.rsc |= (ext.rx_seq[i] << (i * 8));
+			ndis_key.rsc |= (ext->rx_seq[i] << (i * 8));
 		ndis_key.index |= 1 << 29;
 	}
 
-	addr = ext.addr.sa_data;
-	TRACE2("infra_mode = %d, addr = " MACSTRSEP,
-	       wnd->infrastructure_mode, MAC2STR(addr));
-
+	addr = ext->addr.sa_data;
 	if (memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
 		/* group key */
 		if (wnd->infrastructure_mode == Ndis802_11IBSS)
@@ -1757,20 +1744,21 @@ static int iw_set_encodeext(struct net_device *dev,
 		ndis_key.index |= (1 << 30);
 		memcpy(ndis_key.bssid, addr, ETH_ALEN);
 	}
+	TRACE2(MACSTRSEP, MAC2STR(ndis_key.bssid));
 
-	TRACE2("bssid " MACSTRSEP, MAC2STR(ndis_key.bssid));
-
-	if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+	if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY) {
+		TRACE2("");
 		ndis_key.index |= (1 << 31);
+	}
 
-	if (ext.alg == IW_ENCODE_ALG_TKIP && ext.key_len == 32) {
+	if (ext->alg == IW_ENCODE_ALG_TKIP && ext->key_len == 32) {
 		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
 		 * different order than NDIS spec, so swap the order here. */
-		memcpy(ndis_key.key, key, 16);
-		memcpy(ndis_key.key + 16, key + 24, 8);
-		memcpy(ndis_key.key + 24, key + 16, 8);
+		memcpy(ndis_key.key, ext->key, 16);
+		memcpy(ndis_key.key + 16, ext->key + 24, 8);
+		memcpy(ndis_key.key + 24, ext->key + 16, 8);
 	} else
-		memcpy(ndis_key.key, key, ext.key_len);
+		memcpy(ndis_key.key, ext->key, ext->key_len);
 
 	res = mp_set(wnd, OID_802_11_ADD_KEY,
 		     &ndis_key, ndis_key.struct_size);
@@ -1779,10 +1767,10 @@ static int iw_set_encodeext(struct net_device *dev,
 		       res, ndis_key.struct_size);
 		EXIT2(return -1);
 	}
-	wnd->encr_info.keys[keyidx].length = ext.key_len;
+	wnd->encr_info.keys[keyidx].length = ext->key_len;
 	memcpy(&wnd->encr_info.keys[keyidx].key,
-	       ndis_key.key, ext.key_len);
-	if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+	       ndis_key.key, ext->key_len);
+	if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
 		wnd->encr_info.tx_key_index = keyidx;
 	TRACE2("key %d added", keyidx);
 
@@ -1836,45 +1824,47 @@ static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 }
 #endif /* WIRELESS_EXT > 17 */
 
+#define WEXT(id) [id - SIOCIWFIRST]
+
 static const iw_handler	ndis_handler[] = {
-	[SIOCGIWNAME	- SIOCIWFIRST] = iw_get_network_type,
-	[SIOCSIWESSID	- SIOCIWFIRST] = iw_set_essid,
-	[SIOCGIWESSID	- SIOCIWFIRST] = iw_get_essid,
-	[SIOCSIWMODE	- SIOCIWFIRST] = iw_set_infra_mode,
-	[SIOCGIWMODE	- SIOCIWFIRST] = iw_get_infra_mode,
-	[SIOCGIWFREQ	- SIOCIWFIRST] = iw_get_freq,
-	[SIOCSIWFREQ	- SIOCIWFIRST] = iw_set_freq,
-	[SIOCGIWTXPOW	- SIOCIWFIRST] = iw_get_tx_power,
-	[SIOCSIWTXPOW	- SIOCIWFIRST] = iw_set_tx_power,
-	[SIOCGIWRATE	- SIOCIWFIRST] = iw_get_bitrate,
-	[SIOCSIWRATE	- SIOCIWFIRST] = iw_set_bitrate,
-	[SIOCGIWRTS	- SIOCIWFIRST] = iw_get_rts_threshold,
-	[SIOCSIWRTS	- SIOCIWFIRST] = iw_set_rts_threshold,
-	[SIOCGIWFRAG	- SIOCIWFIRST] = iw_get_frag_threshold,
-	[SIOCSIWFRAG	- SIOCIWFIRST] = iw_set_frag_threshold,
-	[SIOCGIWAP	- SIOCIWFIRST] = iw_get_ap_address,
-	[SIOCSIWAP	- SIOCIWFIRST] = iw_set_ap_address,
-	[SIOCSIWENCODE	- SIOCIWFIRST] = iw_set_wep,
-	[SIOCGIWENCODE	- SIOCIWFIRST] = iw_get_encr,
-	[SIOCSIWSCAN	- SIOCIWFIRST] = iw_set_scan,
-	[SIOCGIWSCAN	- SIOCIWFIRST] = iw_get_scan,
-	[SIOCGIWPOWER	- SIOCIWFIRST] = iw_get_power_mode,
-	[SIOCSIWPOWER	- SIOCIWFIRST] = iw_set_power_mode,
-	[SIOCGIWRANGE	- SIOCIWFIRST] = iw_get_range,
-	[SIOCGIWSTATS	- SIOCIWFIRST] = iw_get_ndis_stats,
-	[SIOCGIWSENS	- SIOCIWFIRST] = iw_get_sensitivity,
-	[SIOCSIWSENS	- SIOCIWFIRST] = iw_set_sensitivity,
-	[SIOCGIWNICKN	- SIOCIWFIRST] = iw_get_nick,
-	[SIOCSIWNICKN	- SIOCIWFIRST] = iw_set_nick,
-	[SIOCSIWCOMMIT	- SIOCIWFIRST] = iw_set_dummy,
+	WEXT(SIOCGIWNAME)	 = iw_get_network_type,
+	WEXT(SIOCSIWESSID)	 = iw_set_essid,
+	WEXT(SIOCGIWESSID)	 = iw_get_essid,
+	WEXT(SIOCSIWMODE)	 = iw_set_infra_mode,
+	WEXT(SIOCGIWMODE)	 = iw_get_infra_mode,
+	WEXT(SIOCGIWFREQ)	 = iw_get_freq,
+	WEXT(SIOCSIWFREQ)	 = iw_set_freq,
+	WEXT(SIOCGIWTXPOW)	 = iw_get_tx_power,
+	WEXT(SIOCSIWTXPOW)	 = iw_set_tx_power,
+	WEXT(SIOCGIWRATE)	 = iw_get_bitrate,
+	WEXT(SIOCSIWRATE)	 = iw_set_bitrate,
+	WEXT(SIOCGIWRTS)	 = iw_get_rts_threshold,
+	WEXT(SIOCSIWRTS)	 = iw_set_rts_threshold,
+	WEXT(SIOCGIWFRAG)	 = iw_get_frag_threshold,
+	WEXT(SIOCSIWFRAG)	 = iw_set_frag_threshold,
+	WEXT(SIOCGIWAP)		 = iw_get_ap_address,
+	WEXT(SIOCSIWAP)		 = iw_set_ap_address,
+	WEXT(SIOCSIWENCODE)	 = iw_set_wep,
+	WEXT(SIOCGIWENCODE)	 = iw_get_encr,
+	WEXT(SIOCSIWSCAN)	 = iw_set_scan,
+	WEXT(SIOCGIWSCAN)	 = iw_get_scan,
+	WEXT(SIOCGIWPOWER)	 = iw_get_power_mode,
+	WEXT(SIOCSIWPOWER)	 = iw_set_power_mode,
+	WEXT(SIOCGIWRANGE)	 = iw_get_range,
+	WEXT(SIOCGIWSTATS)	 = iw_get_ndis_stats,
+	WEXT(SIOCGIWSENS)	 = iw_get_sensitivity,
+	WEXT(SIOCSIWSENS)	 = iw_set_sensitivity,
+	WEXT(SIOCGIWNICKN)	 = iw_get_nick,
+	WEXT(SIOCSIWNICKN)	 = iw_set_nick,
+	WEXT(SIOCSIWCOMMIT)	 = iw_set_dummy,
 #if WIRELESS_EXT > 17
-	[SIOCSIWMLME	- SIOCIWFIRST] = iw_set_mlme,
-	[SIOCSIWGENIE	- SIOCIWFIRST] = iw_set_genie,
-	[SIOCSIWAUTH	- SIOCIWFIRST] = iw_set_auth,
-	[SIOCGIWAUTH	- SIOCIWFIRST] = iw_get_auth,
-	[SIOCSIWENCODEEXT - SIOCIWFIRST] = iw_set_encodeext,
-	[SIOCGIWENCODEEXT - SIOCIWFIRST] = iw_get_encodeext,
-	[SIOCSIWPMKSA	- SIOCIWFIRST] = iw_set_pmksa,
+	WEXT(SIOCSIWMLME)	 = iw_set_mlme,
+	WEXT(SIOCSIWGENIE)	 = iw_set_genie,
+	WEXT(SIOCSIWAUTH)	 = iw_set_auth,
+	WEXT(SIOCGIWAUTH)	 = iw_get_auth,
+	WEXT(SIOCSIWENCODEEXT)	 = iw_set_encodeext,
+	WEXT(SIOCGIWENCODEEXT)	 = iw_get_encodeext,
+	WEXT(SIOCSIWPMKSA)	 = iw_set_pmksa,
 #endif /* WIRELESS_EXT > 17 */
 };
 
@@ -2393,26 +2383,28 @@ static const struct iw_priv_args priv_args[] = {
 	{PRIV_RELOAD_DEFAULTS, 0, 0, "reload_defaults"},
 };
 
+#define WEPRIV(id) [id - SIOCIWFIRSTPRIV]
+
 static const iw_handler priv_handler[] = {
 #if WIRELESS_EXT <= 17
-	[WPA_SET_WPA 		- SIOCIWFIRSTPRIV] = wpa_set_wpa,
-	[WPA_SET_KEY 		- SIOCIWFIRSTPRIV] = wpa_set_key,
-	[WPA_ASSOCIATE 		- SIOCIWFIRSTPRIV] = wpa_associate,
-	[WPA_DISASSOCIATE 	- SIOCIWFIRSTPRIV] = wpa_disassociate,
-	[WPA_DROP_UNENCRYPTED 	- SIOCIWFIRSTPRIV] = wpa_set_priv_filter,
-	[WPA_SET_COUNTERMEASURES- SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
-	[WPA_DEAUTHENTICATE 	- SIOCIWFIRSTPRIV] = wpa_deauthenticate,
-	[WPA_SET_AUTH_ALG 	- SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
-	[WPA_INIT 		- SIOCIWFIRSTPRIV] = wpa_init,
-	[WPA_DEINIT 		- SIOCIWFIRSTPRIV] = wpa_deinit,
-	[WPA_GET_CAPA 		- SIOCIWFIRSTPRIV] = wpa_get_capa,
+	WEPRIV(WPA_SET_WPA)		 = wpa_set_wpa,
+	WEPRIV(WPA_SET_KEY)		 = wpa_set_key,
+	WEPRIV(WPA_ASSOCIATE)		 = wpa_associate,
+	WEPRIV(WPA_DISASSOCIATE)	 = wpa_disassociate,
+	WEPRIV(WPA_DROP_UNENCRYPTED)	 = wpa_set_priv_filter,
+	WEPRIV(WPA_SET_COUNTERMEASURES)	 = wpa_set_countermeasures,
+	WEPRIV(WPA_DEAUTHENTICATE)	 = wpa_deauthenticate,
+	WEPRIV(WPA_SET_AUTH_ALG)	 = wpa_set_auth_alg,
+	WEPRIV(WPA_INIT)		 = wpa_init,
+	WEPRIV(WPA_DEINIT)		 = wpa_deinit,
+	WEPRIV(WPA_GET_CAPA)		 = wpa_get_capa,
 #endif
-	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
-	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
-	[PRIV_DEAUTHENTICATE	- SIOCIWFIRSTPRIV] = priv_deauthenticate,
-	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
-	[PRIV_MEDIA_STREAM_MODE	- SIOCIWFIRSTPRIV] = priv_media_stream_mode,
-	[PRIV_RELOAD_DEFAULTS 	- SIOCIWFIRSTPRIV] = priv_reload_defaults,
+	WEPRIV(PRIV_RESET)		 = priv_reset,
+	WEPRIV(PRIV_POWER_PROFILE)	 = priv_power_profile,
+	WEPRIV(PRIV_DEAUTHENTICATE)	 = priv_deauthenticate,
+	WEPRIV(PRIV_NETWORK_TYPE)	 = priv_network_type,
+	WEPRIV(PRIV_MEDIA_STREAM_MODE)	 = priv_media_stream_mode,
+	WEPRIV(PRIV_RELOAD_DEFAULTS)	 = priv_reload_defaults,
 };
 
 const struct iw_handler_def ndis_handler_def = {

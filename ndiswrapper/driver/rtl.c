@@ -443,19 +443,27 @@ wfastcall ULONG WIN_FUNC(RtlUlongByteSwap,1)
 	return __swab32(src);
 }
 
-wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
-	(struct unicode_string *dst, struct unicode_string *src)
+wstdcall NTSTATUS WIN_FUNC(RtlUpcaseUnicodeString,3)
+	(struct unicode_string *dst, struct unicode_string *src, BOOLEAN alloc)
 {
 	USHORT i, n;
 
-	n = min(src->length, src->max_length);
-	n = min(n, dst->length);
-	n = min(n, dst->max_length);
-	n /= sizeof(dst->buf[0]);
-	for (i = 0; i < n; i++) {
-		char *c = (char *)&dst->buf[i];
-		*c = toupper(src->buf[i]);
+	if (alloc) {
+		dst->buf = ExAllocatePoolWithTag(NonPagedPool, src->length, 0);
+		if (dst->buf) {
+			dst->max_length = src->length;
+		} else
+			EXIT2(return STATUS_NO_MEMORY);
+	} else {
+		if (dst->max_length < src->length)
+			EXIT2(return STATUS_BUFFER_OVERFLOW);
 	}
+
+	n = src->length / sizeof(src->buf[0]);
+	for (i = 0; i < n; i++)
+		dst->buf[i] = toupper(src->buf[i]);
+
+	dst->length = src->length;
 	EXIT3(return STATUS_SUCCESS);
 }
 
