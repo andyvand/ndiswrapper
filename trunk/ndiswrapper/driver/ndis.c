@@ -1998,8 +1998,7 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
 
 /* called via function pointer; but 64-bit RNDIS driver calls directly */
 wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
-	(struct ndis_mp_block *nmb, NDIS_STATUS status,
-	 void *buf, UINT len)
+	(struct ndis_mp_block *nmb, NDIS_STATUS status, void *buf, UINT len)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ndis_status_indication *si;
@@ -2039,9 +2038,9 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				auth_req = (struct ndis_auth_req *)buf;
 				TRACE1(MACSTRSEP, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
-					TRACE2("reqauth");
+					TRACE2("reauth request");
 				if (auth_req->flags & 0x02)
-					TRACE2("keyupdate");
+					TRACE2("key update request");
 				if (auth_req->flags & 0x06) {
 					pairwise_error = 1;
 					TRACE2("pairwise_error");

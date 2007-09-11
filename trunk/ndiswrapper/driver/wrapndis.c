@@ -1001,26 +1001,32 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	ndis_assoc_info = kzalloc(assoc_size, GFP_KERNEL);
 	if (!ndis_assoc_info) {
 		ERROR("couldn't allocate memory");
-		EXIT2(return);
+		goto send_assoc_event;
 	}
 	res = mp_query(wnd, OID_802_11_ASSOCIATION_INFORMATION,
 		       ndis_assoc_info, assoc_size);
 	if (res) {
 		TRACE2("query assoc_info failed (%08X)", res);
 		kfree(ndis_assoc_info);
-		EXIT2(return);
-	}
-
-#if WIRELESS_EXT > 17
+		goto send_assoc_event;
+	}	
+	TRACE2("%u, 0x%x, %u, 0x%x, %u", ndis_assoc_info->length,
+	       ndis_assoc_info->req_ies, ndis_assoc_info->req_ie_length,
+	       ndis_assoc_info->resp_ies, ndis_assoc_info->resp_ie_length);
 	memset(&wrqu, 0, sizeof(wrqu));
-	wrqu.data.length = ndis_assoc_info->req_ie_length;
-	wireless_send_event(wnd->net_dev, IWEVASSOCREQIE, &wrqu,
-			    ((char *)ndis_assoc_info) +
-			    ndis_assoc_info->offset_req_ies);
-	wrqu.data.length = ndis_assoc_info->resp_ie_length;
-	wireless_send_event(wnd->net_dev, IWEVASSOCRESPIE, &wrqu,
-			    ((char *)ndis_assoc_info) +
-			    ndis_assoc_info->offset_resp_ies);
+#if WIRELESS_EXT > 17
+	if (ndis_assoc_info->req_ie_length > 0) {
+		wrqu.data.length = ndis_assoc_info->req_ie_length;
+		wireless_send_event(wnd->net_dev, IWEVASSOCREQIE, &wrqu,
+				    ((char *)ndis_assoc_info) +
+				    ndis_assoc_info->offset_req_ies);
+	}
+	if (ndis_assoc_info->resp_ie_length > 0) {
+		wrqu.data.length = ndis_assoc_info->resp_ie_length;
+		wireless_send_event(wnd->net_dev, IWEVASSOCRESPIE, &wrqu,
+				    ((char *)ndis_assoc_info) +
+				    ndis_assoc_info->offset_resp_ies);
+	}
 #else
 	/* we need 28 extra bytes for the format strings */
 	if ((ndis_assoc_info->req_ie_length +
@@ -1030,29 +1036,28 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 			ndis_assoc_info->req_ie_length,
 			ndis_assoc_info->resp_ie_length);
 		kfree(ndis_assoc_info);
-		EXIT2(return);
+		goto send_assoc_event;
 	}
 
 	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
 	if (!wpa_assoc_info) {
 		ERROR("couldn't allocate memory");
 		kfree(ndis_assoc_info);
-		EXIT2(return);
+		goto send_assoc_event;
 	}
 	p = wpa_assoc_info;
 	p += sprintf(p, "ASSOCINFO(ReqIEs=");
-	ies = ((char *)ndis_assoc_info) + ndis_assoc_info->offset_req_ies;
-	for (i = 0; i < ndis_assoc_info->req_ie_length; i++)
-		p += sprintf(p, "%02x", ies[i]);
+	memcpy(p, ((char *)ndis_assoc_info) + ndis_assoc_info->offset_req_ies,
+	       ndis_assoc_info->req_ie_length);
+	p += ndis_assoc_info->req_ie_length;
 
 	p += sprintf(p, " RespIEs=");
-	ies = ((char *)ndis_assoc_info) + ndis_assoc_info->offset_resp_ies;
-	for (i = 0; i < ndis_assoc_info->resp_ie_length; i++)
-		p += sprintf(p, "%02x", ies[i]);
+	memcpy(p, ((char *)ndis_assoc_info) + ndis_assoc_info->offset_resp_ies,
+	       ndis_assoc_info->resp_ie_length);
+	p += ndis_assoc_info->resp_ie_length;
 
 	p += sprintf(p, ")");
 
-	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = p - wpa_assoc_info;
 	wireless_send_event(wnd->net_dev, IWEVCUSTOM, &wrqu, wpa_assoc_info);
 
@@ -1060,6 +1065,7 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 #endif
 	kfree(ndis_assoc_info);
 
+send_assoc_event:
 	get_ap_address(wnd, wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	TRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
@@ -1735,24 +1741,19 @@ static struct ethtool_ops ndis_ethtool_ops = {
 static int notifier_event(struct notifier_block *notifier, unsigned long event,
 			  void *ptr)
 {
-	struct net_device *net_dev = (struct net_device *)ptr;
-	struct wrap_ndis_device *wnd;
+	struct net_device *net_dev = ptr;
 
-	if (net_dev->open != ndis_net_dev_open)
-		return NOTIFY_DONE;
-
-	wnd = netdev_priv(net_dev);
-	/* called with rtnl lock held, so no need to lock */
-	if (event == NETDEV_CHANGENAME) {
+	ENTER2("0x%lx", event);
+	if (net_dev->open == ndis_net_dev_open && event == NETDEV_CHANGENAME) {
+		struct wrap_ndis_device *wnd = netdev_priv(net_dev);
+		/* called with rtnl lock held, so no need to lock */
 		wrap_procfs_remove_ndis_device(wnd);
 		printk(KERN_INFO "%s: changing interface name from '%s' to "
 		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
 		memcpy(wnd->netdev_name, net_dev->name,
 		       sizeof(wnd->netdev_name));
 		wrap_procfs_add_ndis_device(wnd);
-		return NOTIFY_OK;
 	}
-	TRACE2("%s: %lx", wnd->netdev_name, event);
 	return NOTIFY_DONE;
 }
 
