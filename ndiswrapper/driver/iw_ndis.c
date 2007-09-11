@@ -1518,6 +1518,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 void set_default_iw_params(struct wrap_ndis_device *wnd)
 {
 	wnd->iw_auth_key_mgmt = 0;
+	wnd->iw_auth_wpa_version = 0;
 	set_infra_mode(wnd, Ndis802_11Infrastructure);
 	set_ndis_auth_mode(wnd, Ndis802_11AuthModeOpen);
 	set_priv_filter(wnd);
@@ -1634,6 +1635,8 @@ static int iw_set_auth(struct net_device *dev,
 		wnd->iw_auth_80211_alg = wrqu->param.value;
 		break;
 	case IW_AUTH_WPA_ENABLED:
+		deauthenticate(wnd);
+		break;
 	case IW_AUTH_TKIP_COUNTERMEASURES:
 	case IW_AUTH_DROP_UNENCRYPTED:
 	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
@@ -1689,9 +1692,9 @@ static int iw_set_encodeext(struct net_device *dev,
 	NDIS_STATUS res;
 	u8 *addr;
 
-	keyidx = wrqu->data.flags & IW_ENCODE_INDEX;
+	keyidx = wrqu->encoding.flags & IW_ENCODE_INDEX;
 	ENTER2("%d", keyidx);
-	if (keyidx > 0)
+	if (keyidx)
 		keyidx--;
 	else
 		keyidx = wnd->encr_info.tx_key_index;
@@ -1726,14 +1729,14 @@ static int iw_set_encodeext(struct net_device *dev,
 	ndis_key.index = keyidx;
 
 	if (ext->ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
-		TRACE2("");
-		for (i = ndis_key.rsc = 0 ; i < 6 ; i++)
+		for (i = 0; i < 6 ; i++)
 			ndis_key.rsc |= (ext->rx_seq[i] << (i * 8));
+		TRACE2("0x%Lx", ndis_key.rsc);
 		ndis_key.index |= 1 << 29;
 	}
 
 	addr = ext->addr.sa_data;
-	if (memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
+	if (ext->ext_flags & IW_ENCODE_EXT_GROUP_KEY) {
 		/* group key */
 		if (wnd->infrastructure_mode == Ndis802_11IBSS)
 			memset(ndis_key.bssid, 0xff, ETH_ALEN);
@@ -1746,10 +1749,8 @@ static int iw_set_encodeext(struct net_device *dev,
 	}
 	TRACE2(MACSTRSEP, MAC2STR(ndis_key.bssid));
 
-	if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY) {
-		TRACE2("");
+	if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
 		ndis_key.index |= (1 << 31);
-	}
 
 	if (ext->alg == IW_ENCODE_ALG_TKIP && ext->key_len == 32) {
 		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
@@ -1790,7 +1791,7 @@ static int iw_get_encodeext(struct net_device *dev,
 static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct iw_pmksa *pmksa = (struct iw_pmksa *) extra;
+	struct iw_pmksa *pmksa = (struct iw_pmksa *)extra;
 	struct ndis_pmkid pmkid;
 	NDIS_STATUS res;
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -1799,10 +1800,10 @@ static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 	 * expect that all PMKID entries are included whenever a new
 	 * one is added. */
 
-	ENTER2("");
-
-	if (!(wnd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA2))
-		return -EOPNOTSUPP;
+	ENTER2("%d", pmksa->cmd);
+	if ((pmksa->cmd == IW_PMKSA_ADD || pmksa->cmd == IW_PMKSA_REMOVE) &&
+	    (!(wnd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA2)))
+		EXIT2(return -EOPNOTSUPP);
 
 	memset(&pmkid, 0, sizeof(pmkid));
 	if (pmksa->cmd == IW_PMKSA_ADD) {
@@ -1815,7 +1816,7 @@ static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 
 	res = mp_set(wnd, OID_802_11_PMKID, &pmkid, pmkid.length);
 	if (res == NDIS_STATUS_FAILURE)
-		return -EOPNOTSUPP;
+		EXIT2(return -EOPNOTSUPP);
 	TRACE2("OID_802_11_PMKID -> %d", res);
 	if (res)
 		return -EINVAL;
