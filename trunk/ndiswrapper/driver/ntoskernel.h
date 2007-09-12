@@ -48,6 +48,10 @@
 #include "winnt_types.h"
 #include "compat.h"
 
+#if !defined(CONFIG_X86) && !defined(CONFIG_X86_64)
+#error "this module is for x86 or x86_64 architectures only"
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #else
@@ -414,10 +418,6 @@ typedef u32 pm_message_t;
 #include "lin2win.h"
 #include "loader.h"
 
-#ifdef DEBUG
-#define DEBUG_IRQL 1
-#endif
-
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
 #endif
@@ -678,7 +678,11 @@ do {									\
  * DISPATCH_LEVEL on each cpu - the kernel is free to preempt any of
  * these threads */
 
-#if !defined(inc_preempt_count)
+#if !defined(inc_preempt_count) || defined(CONFIG_PREEMPT_RT)
+#define WARP_PREEMPT 1
+#endif
+
+#if !defined(CONFIG_PREEMPT)
 #define WARP_PREEMPT 1
 #endif
 
@@ -689,38 +693,6 @@ extern int warp_preempt_count;
 #define warp_preempt_enable() atomic_dec_var(warp_preempt_count)
 #define warp_preempt_enable_no_resched() warp_preempt_enable()
 #define warp_in_atomic() (warp_preempt_count || in_atomic())
-
-#elif defined(CONFIG_PREEMPT_RT)
-
-DECLARE_PER_CPU(int, warp_preempt_count);
-DECLARE_PER_CPU(spinlock_t, warp_preempt_lock);
-#define warp_preempt_disable()						\
-do {									\
-	int count = get_cpu_var(warp_preempt_count)++;			\
-	spinlock_t *lock = &__get_cpu_var(warp_preempt_lock);		\
-	if (count == 0) {						\
-		assert(!spin_is_locked(lock));				\
-		rt_spin_lock(lock);					\
-	}								\
-	put_cpu_var(warp_preempt_count);				\
-} while (0)
-#define warp_preempt_enable()						\
-do {									\
-	int count = --(get_cpu_var(warp_preempt_count));		\
-	spinlock_t *lock = &__get_cpu_var(warp_preempt_lock);		\
-	if (count == 0) {						\
-		assert(spin_is_locked(lock));				\
-		rt_spin_unlock(lock);					\
-	}								\
-	put_cpu_var(warp_preempt_count);				\
-} while (0)
-#define warp_preempt_enable_no_resched() warp_preempt_enable()
-#define warp_in_atomic()						\
-({									\
-	int count = get_cpu_var(warp_preempt_count);			\
-	put_cpu_var(warp_preempt_count);				\
-	count || in_atomic();						\
-})
 
 #elif defined(CONFIG_PREEMPT)
 
@@ -735,12 +707,14 @@ do {									\
 
 #else
 
-#define warp_preempt_disable() inc_preempt_count()
-#define warp_preempt_enable() dec_preempt_count()
-#define warp_preempt_enable_no_resched() warp_preempt_enable()
+#define warp_preempt_disable() do { } while (0)
+#define warp_preempt_enable() do { } while (0)
+#define warp_preempt_enable_no_resched() do { } while (0)
 #define warp_in_atomic() in_atomic()
 
 #endif
+
+//#define DEBUG_IRQL 1
 
 static inline KIRQL current_irql(void)
 {
@@ -865,21 +839,6 @@ do {						\
 do {						\
 	nt_spin_unlock(lock);			\
 	atomic_dec_var(warp_preempt_count);	\
-} while (0)
-
-#elif defined(CONFIG_PREEMPT_RT)
-
-#define nt_spin_lock_warp_preempt(lock)		\
-do {						\
-	get_cpu_var(warp_preempt_count)++;	\
-	put_cpu_var(warp_preempt_count);	\
-	nt_spin_lock(lock);			\
-} while (0)
-#define nt_spin_unlock_warp_preempt(lock)	\
-do {						\
-	nt_spin_unlock(lock);			\
-	get_cpu_var(warp_preempt_count)--;	\
-	put_cpu_var(warp_preempt_count);	\
 } while (0)
 
 #else
