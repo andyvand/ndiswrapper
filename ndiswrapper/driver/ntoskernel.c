@@ -91,9 +91,6 @@ workqueue_struct_t *ntos_wq;
 
 #if defined(WARP_PREEMPT)
 int warp_preempt_count;
-#elif defined(CONFIG_PREEMPT_RT)
-DEFINE_PER_CPU(int, warp_preempt_count);
-DEFINE_PER_CPU(spinlock_t, warp_preempt_lock);
 #endif
 
 #if defined(CONFIG_X86_64)
@@ -2563,14 +2560,6 @@ int ntoskernel_init(void)
 	TRACE2("%Lu", wrap_ticks_to_boot);
 #ifdef WARP_PREEMPT
 	warp_preempt_count = 0;
-#elif defined(CONFIG_PREEMPT_RT)
-	do {
-		int i;
-		for (i = 0; i < NR_CPUS; i++) {
-			spin_lock_init(&per_cpu(warp_preempt_lock, i));
-			per_cpu(warp_preempt_count, i) = 0;
-		}
-	} while (0);
 #endif
 
 #ifdef NTOS_WQ
