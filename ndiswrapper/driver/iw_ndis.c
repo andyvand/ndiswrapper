@@ -54,16 +54,6 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 		TRACE2("ssid = '%s'", buf);
 	}
 
-	/* wpa_supplicant may require association event to be sent,
-	 * but if the driver is already associated to the same essid,
-	 * it may not. So disassociate in that case, without sending
-	 * disasociation event. */
-	if (wnd->essid.length == req.length &&
-	    memcmp(wnd->essid.essid, req.essid, req.length) == 0) {
-		wnd->tx_ok = 0;
-		disassociate(wnd, 0);
-	}
-
 	res = mp_set(wnd, OID_802_11_SSID, &req, sizeof(req));
 	if (res) {
 		WARNING("setting essid failed (%08X)", res);
@@ -372,17 +362,9 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 
 	ENTER2("");
-	if (wrqu->txpower.disabled) {
+	if (wrqu->txpower.disabled)
 		ndis_power = 0;
-		res = mp_set(wnd, OID_802_11_TX_POWER_LEVEL,
-			     &ndis_power, sizeof(ndis_power));
-		if (res)
-			return -EOPNOTSUPP;
-		res = disassociate(wnd, 1);
-		if (res)
-			return -EOPNOTSUPP;
-		return 0;
-	} else {
+	else {
 		if (wrqu->txpower.flags == IW_TXPOW_MWATT)
 			ndis_power = wrqu->txpower.value;
 		else { // wrqu->txpower.flags == IW_TXPOW_DBM
@@ -399,11 +381,14 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 			}
 		}
 	}
+	TRACE2("%d", ndis_power);
 	res = mp_set(wnd, OID_802_11_TX_POWER_LEVEL,
 		     &ndis_power, sizeof(ndis_power));
 	if (res)
-		return -EOPNOTSUPP;
-	return 0;
+		EXIT2(return -EOPNOTSUPP);
+	if (ndis_power == 0)
+		res = disassociate(wnd, 0);
+	EXIT2(return 0);
 }
 
 static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,

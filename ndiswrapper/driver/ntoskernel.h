@@ -86,6 +86,7 @@
 	dma_map_sg(&pci_dev->dev, sglist, nents, direction)
 #define UNMAP_SG(pci_dev, sglist, nents, direction)		\
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
+#define PCI_DMA_MAP_ERROR(dma_addr) dma_mapping_error(dma_addr)
 
 #else // linux version <= 2.5.41
 
@@ -101,6 +102,7 @@
 	pci_map_sg(dev, sglist, nents, direction)
 #define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
+#define PCI_DMA_MAP_ERROR(dma_addr) pci_dma_mapping_error(dma_addr)
 
 #include <linux/smp_lock.h>
 

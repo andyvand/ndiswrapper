@@ -901,9 +901,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 						DMA_24BIT_MASK))
 			WARNING("setting dma mask failed");
 	} else if (dmasize == NDIS_DMA_32BITS) {
-		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK) ||
-		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
-						DMA_32BIT_MASK))
+		/* consistent dma is in low 32-bits by default */
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK))
 			WARNING("setting dma mask failed");
 #ifdef CONFIG_X86_64
 	} else if (dmasize == NDIS_DMA_64BITS) {
@@ -2014,12 +2013,10 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		netif_carrier_off(wnd->net_dev);
 		netif_stop_queue(wnd->net_dev);
+		wnd->tx_ok = 0;
 		memset(&wnd->essid, 0, sizeof(wnd->essid));
-		if (xchg(&wnd->tx_ok, 0)) {
-			clear_bit(LINK_STATUS_ON, &wnd->wrap_ndis_pending_work);
-			set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
-			schedule_wrapndis_work(&wnd->wrap_ndis_work);
-		}
+		set_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)
@@ -2084,13 +2081,12 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			if (len < sizeof(struct ndis_status_indication) +
 			    sizeof(struct ndis_pmkid_candidate_list) ||
 				cand->version != 1) {
-				WARNING("Unrecognized PMKID_CANDIDATE_LIST"
-					" ignored");
+				WARNING("unrecognized PMKID ignored");
 				EXIT1(return);
 			}
 
 			end = (u8 *)buf + len;
-			TRACE2("PMKID_CANDIDATE_LIST ver %d num_cand %d",
+			TRACE2("PMKID ver %d num_cand %d",
 			       cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
 #if WIRELESS_EXT > 17
@@ -2100,7 +2096,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				struct ndis_pmkid_candidate *c =
 					&cand->candidates[i];
 				if ((u8 *)(c + 1) > end) {
-					TRACE2("Truncated PMKID_CANDIDATE_LIST");
+					TRACE2("truncated PMKID");
 					break;
 				}
 				TRACE2("%ld: " MACSTRSEP " 0x%x",
@@ -2124,13 +2120,13 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			radio_status = buf;
 			if (radio_status->radio_state ==
 			    Ndis802_11RadioStatusOn)
-				TRACE2("radio is turned on");
+				INFO("radio is turned on");
 			else if (radio_status->radio_state ==
 				 Ndis802_11RadioStatusHardwareOff)
-				TRACE2("radio is turned off by hardware");
+				INFO("radio is turned off by hardware");
 			else if (radio_status->radio_state ==
 				 Ndis802_11RadioStatusSoftwareOff)
-				TRACE2("radio is turned off by software");
+				INFO("radio is turned off by software");
 			break;
 #endif
 		default:
