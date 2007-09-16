@@ -990,13 +990,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 #endif
 
 	ENTER2("");
-	netif_carrier_on(wnd->net_dev);
-	wnd->tx_ok = 1;
-	if (netif_queue_stopped(wnd->net_dev))
-		netif_wake_queue(wnd->net_dev);
-	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
-		EXIT2(return);
-
 #ifdef CONFIG_WIRELESS_EXT
 	ndis_assoc_info = kzalloc(assoc_size, GFP_KERNEL);
 	if (!ndis_assoc_info) {
