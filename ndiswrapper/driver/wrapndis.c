@@ -955,24 +955,10 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 static void link_status_off(struct wrap_ndis_device *wnd)
 {
 	union iwreq_data wrqu;
-	int i;
 
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-	/* In IBSS (ad-hoc) mode, it may be desirable to have
-	 * one node configured for association, but drivers
-	 * disassociate if last node disassociates; to
-	 * configure again, set essid */
-	if (wnd->infrastructure_mode == Ndis802_11IBSS &&
-	    wnd->essid.length > 0) {
-		set_essid(wnd, wnd->essid.essid, wnd->essid.length);
-		for (i = 0; i < MAX_ENCR_KEYS; i++) {
-			if (wnd->encr_info.keys[i].length > 0)
-				add_wep_key(wnd, wnd->encr_info.keys[i].key,
-					    wnd->encr_info.keys[i].length, i);
-		}
-	}
 	EXIT2(return);
 }
 
