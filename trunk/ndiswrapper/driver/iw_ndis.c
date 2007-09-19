@@ -1620,7 +1620,8 @@ static int iw_set_auth(struct net_device *dev,
 		wnd->iw_auth_80211_alg = wrqu->param.value;
 		break;
 	case IW_AUTH_WPA_ENABLED:
-		deauthenticate(wnd);
+		if (wrq->param.value)
+			deauthenticate(wnd);
 		break;
 	case IW_AUTH_TKIP_COUNTERMEASURES:
 	case IW_AUTH_DROP_UNENCRYPTED:
