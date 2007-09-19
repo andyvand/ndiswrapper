@@ -1,11 +1,13 @@
-Version 1.48 2007-XX-XX
+Version 1.48 2007-09-19
 =======================	
-* Support for 2.6.23-rc1 kernel
+* Support for 2.6.23 kernel
 * Disassocation with wpa_supplicant is fixed (earlier, after disassociation,
   the driver and ndiswrapper would be configured differently, requiring
-  unloading and reloading of ndiswrapper).
+  unloading and reloading of ndiswrapper module)
 * (Re)Association / (Re)Authentication issues with wpa_supplicant with
   2.6.23 kernels fixed
+* Fixed an issue with 64-bit Broadcom drivers that cause ntos_wq worker thread
+  to take up all the CPU in some cases
 
 Version 1.47 2007-06-12
 =======================	
