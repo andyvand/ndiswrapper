@@ -1765,6 +1765,15 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 		goto err_start;
 	}
 	TRACE1("mac:" MACSTRSEP, MAC2STR(mac));
+	if (memcmp(mac, "\x00\x00\x00\x00\x00\x00", sizeof(mac)) == 0) {
+		status = mp_query(wnd, OID_802_3_PERMANENT_ADDRESS, mac,
+				  sizeof(mac));
+		if (status) {
+			ERROR("couldn't get mac address: %08X", status);
+			goto err_start;
+		}
+		TRACE1("mac:" MACSTRSEP, MAC2STR(mac));
+	}
 	status = mp_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
 			      &wnd->physical_medium);
 	if (status != NDIS_STATUS_SUCCESS)
