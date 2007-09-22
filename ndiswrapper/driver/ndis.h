@@ -610,7 +610,7 @@ enum ndis_media_stream_mode {
 
 enum wrapper_work {
 	LINK_STATUS_OFF, LINK_STATUS_ON, SET_MULTICAST_LIST, COLLECT_IW_STATS,
-	HANGCHECK, SHUTDOWN
+	HANGCHECK, NETIF_WAKEQ, SHUTDOWN,
 };
 
 struct encr_info {
