@@ -1759,30 +1759,22 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	wd = wnd->wd;
 	net_dev = wnd->net_dev;
 
+	get_supported_oids(wnd);
 	status = mp_query(wnd, OID_802_3_CURRENT_ADDRESS, mac, sizeof(mac));
-	if (status) {
-		ERROR("couldn't get mac address: %08X", status);
-		goto err_start;
-	}
-	TRACE1("mac:" MACSTRSEP, MAC2STR(mac));
-	if (memcmp(mac, "\x00\x00\x00\x00\x00\x00", sizeof(mac)) == 0) {
+	if (status != NDIS_STATUS_SUCCESS ||
+	    memcmp(mac, "\x00\x00\x00\x00\x00\x00", sizeof(mac)) == 0) {
 		status = mp_query(wnd, OID_802_3_PERMANENT_ADDRESS, mac,
 				  sizeof(mac));
-		if (status) {
+		if (status != NDIS_STATUS_SUCCESS) {
 			ERROR("couldn't get mac address: %08X", status);
 			goto err_start;
 		}
-		TRACE1("mac:" MACSTRSEP, MAC2STR(mac));
 	}
-	status = mp_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
-			      &wnd->physical_medium);
-	if (status != NDIS_STATUS_SUCCESS)
-		wnd->physical_medium = NdisPhysicalMediumUnspecified;
+	TRACE1("mac:" MACSTRSEP, MAC2STR(mac));
+	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
-	get_supported_oids(wnd);
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
-	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
 	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |
 		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_MULTICAST;
@@ -1893,6 +1885,11 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	status = mp_set(wnd, OID_GEN_TRANSPORT_HEADER_OFFSET,
 			tx_header_offset, sizeof(*tx_header_offset));
 	TRACE2("%08X", status);
+
+	status = mp_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
+			      &wnd->physical_medium);
+	if (status != NDIS_STATUS_SUCCESS)
+		wnd->physical_medium = NdisPhysicalMediumUnspecified;
 
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		mp_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
