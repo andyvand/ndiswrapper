@@ -680,11 +680,7 @@ do {									\
  * DISPATCH_LEVEL on each cpu - the kernel is free to preempt any of
  * these threads */
 
-#if !defined(inc_preempt_count) || defined(CONFIG_PREEMPT_RT)
-#define WARP_PREEMPT 1
-#endif
-
-#if !defined(CONFIG_PREEMPT)
+#if !defined(CONFIT_PREEMPT) || defined(CONFIG_PREEMPT_RT)
 #define WARP_PREEMPT 1
 #endif
 

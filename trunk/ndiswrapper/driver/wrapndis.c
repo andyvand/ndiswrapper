@@ -574,9 +574,14 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	if (netif_queue_stopped(wnd->net_dev) &&
 	    ((pool->max_descr - pool->num_used_descr) >=
 	     (wnd->max_tx_packets / 4))) {
+#ifdef WARP_PREEMPT
+		set_bit(NETIF_WAKEQ, &wnd->wrap_ndis_pending_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
+#else
 		netif_tx_lock_bh(wnd->net_dev);
 		netif_wake_queue(wnd->net_dev);
 		netif_tx_unlock_bh(wnd->net_dev);
+#endif
 	}
 	EXIT4(return);
 }
@@ -1130,6 +1135,14 @@ static void wrap_ndis_worker(worker_param_t param)
 	wnd = worker_param_data(param, struct wrap_ndis_device, wrap_ndis_work);
 	WORKTRACE("0x%lx", wnd->wrap_ndis_pending_work);
 
+#ifdef WARP_PREEMPT
+	if (test_and_clear_bit(NETIF_WAKEQ, &wnd->wrap_ndis_pending_work)) {
+		netif_tx_lock_bh(wnd->net_dev);
+		netif_wake_queue(wnd->net_dev);
+		netif_tx_unlock_bh(wnd->net_dev);
+	}
+#endif
+
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
 		WORKEXIT(return);
 
@@ -1142,7 +1155,8 @@ static void wrap_ndis_worker(worker_param_t param)
 	if (test_and_clear_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work))
 		update_iw_stats(wnd);
 
-	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))
+	if (test_and_clear_bit(SET_MULTICAST_LIST,
+			       &wnd->wrap_ndis_pending_work))
 		set_multicast_list(wnd);
 
 	if (test_and_clear_bit(HANGCHECK, &wnd->wrap_ndis_pending_work)) {
