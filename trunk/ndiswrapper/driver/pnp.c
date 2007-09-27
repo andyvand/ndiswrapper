@@ -627,7 +627,7 @@ int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 	return wrap_pnp_start_device(wd);
 }
 
-void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
+void wrap_pnp_remove_pci_device(struct pci_dev *pdev)
 {
 	struct wrap_device *wd;
 

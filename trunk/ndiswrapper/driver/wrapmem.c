@@ -24,7 +24,7 @@ struct slack_alloc_info {
 
 static struct nt_list allocs;
 static struct nt_list slack_allocs;
-static NT_SPIN_LOCK alloc_lock;
+static spinlock_t alloc_lock;
 
 struct vmem_block {
 	struct nt_list list;
@@ -70,7 +70,6 @@ void *slack_kmalloc(size_t size)
 {
 	struct slack_alloc_info *info;
 	unsigned int flags;
-	KIRQL irql;
 
 	ENTER4("size = %lu", (unsigned long)size);
 
@@ -82,9 +81,9 @@ void *slack_kmalloc(size_t size)
 	if (!info)
 		return NULL;
 	info->size = size;
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	InsertTailList(&slack_allocs, &info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 #ifdef ALLOC_DEBUG
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
@@ -96,13 +95,12 @@ void *slack_kmalloc(size_t size)
 void slack_kfree(void *ptr)
 {
 	struct slack_alloc_info *info;
-	KIRQL irql;
 
 	ENTER4("%p", ptr);
 	info = ptr - sizeof(*info);
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 #ifdef ALLOC_DEBUG
 	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
@@ -114,9 +112,6 @@ void slack_kfree(void *ptr)
 void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = kmalloc(size + sizeof(*info), flags);
 	if (!info)
@@ -133,9 +128,9 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 #endif
 	return (info + 1);
 }
@@ -143,16 +138,15 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 void wrap_kfree(void *ptr)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
+	if (!ptr)
+		return;
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 	if (!(info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
 	      info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC))
 		WARNING("invliad type: %d", info->type);
@@ -163,9 +157,6 @@ void wrap_kfree(void *ptr)
 void *wrap_vmalloc(unsigned long size, const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = vmalloc(size + sizeof(*info));
 	if (!info)
@@ -179,9 +170,9 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 #endif
 	return (info + 1);
 }
@@ -190,9 +181,6 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 		    const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = __vmalloc(size + sizeof(*info), gfp_mask, prot);
 	if (!info)
@@ -209,9 +197,9 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 #endif
 	return (info + 1);
 }
@@ -219,16 +207,13 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 void wrap_vfree(void *ptr)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 	if (!(info->type == ALLOC_TYPE_VMALLOC_ATOMIC ||
 	      info->type == ALLOC_TYPE_VMALLOC_NON_ATOMIC))
 		WARNING("invliad type: %d", info->type);
@@ -240,9 +225,6 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 		       const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	size += sizeof(*info);
 	info = (struct alloc_info *)__get_free_pages(flags, get_order(size));
@@ -257,9 +239,9 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 #endif
 	return info + 1;
 }
@@ -267,16 +249,13 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 void wrap_free_pages(unsigned long ptr, int order)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = (void *)ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&alloc_lock);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock_irql(&alloc_lock, irql);
+	spin_unlock_bh(&alloc_lock);
 	if (info->type != ALLOC_TYPE_PAGES)
 		WARNING("invliad type: %d", info->type);
 #endif
@@ -320,7 +299,7 @@ int wrapmem_init(void)
 	InitializeListHead(&allocs);
 	InitializeListHead(&slack_allocs);
 	InitializeListHead(&vmem_list);
-	nt_spin_lock_init(&alloc_lock);
+	spin_lock_init(&alloc_lock);
 	return 0;
 }
 
@@ -328,14 +307,13 @@ void wrapmem_exit(void)
 {
 	enum alloc_type type;
 	struct nt_list *ent;
-	KIRQL irql;
 
 	/* free all pointers on the slack list */
 	while (1) {
 		struct slack_alloc_info *info;
-		irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+		spin_lock_bh(&alloc_lock);
 		ent = RemoveHeadList(&slack_allocs);
-		nt_spin_unlock_irql(&alloc_lock, irql);
+		spin_unlock_bh(&alloc_lock);
 		if (!ent)
 			break;
 		info = container_of(ent, struct slack_alloc_info, list);
@@ -356,9 +334,9 @@ void wrapmem_exit(void)
 	while (1) {
 		struct alloc_info *info;
 
-		irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+		spin_lock_bh(&alloc_lock);
 		ent = RemoveHeadList(&allocs);
-		nt_spin_unlock_irql(&alloc_lock, irql);
+		spin_unlock_bh(&alloc_lock);
 		if (!ent)
 			break;
 		info = container_of(ent, struct alloc_info, list);

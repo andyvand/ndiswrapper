@@ -109,9 +109,7 @@ ifdef WORK_DEBUG
 CFLAGS += -DWORK_DEBUG
 endif
 
-# if ALLOC_DEGUG=1 is defined, memory leak information is printed
-#if ALLOC_DEBUG=2, details about individual allocations leaking is printed
-#if ALLOC_DEBUG=3, tags in ExAllocatePoolWithTag leaking printed
+# to debug memory allocation issues
 ifdef ALLOC_DEBUG
 CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif

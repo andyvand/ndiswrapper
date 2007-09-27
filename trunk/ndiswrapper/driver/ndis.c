@@ -27,7 +27,7 @@
 static void ndis_worker(worker_param_t dummy);
 static work_struct_t ndis_work;
 static struct nt_list ndis_work_list;
-static NT_SPIN_LOCK ndis_work_list_lock;
+static spinlock_t ndis_work_list_lock;
 
 workqueue_struct_t *ndis_wq;
 static struct nt_thread *ndis_worker_thread;
@@ -1119,7 +1119,7 @@ wstdcall void WIN_FUNC(NdisAllocateBufferPool,3)
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT3(return);
 	}
-	nt_spin_lock_init(&pool->lock);
+	spin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
 	pool->free_descr = NULL;
@@ -1138,16 +1138,16 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	ENTER4("pool: %p, allocated: %d", pool, pool->num_allocated_descr);
 	/* NDIS drivers should call this at DISPATCH_LEVEL, but
 	 * alloc_tx_packet calls at SOFT_IRQL */
-	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
+	assert_irql(_irql_ <= SOFT_LEVEL);
 	if (!pool) {
 		*status = NDIS_STATUS_FAILURE;
 		*buffer = NULL;
 		EXIT4(return);
 	}
-	nt_spin_lock_bh(&pool->lock);
+	spin_lock_bh(&pool->lock);
 	if ((descr = pool->free_descr))
 		pool->free_descr = descr->next;
-	nt_spin_unlock_bh(&pool->lock);
+	spin_unlock_bh(&pool->lock);
 	if (descr) {
 		typeof(descr->flags) flags;
 		flags = descr->flags;
@@ -1197,19 +1197,19 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		EXIT4(return);
 	}
 	pool = buffer->pool;
-	nt_spin_lock_bh(&pool->lock);
+	spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
 		pool->num_allocated_descr--;
 		buffer->pool = NULL;
-		nt_spin_unlock_bh(&pool->lock);
+		spin_unlock_bh(&pool->lock);
 		free_mdl(buffer);
 	} else {
 		buffer->next = pool->free_descr;
 		pool->free_descr = buffer;
-		nt_spin_unlock_bh(&pool->lock);
+		spin_unlock_bh(&pool->lock);
 	}
 	EXIT4(return);
 }
@@ -1224,7 +1224,7 @@ wstdcall void WIN_FUNC(NdisFreeBufferPool,1)
 		WARNING("invalid pool");
 		EXIT3(return);
 	}
-	nt_spin_lock_bh(&pool->lock);
+	spin_lock_bh(&pool->lock);
 	cur = pool->free_descr;
 	while (cur) {
 		next = cur->next;
@@ -1232,7 +1232,7 @@ wstdcall void WIN_FUNC(NdisFreeBufferPool,1)
 		free_mdl(cur);
 		cur = next;
 	}
-	nt_spin_unlock_bh(&pool->lock);
+	spin_unlock_bh(&pool->lock);
 	kfree(pool);
 	pool = NULL;
 	EXIT3(return);
@@ -1388,7 +1388,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacketPoolEx,5)
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT3(return);
 	}
-	nt_spin_lock_init(&pool->lock);
+	spin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
 	pool->num_used_descr = 0;
@@ -1419,7 +1419,7 @@ wstdcall void WIN_FUNC(NdisFreePacketPool,1)
 		WARNING("invalid pool");
 		EXIT3(return);
 	}
-	nt_spin_lock_bh(&pool->lock);
+	spin_lock_bh(&pool->lock);
 	packet = pool->free_descr;
 	while (packet) {
 		next = (struct ndis_packet *)packet->reserved[0];
@@ -1429,7 +1429,7 @@ wstdcall void WIN_FUNC(NdisFreePacketPool,1)
 	pool->num_allocated_descr = 0;
 	pool->num_used_descr = 0;
 	pool->free_descr = NULL;
-	nt_spin_unlock_bh(&pool->lock);
+	spin_unlock_bh(&pool->lock);
 	kfree(pool);
 	EXIT3(return);
 }
@@ -1453,7 +1453,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		*ndis_packet = NULL;
 		EXIT4(return);
 	}
-	assert_irql(_irql_ <= DISPATCH_LEVEL || _irql_ == SOFT_IRQL);
+	assert_irql(_irql_ <= SOFT_LEVEL);
 	if (pool->num_used_descr > pool->max_descr) {
 		TRACE3("pool %p is full: %d(%d)", pool,
 		       pool->num_used_descr, pool->max_descr);
@@ -1466,10 +1466,10 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
-	nt_spin_lock_bh(&pool->lock);
+	spin_lock_bh(&pool->lock);
 	if ((packet = pool->free_descr))
 		pool->free_descr = (void *)packet->reserved[0];
-	nt_spin_unlock_bh(&pool->lock);
+	spin_unlock_bh(&pool->lock);
 	if (!packet) {
 		packet = kmalloc(packet_length, irql_gfp());
 		if (!packet) {
@@ -1510,7 +1510,7 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		ERROR("pool for descriptor %p is invalid", packet);
 		EXIT4(return);
 	}
-	nt_spin_lock_bh(&pool->lock);
+	spin_lock_bh(&pool->lock);
 	pool->num_used_descr--;
 	if (packet->reserved[1]) {
 		TRACE3("%p, %p", packet, (void *)packet->reserved[1]);
@@ -1527,7 +1527,7 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 			(typeof(packet->reserved[0]))pool->free_descr;
 		pool->free_descr = packet;
 	}
-	nt_spin_unlock_bh(&pool->lock);
+	spin_unlock_bh(&pool->lock);
 	EXIT4(return);
 }
 
@@ -2692,15 +2692,14 @@ wstdcall void WIN_FUNC(NdisResetEvent,1)
 
 static void ndis_worker(worker_param_t dummy)
 {
-	KIRQL irql;
 	struct nt_list *ent;
 	struct ndis_work_item *ndis_work_item;
 
 	WORKENTER("");
 	while (1) {
-		irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+		spin_lock_bh(&ndis_work_list_lock);
 		ent = RemoveHeadList(&ndis_work_list);
-		nt_spin_unlock_irql(&ndis_work_list_lock, irql);
+		spin_unlock_bh(&ndis_work_list_lock);
 		if (!ent)
 			break;
 		ndis_work_item = container_of(ent, struct ndis_work_item, list);
@@ -2716,12 +2715,10 @@ static void ndis_worker(worker_param_t dummy)
 wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	(struct ndis_work_item *ndis_work_item)
 {
-	KIRQL irql;
-
 	ENTER3("%p", ndis_work_item);
-	irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&ndis_work_list_lock);
 	InsertTailList(&ndis_work_list, &ndis_work_item->list);
-	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
+	spin_unlock_bh(&ndis_work_list_lock);
 	WORKTRACE("scheduling %p", ndis_work_item);
 	schedule_ndis_work(&ndis_work);
 	EXIT3(return NDIS_STATUS_SUCCESS);
@@ -2967,7 +2964,7 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 int ndis_init(void)
 {
 	InitializeListHead(&ndis_work_list);
-	nt_spin_lock_init(&ndis_work_list_lock);
+	spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
 
 	ndis_wq = create_singlethread_workqueue("ndis_wq");

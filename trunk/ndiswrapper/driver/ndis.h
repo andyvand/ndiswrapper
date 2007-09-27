@@ -77,7 +77,8 @@ typedef struct mdl ndis_buffer;
 
 struct ndis_buffer_pool {
 	ndis_buffer *free_descr;
-	NT_SPIN_LOCK lock;
+//	NT_SPIN_LOCK lock;
+	spinlock_t lock;
 	UINT max_descr;
 	UINT num_allocated_descr;
 };
@@ -211,7 +212,8 @@ struct ndis_packet;
 
 struct ndis_packet_pool {
 	struct ndis_packet *free_descr;
-	NT_SPIN_LOCK lock;
+//	NT_SPIN_LOCK lock;
+	spinlock_t lock;
 	UINT max_descr;
 	UINT num_allocated_descr;
 	UINT num_used_descr;
@@ -856,7 +858,7 @@ struct wrap_ndis_device {
 	u8 tx_ring_end;
 	u8 is_tx_ring_full;
 	u8 tx_ok;
-	NT_SPIN_LOCK tx_ring_lock;
+	spinlock_t tx_ring_lock;
 	struct semaphore tx_ring_mutex;
 	unsigned int max_tx_packets;
 	struct semaphore ndis_req_mutex;
