@@ -15,12 +15,15 @@
 
 #ifndef _WRAPMEM_H_
 
-/* define ALLOC_DEBUG below to get information about memory used by
- * both ndiswrapper and Windows driver by reading
+/* set ALLOC_DEBUG to 1 to get information about memory used by both
+ * ndiswrapper and Windows driver by reading
  * /proc/net/ndiswrapper/debug; this will also show memory leaks
  * (memory allocated but not freed) when ndiswrapper module is
- * unloaded. To identify leaks, define ALLOC_DEBUG to 2, which will
- * show individual allocations that are not being freed */
+ * unloaded.
+
+ * ALLOC_DEBUG=2: details about individual allocations leaking is printed
+ * ALLOC_DEBUG=3: tags in ExAllocatePoolWithTag leaking printed
+*/
 
 //#ifndef ALLOC_DEBUG
 //#define ALLOC_DEBUG 1

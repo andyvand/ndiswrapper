@@ -127,7 +127,7 @@ static void usb_kill_urb(struct urb *urb)
 #endif
 
 static struct nt_list wrap_urb_complete_list;
-static NT_SPIN_LOCK wrap_urb_complete_list_lock;
+static spinlock_t wrap_urb_complete_list_lock;
 
 static work_struct_t wrap_urb_complete_work;
 static void wrap_urb_complete_worker(worker_param_t dummy);
@@ -416,9 +416,9 @@ static void int_urb_unlink_complete(struct urb *urb)
 	if (xchg(&wrap_urb->state, URB_INT_UNLINKED) != URB_COMPLETED)
 		return;
 	urb->status = URB_STATUS(wrap_urb);
-	nt_spin_lock(&wrap_urb_complete_list_lock);
+	spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
-	nt_spin_unlock(&wrap_urb_complete_list_lock);
+	spin_unlock(&wrap_urb_complete_list_lock);
 	schedule_ntos_work(&wrap_urb_complete_work);
 }
 
@@ -454,9 +454,9 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 		return;
 	}
 #endif
-	nt_spin_lock(&wrap_urb_complete_list_lock);
+	spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
-	nt_spin_unlock(&wrap_urb_complete_list_lock);
+	spin_unlock(&wrap_urb_complete_list_lock);
 	schedule_ntos_work(&wrap_urb_complete_work);
 	USBTRACE("scheduled worker for urb %p", urb);
 }
@@ -476,9 +476,9 @@ static void wrap_urb_complete_worker(worker_param_t dummy)
 
 	USBENTER("");
 	while (1) {
-		nt_spin_lock_irqsave(&wrap_urb_complete_list_lock, flags);
+		spin_lock_irqsave(&wrap_urb_complete_list_lock, flags);
 		ent = RemoveHeadList(&wrap_urb_complete_list);
-		nt_spin_unlock_irqrestore(&wrap_urb_complete_list_lock, flags);
+		spin_unlock_irqrestore(&wrap_urb_complete_list_lock, flags);
 		if (!ent)
 			break;
 		wrap_urb = container_of(ent, struct wrap_urb, complete_list);
@@ -1528,7 +1528,7 @@ USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
 int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
-	nt_spin_lock_init(&wrap_urb_complete_list_lock);
+	spin_lock_init(&wrap_urb_complete_list_lock);
 	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
 #ifdef USB_DEBUG
 	urb_id = 0;
