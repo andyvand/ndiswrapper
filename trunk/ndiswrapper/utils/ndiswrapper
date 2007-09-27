@@ -178,7 +178,9 @@ sub install {
     chomp($inf);
     $src_dir = dirname($inf);
     $driver_name = lc(basename($inf));
-    $driver_name =~ s/\.inf//;
+    unless ($driver_name =~ s/\.inf$//) {
+	die "install argument must be .inf file\n";
+    }
 
     if (! -d $confdir) {
 	mkdir($confdir) or die "couldn't create $confdir: $!";
