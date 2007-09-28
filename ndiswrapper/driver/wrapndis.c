@@ -591,7 +591,7 @@ static u8 mp_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 	u8 sent;
 	KIRQL irql;
 
-	TRACE3("%d, %d", start, n);
+	ENTER3("%d, %d", start, n);
 	mp = &wnd->wd->driver->ndis_driver->mp;
 	if (mp->send_packets) {
 		if (deserialized_driver(wnd)) {
