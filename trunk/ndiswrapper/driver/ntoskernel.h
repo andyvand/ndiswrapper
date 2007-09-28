@@ -692,7 +692,6 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	info = &get_cpu_var(irql_info);
 	if (info->task == current) {
 		assert(info->count > 0);
-		TRACE5("p1: %d", info->count);
 		info->count++;
 		put_cpu_var(irql_info);
 		return DISPATCH_LEVEL;
@@ -714,7 +713,6 @@ static inline void lower_irql(KIRQL oldirql)
 	assert(info->count > 0);
 	if (--info->count == 0) {
 		assert(mutex_is_locked(&info->lock));
-		TRACE5("p2: %p", info->task);
 		info->task = NULL;
 		mutex_unlock(&info->lock);
 	}
@@ -805,14 +803,6 @@ static inline void nt_spin_unlock(NT_SPIN_LOCK *lock)
  * handlers), we need to fake preempt so driver thinks it is running
  * at right IRQL */
 
-#ifdef CONFIG_PREEMPT_RT
-#define save_local_irq(flags) local_irq_save(flags)
-#define restore_local_irq(flags) local_irq_restore(flags)
-#else
-#define save_local_irq(flags) local_irq_save(flags)
-#define restore_local_irq(flags) local_irq_restore(flags)
-#endif
-
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
 {
@@ -831,14 +821,14 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 #define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
 	preempt_disable();						\
-	save_local_irq(flags);						\
+	local_irq_save(flags);						\
 	nt_spin_lock(lock);						\
 } while (0)
 
 #define nt_spin_unlock_irqrestore(lock, flags)				\
 do {									\
 	nt_spin_unlock(lock);						\
-	restore_local_irq(flags);					\
+	local_irq_restore(flags);					\
 	preempt_enable_no_resched();					\
 } while (0)
 

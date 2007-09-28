@@ -66,7 +66,7 @@ static spinlock_t ntos_work_lock;
 static void ntos_work_worker(worker_param_t dummy);
 static struct nt_thread *ntos_worker_thread;
 spinlock_t irp_cancel_lock;
-static NT_SPIN_LOCK list_lock;
+static NT_SPIN_LOCK nt_list_lock;
 
 extern struct nt_list wrap_drivers;
 static struct nt_slist wrap_timer_slist;
@@ -297,7 +297,7 @@ wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPushEntrySList,2)
 {
 	struct nt_slist *ret;
 
-	ret = PushEntrySList(head, entry, &list_lock);
+	ret = PushEntrySList(head, entry, &nt_list_lock);
 	return ret;
 }
 
@@ -306,7 +306,7 @@ wfastcall struct nt_slist *WIN_FUNC(InterlockedPushEntrySList,2)
 {
 	struct nt_slist *ret;
 
-	ret = PushEntrySList(head, entry, &list_lock);
+	ret = PushEntrySList(head, entry, &nt_list_lock);
 	return ret;
 }
 
@@ -324,7 +324,7 @@ wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPopEntrySList,1)
 {
 	struct nt_slist *ret;
 
-	ret = PopEntrySList(head, &list_lock);
+	ret = PopEntrySList(head, &nt_list_lock);
 	return ret;
 }
 
@@ -333,7 +333,7 @@ wfastcall struct nt_slist *WIN_FUNC(InterlockedPopEntrySList,1)
 {
 	struct nt_slist *ret;
 
-	ret = PopEntrySList(head, &list_lock);
+	ret = PopEntrySList(head, &nt_list_lock);
 	return ret;
 }
 
@@ -375,7 +375,8 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 	(LARGE_INTEGER volatile *plint, ULONG n)
 {
 	unsigned long flags;
-	save_local_irq(flags);
+
+	local_irq_save(flags);
 #ifdef CONFIG_X86_64
 	__asm__ __volatile__(
 		"\n"
@@ -395,7 +396,7 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 		: "m" (n), "A" (*plint)
 		: "ebx", "ecx");
 #endif
-	restore_local_irq(flags);
+	local_irq_restore(flags);
 }
 
 static void initialize_object(struct dispatcher_header *dh, enum dh_type type,
@@ -2532,7 +2533,7 @@ int ntoskernel_init(void)
 	InitializeListHead(&object_list);
 	InitializeListHead(&ntos_work_list);
 
-	nt_spin_lock_init(&list_lock);
+	nt_spin_lock_init(&nt_list_lock);
 
 	initialize_work(&kdpc_work, kdpc_worker, NULL);
 	initialize_work(&ntos_work, ntos_work_worker, NULL);
