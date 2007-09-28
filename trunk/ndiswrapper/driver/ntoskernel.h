@@ -45,9 +45,6 @@
 #include <linux/rtnetlink.h>
 #include <linux/highmem.h>
 
-#include "winnt_types.h"
-#include "compat.h"
-
 #if !defined(CONFIG_X86) && !defined(CONFIG_X86_64)
 #error "this module is for x86 or x86_64 architectures only"
 #endif
@@ -414,11 +411,14 @@ typedef u32 pm_message_t;
 	kmem_cache_create(name, size, align, flags, NULL)
 #endif
 
+#include "winnt_types.h"
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 #include "wrapmem.h"
 #include "lin2win.h"
 #include "loader.h"
+
+#include "compat.h"
 
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
