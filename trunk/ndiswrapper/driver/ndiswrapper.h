@@ -202,7 +202,7 @@ do {								       \
 #define WORKEXIT(stmt) stmt
 #endif
 
-#if defined DEBUG
+#ifdef DEBUG
 #define assert(expr)							\
 do {									\
 	if (!(expr)) {							\

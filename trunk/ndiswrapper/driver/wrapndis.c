@@ -975,6 +975,7 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 
 	ENTER2("");
 #ifdef CONFIG_WIRELESS_EXT
+	memset(&wrqu, 0, sizeof(wrqu));
 	ndis_assoc_info = kzalloc(assoc_size, GFP_KERNEL);
 	if (!ndis_assoc_info) {
 		ERROR("couldn't allocate memory");
@@ -990,7 +991,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	TRACE2("%u, 0x%x, %u, 0x%x, %u", ndis_assoc_info->length,
 	       ndis_assoc_info->req_ies, ndis_assoc_info->req_ie_length,
 	       ndis_assoc_info->resp_ies, ndis_assoc_info->resp_ie_length);
-	memset(&wrqu, 0, sizeof(wrqu));
 #if WIRELESS_EXT > 17
 	if (ndis_assoc_info->req_ie_length > 0) {
 		wrqu.data.length = ndis_assoc_info->req_ie_length;
@@ -1128,22 +1128,14 @@ static void wrap_ndis_worker(worker_param_t param)
 	wnd = worker_param_data(param, struct wrap_ndis_device, wrap_ndis_work);
 	WORKTRACE("0x%lx", wnd->wrap_ndis_pending_work);
 
-#ifdef WARP_PREEMPT
 	if (test_and_clear_bit(NETIF_WAKEQ, &wnd->wrap_ndis_pending_work)) {
 		netif_tx_lock_bh(wnd->net_dev);
 		netif_wake_queue(wnd->net_dev);
 		netif_tx_unlock_bh(wnd->net_dev);
 	}
-#endif
 
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
 		WORKEXIT(return);
-
-	if (test_and_clear_bit(NETIF_WAKEQ, &wnd->wrap_ndis_pending_work)) {
-		netif_tx_lock_bh(wnd->net_dev);
-		netif_wake_queue(wnd->net_dev);
-		netif_tx_unlock_bh(wnd->net_dev);
-	}
 
 	if (test_and_clear_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work))
 		link_status_off(wnd);
