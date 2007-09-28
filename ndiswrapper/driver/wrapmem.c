@@ -132,13 +132,23 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
 #endif
+	TRACE4("%p", info + 1);
 	return (info + 1);
+}
+
+void *wrap_kzalloc(size_t size, unsigned flags, const char *file, int line)
+{
+	void *ptr = wrap_kmalloc(size, flags, file, line);
+	if (ptr)
+		memset(ptr, 0, size);
+	return ptr;
 }
 
 void wrap_kfree(void *ptr)
 {
 	struct alloc_info *info;
 
+	TRACE4("%p", ptr);
 	if (!ptr)
 		return;
 	info = ptr - sizeof(*info);
