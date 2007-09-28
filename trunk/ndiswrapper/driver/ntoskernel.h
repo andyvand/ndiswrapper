@@ -692,13 +692,16 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	info = &get_cpu_var(irql_info);
 	if (info->task == current) {
 		assert(info->count > 0);
+		assert(mutex_is_locked(&info->lock));
 		info->count++;
 		put_cpu_var(irql_info);
 		return DISPATCH_LEVEL;
 	}
 	put_cpu_var(irql_info);
 	mutex_lock(&info->lock);
-	info->count++;
+	assert(info->count == 0);
+	assert(info->task == NULL);
+	info->count = 1;
 	info->task = current;
 	return PASSIVE_LEVEL;
 }
@@ -709,10 +712,10 @@ static inline void lower_irql(KIRQL oldirql)
 
 	assert(oldirql <= DISPATCH_LEVEL);
 	info = &get_cpu_var(irql_info);
-	assert(current == info->task);
+	assert(info->task == current);
+	assert(mutex_is_locked(&info->lock));
 	assert(info->count > 0);
 	if (--info->count == 0) {
-		assert(mutex_is_locked(&info->lock));
 		info->task = NULL;
 		mutex_unlock(&info->lock);
 	}
