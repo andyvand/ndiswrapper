@@ -1128,14 +1128,14 @@ static void wrap_ndis_worker(worker_param_t param)
 	wnd = worker_param_data(param, struct wrap_ndis_device, wrap_ndis_work);
 	WORKTRACE("0x%lx", wnd->wrap_ndis_pending_work);
 
+	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
+		WORKEXIT(return);
+
 	if (test_and_clear_bit(NETIF_WAKEQ, &wnd->wrap_ndis_pending_work)) {
 		netif_tx_lock_bh(wnd->net_dev);
 		netif_wake_queue(wnd->net_dev);
 		netif_tx_unlock_bh(wnd->net_dev);
 	}
-
-	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
-		WORKEXIT(return);
 
 	if (test_and_clear_bit(LINK_STATUS_OFF, &wnd->wrap_ndis_pending_work))
 		link_status_off(wnd);

@@ -6,6 +6,9 @@ Version 1.49 2007-XX-XX
   OID_802_3_PERMANENT_ADDRESS to get the correct address. This is required for
   some atheros devices (e.g., AR5007EG)
 * Fixed a kernel crash with non-preempt kernels (observed with acx111 driver)
+* Preemption, as required by Windows, has been reimplemented. With this,
+  ndiswrapper works with RT-preempt and non-preempt kernels
+* Dropped support for 2.4 kernels (and very old 2.6 kernels)
 
 Version 1.48 2007-09-19
 =======================	
