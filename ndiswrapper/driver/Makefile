@@ -114,11 +114,6 @@ ifdef ALLOC_DEBUG
 CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
-# don't complain if using this option breaks your skull and such
-ifdef WARP_PREEMPT
-CFLAGS += -DWARP_PREEMPT
-endif
-
 .PHONY: prereq_check gen_exports clean dist_clean install stack_check
 
 all : prereq_check win2lin_stubs.h gen_exports compat.h default stack_check
