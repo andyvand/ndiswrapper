@@ -2112,7 +2112,7 @@ int init_ndis_driver(struct driver_object *drv_obj)
 
 int wrapndis_init(void)
 {
-	wrapndis_wq = create_workqueue("wrapndis_wq");
+	wrapndis_wq = create_singlethread_workqueue("wrapndis_wq");
 	if (!wrapndis_wq)
 		EXIT1(return -ENOMEM);
 	wrapndis_worker_thread = wrap_worker_init(wrapndis_wq);

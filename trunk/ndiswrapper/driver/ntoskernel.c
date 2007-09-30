@@ -2561,7 +2561,7 @@ int ntoskernel_init(void)
 #endif
 
 #ifdef NTOS_WQ
-	ntos_wq = create_workqueue("ntos_wq");
+	ntos_wq = create_singlethread_workqueue("ntos_wq");
 	if (!ntos_wq) {
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;
