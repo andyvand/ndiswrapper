@@ -697,11 +697,13 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	assert(newirql == DISPATCH_LEVEL);
 	info = &get_cpu_var(irql_info);
 	if (info->task == current) {
+		no_warn_unused cpumask_t cpumask;
 		assert(info->count > 0);
 		assert(mutex_is_locked(&info->lock));
-#ifdef CONFIG_SMP1
-		assert(cpus_equal(current->cpus_allowed,
-				  cpumask_of_cpu(smp_processor_id())));
+#ifdef CONFIG_SMP
+		cpumask = cpumask_of_cpu(smp_processor_id());
+		cpus_xor(cpumask, cpumask, current->cpus_allowed);
+		assert(cpus_empty(cpumask));
 #endif
 		info->count++;
 		put_cpu_var(irql_info);
@@ -709,6 +711,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	}
 	/* TODO: is this enough to pin down to current cpu? */
 #ifdef CONFIG_SMP
+	assert(task_cpu(current) == smp_processor_id());
 	current->cpus_allowed = cpumask_of_cpu(smp_processor_id());
 #endif
 	put_cpu_var(irql_info);
@@ -740,7 +743,7 @@ static inline void lower_irql(KIRQL oldirql)
 }
 
 static inline KIRQL current_irql(void)
-{									
+{
 	if (in_irq() || irqs_disabled())
 		EXIT4(return DIRQL);
 	if (in_atomic() || in_interrupt())
@@ -754,7 +757,7 @@ static inline KIRQL current_irql(void)
 #else
 
 static inline KIRQL current_irql(void)
-{									
+{
 	if (in_irq() || irqs_disabled())
 		EXIT4(return DIRQL);
 	if (in_interrupt())
