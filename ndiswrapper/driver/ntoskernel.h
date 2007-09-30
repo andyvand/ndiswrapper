@@ -676,6 +676,12 @@ do {									\
 #define preempt_enable_no_resched() preempt_enable()
 #endif
 
+#if !defined(CONFIG_PREEMPT) || defined(CONFIG_PREEMPT_RT) || 1
+#define WRAP_PREEMPT 1
+#endif
+
+#ifdef WRAP_PREEMPT
+
 typedef struct {
 	int count;
 	struct mutex lock;
@@ -693,10 +699,18 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	if (info->task == current) {
 		assert(info->count > 0);
 		assert(mutex_is_locked(&info->lock));
+#ifdef CONFIG_SMP1
+		assert(cpus_equal(current->cpus_allowed,
+				  cpumask_of_cpu(smp_processor_id())));
+#endif
 		info->count++;
 		put_cpu_var(irql_info);
 		return DISPATCH_LEVEL;
 	}
+	/* TODO: is this enough to pin down to current cpu? */
+#ifdef CONFIG_SMP
+	current->cpus_allowed = cpumask_of_cpu(smp_processor_id());
+#endif
 	put_cpu_var(irql_info);
 	mutex_lock(&info->lock);
 	assert(info->count == 0);
@@ -718,6 +732,9 @@ static inline void lower_irql(KIRQL oldirql)
 	if (--info->count == 0) {
 		info->task = NULL;
 		mutex_unlock(&info->lock);
+#ifdef CONFIG_SMP
+		current->cpus_allowed = CPU_MASK_ALL;
+#endif
 	}
 	put_cpu_var(irql_info);
 }
@@ -728,12 +745,42 @@ static inline KIRQL current_irql(void)
 		EXIT4(return DIRQL);
 	if (in_atomic() || in_interrupt())
 		EXIT4(return SOFT_IRQL);
-
 	if ((__get_cpu_var(irql_info)).count)
 		EXIT6(return DISPATCH_LEVEL);
 	else
 		EXIT6(return PASSIVE_LEVEL);
 }
+
+#else
+
+static inline KIRQL current_irql(void)
+{									
+	if (in_irq() || irqs_disabled())
+		EXIT4(return DIRQL);
+	if (in_interrupt())
+		EXIT4(return SOFT_IRQL);
+	if (in_atomic())
+		EXIT6(return DISPATCH_LEVEL);
+	else
+		EXIT6(return PASSIVE_LEVEL);
+}
+
+static inline KIRQL raise_irql(KIRQL newirql)
+{
+	KIRQL ret = in_atomic() ? DISPATCH_LEVEL : PASSIVE_LEVEL;
+	assert(newirql == DISPATCH_LEVEL);
+	assert(current_irql() <= DISPATCH_LEVEL);
+	preempt_disable();
+	return ret;
+}
+
+static inline void lower_irql(KIRQL oldirql)
+{
+	assert(oldirql <= DISPATCH_LEVEL);
+	preempt_enable();
+}
+
+#endif
 
 //#define DEBUG_IRQL 1
 
@@ -832,7 +879,7 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	local_irq_restore(flags);					\
-	preempt_enable_no_resched();					\
+	preempt_enable();						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)

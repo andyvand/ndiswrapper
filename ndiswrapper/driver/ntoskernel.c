@@ -89,7 +89,9 @@ WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 workqueue_struct_t *ntos_wq;
 #endif
 
+#ifdef WRAP_PREEMPT
 DEFINE_PER_CPU(irql_info_t, irql_info);
+#endif
 
 #if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
@@ -602,6 +604,7 @@ static void kdpc_worker(worker_param_t dummy)
 	KIRQL irql;
 
 	WORKENTER("");
+	irql = raise_irql(DISPATCH_LEVEL);
 	while (1) {
 		spin_lock_irqsave(&kdpc_list_lock, flags);
 		entry = RemoveHeadList(&kdpc_list);
@@ -616,12 +619,11 @@ static void kdpc_worker(worker_param_t dummy)
 			break;
 		WORKTRACE("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
-		irql = raise_irql(DISPATCH_LEVEL);
 		assert_irql(_irql_ == DISPATCH_LEVEL);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		assert_irql(_irql_ == DISPATCH_LEVEL);
-		lower_irql(irql);
 	}
+	lower_irql(irql);
 	WORKEXIT(return);
 }
 
@@ -2519,7 +2521,6 @@ struct nt_thread *wrap_worker_init(workqueue_struct_t *wq)
 int ntoskernel_init(void)
 {
 	struct timeval now;
-	int i;
 
 	spin_lock_init(&dispatcher_lock);
 	spin_lock_init(&ntoskernel_lock);
@@ -2546,13 +2547,18 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
 
-	for (i = 0; i < NR_CPUS; i++) {
-		irql_info_t *info;
-		info = &per_cpu(irql_info, i);
-		mutex_init(&(info->lock));
-		info->task = NULL;
-		info->count = 0;
-	}
+#ifdef WRAP_PREEMPT
+	do {
+		int cpu;
+		for_each_possible_cpu(cpu) {
+			irql_info_t *info;
+			info = &per_cpu(irql_info, cpu);
+			mutex_init(&(info->lock));
+			info->task = NULL;
+			info->count = 0;
+		}
+	} while (0);
+#endif
 
 #ifdef NTOS_WQ
 	ntos_wq = create_workqueue("ntos_wq");
