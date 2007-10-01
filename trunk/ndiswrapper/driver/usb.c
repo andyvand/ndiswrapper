@@ -275,7 +275,7 @@ wstdcall void wrap_cancel_irp(struct device_object *dev_obj, struct irp *irp)
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	return;
 }
-WIN_FUNC_DECL(wrap_cancel_irp,2);
+WIN_FUNC_DECL(wrap_cancel_irp,2)
 
 static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 				  void *buf, unsigned int buf_len)

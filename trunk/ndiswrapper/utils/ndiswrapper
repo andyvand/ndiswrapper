@@ -187,13 +187,13 @@ sub install {
     }
     (-d "$confdir/$driver_name") and
       die "driver $driver_name is already installed\n";
-    mkdir("$confdir/$driver_name") or
-      die "couldn't create $confdir/$driver_name: $!";
-    print "installing $driver_name ...\n";
     read_sections($inf);
     parse_section("Strings");
     parse_section("Version");
     parse_source_disks_files();
+    mkdir("$confdir/$driver_name") or
+      die "couldn't create $confdir/$driver_name: $!";
+    print "installing $driver_name ...\n";
     parse_mfr();
     copy_file(basename($inf), basename($inf));
     create_fuzzy_conf($driver_name);
