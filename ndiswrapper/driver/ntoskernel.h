@@ -467,7 +467,7 @@ struct wrap_export {
 
 #ifdef CONFIG_X86_64
 
-#define WIN_SYMBOL(name, argc)						\
+#define WIN_SYMBOL(name, argc)					\
 	{#name, (generic_func) win2lin_ ## name ## _ ## argc}
 #define WIN_WIN_SYMBOL(name, argc)					\
 	{#name, (generic_func) win2lin__win_ ## name ## _ ## argc}
@@ -676,8 +676,12 @@ do {									\
 #define preempt_enable_no_resched() preempt_enable()
 #endif
 
-#if !defined(CONFIG_PREEMPT) || defined(CONFIG_PREEMPT_RT) || 1
 #define WRAP_PREEMPT 1
+
+#if !defined(CONFIG_PREEMPT) || defined(CONFIG_PREEMPT_RT)
+#ifndef WRAP_PREEMPT
+#define WRAP_PREEMPT 1
+#endif
 #endif
 
 #ifdef WRAP_PREEMPT

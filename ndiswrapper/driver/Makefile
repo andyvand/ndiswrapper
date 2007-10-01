@@ -240,9 +240,9 @@ endif
 		echo "#ifdef CONFIG_X86_64"; \
 		sed -n \
 			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   WIN_FUNC_DECL(\1, \2);/p' \
+			   WIN_FUNC_DECL(\1, \2)/p' \
 			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   WIN_FUNC_DECL(\1, \2);/p' \
+			   WIN_FUNC_DECL(\1, \2)/p' \
 		   $< | sed -e 's/[ \t	]\+//' | sort -u; \
 		echo "#endif"; \
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
