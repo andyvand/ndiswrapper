@@ -676,6 +676,23 @@ do {									\
 #define preempt_enable_no_resched() preempt_enable()
 #endif
 
+//#define DEBUG_IRQL 1
+
+#ifdef DEBUG_IRQL
+#define assert_irql(cond)						\
+do {									\
+	KIRQL _irql_ = current_irql();					\
+	if (!(cond)) {							\
+		WARNING("assertion '%s' failed: %d", #cond, _irql_);	\
+		DBG_BLOCK(4) {						\
+			dump_stack();					\
+		}							\
+	}								\
+} while (0)
+#else
+#define assert_irql(cond) do { } while (0)
+#endif
+
 #define WRAP_PREEMPT 1
 
 #if !defined(CONFIG_PREEMPT) || defined(CONFIG_PREEMPT_RT)
@@ -701,13 +718,15 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	assert(newirql == DISPATCH_LEVEL);
 	info = &get_cpu_var(irql_info);
 	if (info->task == current) {
-		no_warn_unused cpumask_t cpumask;
 		assert(info->count > 0);
 		assert(mutex_is_locked(&info->lock));
-#ifdef CONFIG_SMP
-		cpumask = cpumask_of_cpu(smp_processor_id());
-		cpus_xor(cpumask, cpumask, current->cpus_allowed);
-		assert(cpus_empty(cpumask));
+#if defined(CONFIG_SMP) && defined(DEBUG)
+		do {
+			cpumask_t cpumask;
+			cpumask = cpumask_of_cpu(smp_processor_id());
+			cpus_xor(cpumask, cpumask, current->cpus_allowed);
+			assert(cpus_empty(cpumask));
+		} while (0);
 #endif
 		info->count++;
 		put_cpu_var(irql_info);
@@ -783,30 +802,13 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	assert(oldirql <= DISPATCH_LEVEL);
+	assert(current_irql() == DISPATCH_LEVEL);
 	preempt_enable();
 }
 
 #endif
 
-//#define DEBUG_IRQL 1
-
 #define irql_gfp() (in_atomic() ? GFP_ATOMIC : GFP_KERNEL)
-
-#ifdef DEBUG_IRQL
-#define assert_irql(cond)						\
-do {									\
-	KIRQL _irql_ = current_irql();					\
-	if (!(cond)) {							\
-		WARNING("assertion '%s' failed: %d", #cond, _irql_);	\
-		DBG_BLOCK(4) {						\
-			dump_stack();					\
-		}							\
-	}								\
-} while (0)
-#else
-#define assert_irql(cond) do { } while (0)
-#endif
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
  * store Linux spinlocks; so we implement Windows spinlocks using
