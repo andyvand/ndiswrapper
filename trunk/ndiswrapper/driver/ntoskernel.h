@@ -767,11 +767,14 @@ static inline void lower_irql(KIRQL oldirql)
 
 static inline KIRQL current_irql(void)
 {
+	int count;
 	if (in_irq() || irqs_disabled())
 		EXIT4(return DIRQL);
 	if (in_atomic() || in_interrupt())
 		EXIT4(return SOFT_IRQL);
-	if ((__get_cpu_var(irql_info)).count)
+	count = get_cpu_var(irql_info).count;
+	put_cpu_var(irql_info);
+	if (count)
 		EXIT6(return DISPATCH_LEVEL);
 	else
 		EXIT6(return PASSIVE_LEVEL);
