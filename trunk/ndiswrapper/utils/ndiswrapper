@@ -479,6 +479,8 @@ sub parse_copy_file {
 	    $src = $files[0];
 	    $dst = $src;
 	}
+	$src =~ s/^.*\\//;
+	$dst =~ s/^.*\\//;
 	printf DBG "src: '%s', dst: '%s'\n", $src, $dst;
 	$src = trim(del_comment($src));
 	next if (length($src) eq 0);
