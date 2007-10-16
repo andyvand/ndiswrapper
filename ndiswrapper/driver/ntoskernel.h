@@ -693,6 +693,14 @@ do {									\
 #define assert_irql(cond) do { } while (0)
 #endif
 
+/* When preempt is enabled, we should preempt_disable to raise IRQL to
+ * DISPATCH_LEVEL, to be consistent with the semantics. However, using
+ * a mutex instead, so that only ndiswrapper threads run one at a time
+ * on a processor when at DISPATCH_LEVEL seems to be enough. So that
+ * is what we will use until we learn otherwise. If
+ * preempt_(en|dis)able is required for some reason, comment out
+ * following #define. */
+
 #define WRAP_PREEMPT 1
 
 #if !defined(CONFIG_PREEMPT) || defined(CONFIG_PREEMPT_RT)
