@@ -371,7 +371,6 @@ void wrapmem_exit(void)
 			free_pages((unsigned long)info, get_order(info->size));
 		else
 			WARNING("invalid type: %d; not freed", info->type);
-
 	}
 #endif
 #endif
