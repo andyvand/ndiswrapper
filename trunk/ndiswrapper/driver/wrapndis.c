@@ -259,8 +259,11 @@ static void mp_halt(struct wrap_ndis_device *wnd)
 		WARNING("device %p is not initialized - not halting", wnd);
 		return;
 	}
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
+	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+		up(&wnd->ndis_req_mutex);
 		disassociate(wnd, 0);
+		down_interruptible(&wnd->ndis_req_mutex);
+	}
 	hangcheck_del(wnd);
 	del_iw_stats_timer(wnd);
 	mp = &wnd->wd->driver->ndis_driver->mp;
