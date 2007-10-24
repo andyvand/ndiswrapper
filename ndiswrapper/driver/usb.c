@@ -333,7 +333,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	/* called as Windows function */
 	irp->cancel_routine = WIN_FUNC_PTR(wrap_cancel_irp,2);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
-	USBTRACE("allocated urb: %p", urb);
+	USBTRACE("urb: %p", urb);
 
 	urb->transfer_buffer_length = buf_len;
 	if (buf_len && buf && (!virt_addr_valid(buf)
@@ -358,8 +358,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		wrap_urb->flags |= WRAP_URB_COPY_BUFFER;
 		if (usb_pipeout(pipe))
 			memcpy(urb->transfer_buffer, buf, buf_len);
-		USBTRACE("DMA buffer for urb %p is %p",
-			 urb, urb->transfer_buffer);
+		USBTRACE("DMA buf for urb %p: %p", urb, urb->transfer_buffer);
 	} else
 		urb->transfer_buffer = buf;
 	return urb;
@@ -458,7 +457,6 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	spin_unlock(&wrap_urb_complete_list_lock);
 	schedule_ntos_work(&wrap_urb_complete_work);
-	USBTRACE("scheduled worker for urb %p", urb);
 }
 
 /* one worker for all devices */
