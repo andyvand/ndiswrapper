@@ -16,7 +16,7 @@
 #ifndef _NDISWRAPPER_H_
 #define _NDISWRAPPER_H_
 
-#define DRIVER_VERSION "1.49rc4"
+#define DRIVER_VERSION "1.49"
 #define UTILS_VERSION "1.9"
 
 #define DRIVER_NAME "ndiswrapper"

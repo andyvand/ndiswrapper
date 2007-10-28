@@ -1,4 +1,4 @@
-Version 1.49 2007-XX-XX
+Version 1.49 2007-10-27
 =======================	
 * If a driver returns invalid MAC address (00:00:00:00:00) when
   queried with OID_802_3_CURRENT_ADDRESS (probably because

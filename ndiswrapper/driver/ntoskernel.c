@@ -821,14 +821,12 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 			TRACE1("%p, %lu", addr, size);
 		}
 	}
-
 	DBG_BLOCK(1) {
 		if (addr)
 			TRACE4("addr: %p, %lu", addr, size);
 		else
 			TRACE1("failed: %lu", size);
 	}
-
 	return addr;
 }
 WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
@@ -1473,8 +1471,7 @@ struct task_struct *get_nt_thread_task(struct nt_thread *thread)
 static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
-	thread = allocate_object(sizeof(*thread),
-				 OBJECT_TYPE_NT_THREAD, NULL);
+	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
 	if (!thread) {
 		ERROR("couldn't allocate thread object");
 		EXIT2(return NULL);
