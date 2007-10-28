@@ -971,10 +971,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	union iwreq_data wrqu;
 	NDIS_STATUS res;
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX + 32;
-#if WIRELESS_EXT <= 17
-	unsigned char *wpa_assoc_info, *ies;
-	unsigned char *p;
-#endif
 #endif
 
 	ENTER2("");
@@ -1008,41 +1004,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 				    ((char *)ndis_assoc_info) +
 				    ndis_assoc_info->offset_resp_ies);
 	}
-#else
-	/* we need 28 extra bytes for the format strings */
-	if ((ndis_assoc_info->req_ie_length +
-	     ndis_assoc_info->resp_ie_length + 28) > IW_CUSTOM_MAX) {
-		WARNING("information element is too long! (%u,%u),"
-			"association information dropped",
-			ndis_assoc_info->req_ie_length,
-			ndis_assoc_info->resp_ie_length);
-		kfree(ndis_assoc_info);
-		goto send_assoc_event;
-	}
-
-	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
-	if (!wpa_assoc_info) {
-		ERROR("couldn't allocate memory");
-		kfree(ndis_assoc_info);
-		goto send_assoc_event;
-	}
-	p = wpa_assoc_info;
-	p += sprintf(p, "ASSOCINFO(ReqIEs=");
-	memcpy(p, ((char *)ndis_assoc_info) + ndis_assoc_info->offset_req_ies,
-	       ndis_assoc_info->req_ie_length);
-	p += ndis_assoc_info->req_ie_length;
-
-	p += sprintf(p, " RespIEs=");
-	memcpy(p, ((char *)ndis_assoc_info) + ndis_assoc_info->offset_resp_ies,
-	       ndis_assoc_info->resp_ie_length);
-	p += ndis_assoc_info->resp_ie_length;
-
-	p += sprintf(p, ")");
-
-	wrqu.data.length = p - wpa_assoc_info;
-	wireless_send_event(wnd->net_dev, IWEVCUSTOM, &wrqu, wpa_assoc_info);
-
-	kfree(wpa_assoc_info);
 #endif
 	kfree(ndis_assoc_info);
 
