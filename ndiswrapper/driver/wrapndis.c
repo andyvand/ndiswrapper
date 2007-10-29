@@ -1979,7 +1979,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	}
 	wd = pdo->reserved;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	SET_MODULE_OWNER(net_dev);
+//	SET_MODULE_OWNER(net_dev);
 	if (wrap_is_pci_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
 	if (wrap_is_usb_bus(wd->dev_bus))

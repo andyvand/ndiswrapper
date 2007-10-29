@@ -65,58 +65,58 @@ $(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
 endif
 include $(KBUILD)/.config
 
-CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
+MOD_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
 		  -include $(KSRC)/include/linux/modversions.h)
 
 ifndef DISABLE_USB
-CFLAGS += $(shell if grep -q 'struct module \*owner;' \
+MOD_CFLAGS += $(shell if grep -q 'struct module \*owner;' \
 		   $(KSRC)/include/linux/usb.h ; then \
 			echo -DUSB_DRIVER_OWNER; \
 		  fi)
 endif
 
 # returns of structs and unions in registers when possible, like Windows 
-CFLAGS += -freg-struct-return
+MOD_CFLAGS += -freg-struct-return
 
 # to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
-CFLAGS += -DDEBUG=$(DEBUG) -g
+MOD_CFLAGS += -DDEBUG=$(DEBUG) -g
 endif
 
 # to debug timers, add option "TIMER_DEBUG=1 DEBUG=<n>"
 ifdef TIMER_DEBUG
-CFLAGS += -DTIMER_DEBUG
+MOD_CFLAGS += -DTIMER_DEBUG
 endif
 
 # to debug event layer, add option "EVENT_DEBUG=1 DEBUG=<n>"
 ifdef EVENT_DEBUG
-CFLAGS += -DEVENT_DEBUG
+MOD_CFLAGS += -DEVENT_DEBUG
 endif
 
 # to debug USB layer, add option "USB_DEBUG=1 DEBUG=<n>"
 ifdef USB_DEBUG
-CFLAGS += -DUSB_DEBUG
+MOD_CFLAGS += -DUSB_DEBUG
 endif
 
 # to debug I/O layer, add option "IO_DEBUG=1 DEBUG=<n>"
 ifdef IO_DEBUG
-CFLAGS += -DIO_DEBUG
+MOD_CFLAGS += -DIO_DEBUG
 endif
 
 # to debug worker threads
 ifdef WORK_DEBUG
-CFLAGS += -DWORK_DEBUG
+MOD_CFLAGS += -DWORK_DEBUG
 endif
 
 # to debug memory allocation issues
 ifdef ALLOC_DEBUG
-CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
+MOD_CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
 # emulate (pseudo) preemption
 ifdef WRAP_PREEMPT
-CFLAGS += -DWRAP_PREEMPT
+MOD_CFLAGS += -DWRAP_PREEMPT
 endif
 
 .PHONY: prereq_check gen_exports clean dist_clean install stack_check
@@ -133,7 +133,7 @@ OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 ifdef DISABLE_USB
 usb_exports.h:
 
-CFLAGS += -DDISABLE_USB
+MOD_CFLAGS += -DDISABLE_USB
 else
 usb_exports.h: usb.c
 
@@ -145,23 +145,18 @@ OBJS += usb.o
 endif
 endif
 
-ifeq ($(KPSUB),24)
-CFLAGS += -DUSE_OWN_WQ
-OBJS += workqueue.o
-endif
-
-CFLAGS += $(shell if grep -s -A1 'ndiswrapper' $(KSRC)/kernel/module.c | \
+MOD_CFLAGS += $(shell if grep -s -A1 'ndiswrapper' $(KSRC)/kernel/module.c | \
 			grep -q 'add_taint_module' ; then \
 			echo -DUSE_OWN_WQ; \
 		  fi)
 
 ifdef WRAP_WQ
-CFLAGS += -DWRAP_WQ
+MOD_CFLAGS += -DWRAP_WQ
 OBJS += workqueue.o
 endif
 
 ifdef NTOS_WQ
-CFLAGS += -DNTOS_WQ
+MOD_CFLAGS += -DNTOS_WQ
 endif
 
 ntoskernel.h: lin2win.h
@@ -281,6 +276,10 @@ compat.h: $(KBUILD)/include/linux/version.h
 		echo "static inline void netif_tx_unlock_bh(struct net_device *dev)"; \
 		echo "{ spin_unlock_bh(&dev->xmit_lock); }"; \
 	fi >> $@
+	@if ! grep -qw netif_poll_enable $(KSRC)/include/linux/netdevice.h; then \
+	    echo "static inline void netif_poll_enable(struct net_device *dev) {}"; \
+	    echo "static inline void netif_poll_disable(struct net_device *dev) {}"; \
+	fi >> $@
 	@if ! grep -qw pci_set_consistent_dma_mask \
 			   $(KSRC)/include/linux/pci.h; then \
 		echo "static inline int pci_set_consistent_dma_mask" ; \
@@ -294,6 +293,11 @@ compat.h: $(KBUILD)/include/linux/version.h
 	fi >> $@
 	@if [ -f $(KSRC)/include/linux/percpu.h ]; then \
 		echo "#include <linux/percpu.h>"; \
+	fi >> $@
+	@if grep -qw proc_net $(KSRC)/include/linux/proc_fs.h; then \
+		echo "#define proc_net_root proc_net"; \
+     else \
+		echo "#define proc_net_root init_net.proc_net"; \
 	fi >> $@
 
 prereq_check:
@@ -318,19 +322,14 @@ clean:
 distclean: clean
 	rm -f *_exports.h .\#* win2lin_stubs.h built-in.o
 
-ifeq ($(KPSUB),24)
+flags := $(shell if grep -qw "EXTRA_CFLAGS" $(KBUILD)/scripts/Makefile.build; \
+		             then echo "EXTRA_CFLAGS"; else echo "CFLAGS"; fi)
 
-MODULE := ndiswrapper.o
-CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
-		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
-		  -fno-strict-aliasing -pipe -O2
-
-ifneq ($(CONFIG_X86_64),y)
-CFLAGS += -mpreferred-stack-boundary=2 
-endif
-default: $(OBJS)
-	$(LD) -r -o $(MODULE) $(OBJS)
+ifeq ($(flags), CFLAGS)
+CFLAGS += $(MOD_CFLAGS)
 else
+EXTRA_CFLAGS += $(MOD_CFLAGS)
+endif
 
 MODULE := ndiswrapper.ko
 obj-m := ndiswrapper.o 
@@ -340,7 +339,6 @@ ndiswrapper-objs := $(OBJS)
 default:
 	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR)
 
-endif
 
 stack_check:
 	@if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ] && \
