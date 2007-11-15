@@ -1925,13 +1925,12 @@ static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 		tx_pending = TX_RING_SIZE - 1;
 	wnd->is_tx_ring_full = 0;
 	/* throw away pending packets */
-	while (tx_pending > 0) {
+	while (tx_pending-- > 0) {
 		struct ndis_packet *packet;
 
 		packet = wnd->tx_ring[wnd->tx_ring_start];
 		free_tx_packet(wnd, packet, NDIS_STATUS_CLOSING);
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
-		tx_pending--;
 	}
 	spin_unlock_bh(&wnd->tx_ring_lock);
 	up(&wnd->tx_ring_mutex);
