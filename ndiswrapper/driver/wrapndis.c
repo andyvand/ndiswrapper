@@ -1728,9 +1728,9 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev = wnd->net_dev;
 
 	get_supported_oids(wnd);
+	memset(mac, 0, sizeof(mac));
 	status = mp_query(wnd, OID_802_3_CURRENT_ADDRESS, mac, sizeof(mac));
-	if (status != NDIS_STATUS_SUCCESS ||
-	    memcmp(mac, "\x00\x00\x00\x00\x00\x00", sizeof(mac)) == 0) {
+	if (memcmp(mac, "\x00\x00\x00\x00\x00\x00", sizeof(mac)) == 0) {
 		status = mp_query(wnd, OID_802_3_PERMANENT_ADDRESS, mac,
 				  sizeof(mac));
 		if (status != NDIS_STATUS_SUCCESS) {
@@ -1739,10 +1739,10 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 		}
 	}
 	TRACE1("mac:" MACSTRSEP, MAC2STR(mac));
-	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
+	memcpy(net_dev->dev_addr, mac, ETH_ALEN);
 
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
-	net_dev->name[IFNAMSIZ - 1] = '\0';
+	net_dev->name[IFNAMSIZ - 1] = 0;
 
 	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |
 		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_MULTICAST;
@@ -1979,7 +1979,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	}
 	wd = pdo->reserved;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-//	SET_MODULE_OWNER(net_dev);
 	if (wrap_is_pci_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
 	if (wrap_is_usb_bus(wd->dev_bus))
