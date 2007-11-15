@@ -1,3 +1,7 @@
+Version 1.50 2007-XX-XX
+=======================	
+* Added support for 2.6.24-rcX kerenls
+
 Version 1.49 2007-10-27
 =======================	
 * If a driver returns invalid MAC address (00:00:00:00:00) when
