@@ -322,10 +322,10 @@ clean:
 distclean: clean
 	rm -f *_exports.h .\#* win2lin_stubs.h built-in.o
 
-flags := $(shell if grep -qw "EXTRA_CFLAGS" $(KBUILD)/scripts/Makefile.build; \
+wflags := $(shell if grep -qw "EXTRA_CFLAGS" $(KSRC)/scripts/Makefile.build; \
 		             then echo "EXTRA_CFLAGS"; else echo "CFLAGS"; fi)
 
-ifeq ($(flags), CFLAGS)
+ifeq ($(wflags), CFLAGS)
 CFLAGS += $(MOD_CFLAGS)
 else
 EXTRA_CFLAGS += $(MOD_CFLAGS)
