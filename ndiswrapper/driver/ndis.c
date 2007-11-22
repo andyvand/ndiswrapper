@@ -1814,7 +1814,6 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 
 	if (ansi.length < sizeof(mac))
 		EXIT1(return);
-	memset(mac, 0, sizeof(mac));
 	for (i = 0; i < sizeof(mac); i++) {
 		char c[3];
 		int x;
@@ -1826,13 +1825,11 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 			break;
 		mac[i] = x;
 	}
-	TRACE2("%s, " MACSTR, ansi.buf, MAC2STR(mac));
+	TRACE2("%s, %d, " MACSTR, ansi.buf, i, MAC2STR(mac));
 	RtlFreeAnsiString(&ansi);
 	if (i == sizeof(mac)) {
 		memcpy(wnd->mac, mac, sizeof(wnd->mac));
-		printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP "\n",
-		       wnd->net_dev->name, DRIVER_NAME, MAC2STR(wnd->mac));
-		*len = ETH_ALEN;
+		*len = sizeof(mac);
 		*addr = wnd->mac;
 		*status = NDIS_STATUS_SUCCESS;
 	}
