@@ -1794,8 +1794,8 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	struct ndis_configuration_parameter *param;
 	struct unicode_string key;
 	struct ansi_string ansi;
-	int int_mac[ETH_ALEN];
-	int ret;
+	typeof(wnd->mac) mac;
+	int i, ret;
 
 	ENTER2("%p", nmb);
 	RtlInitAnsiString(&ansi, "NetworkAddress");
@@ -1812,12 +1812,24 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	if (ret != STATUS_SUCCESS)
 		EXIT1(return);
 
-	ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
+	if (ansi.length < sizeof(mac))
+		EXIT1(return);
+	memset(mac, 0, sizeof(mac));
+	for (i = 0; i < sizeof(mac); i++) {
+		char c[3];
+		int x;
+		c[0] = ansi.buf[i*2];
+		c[1] = ansi.buf[i*2+1];
+		c[2] = 0;
+		ret = sscanf(c, "%x", &x);
+		if (ret != 1)
+			break;
+		mac[i] = x;
+	}
+	TRACE2("%s, " MACSTR, ansi.buf, MAC2STR(mac));
 	RtlFreeAnsiString(&ansi);
-	if (ret == ETH_ALEN) {
-		int i;
-		for (i = 0; i < ETH_ALEN; i++)
-			wnd->mac[i] = int_mac[i];
+	if (i == sizeof(mac)) {
+		memcpy(wnd->mac, mac, sizeof(wnd->mac));
 		printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP "\n",
 		       wnd->net_dev->name, DRIVER_NAME, MAC2STR(wnd->mac));
 		*len = ETH_ALEN;
