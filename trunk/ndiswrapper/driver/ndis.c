@@ -1799,14 +1799,13 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 
 	ENTER2("%p", nmb);
 	RtlInitAnsiString(&ansi, "NetworkAddress");
-	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
 		EXIT1(return);
 
-	NdisReadConfiguration(status, &param, nmb, &key, NdisParameterString);
+	NdisReadConfiguration(&ret, &param, nmb, &key, NdisParameterString);
 	RtlFreeUnicodeString(&key);
-	if (*status != NDIS_STATUS_SUCCESS)
+	if (ret != NDIS_STATUS_SUCCESS)
 		EXIT1(return);
 	ret = RtlUnicodeStringToAnsiString(&ansi, &param->data.string, TRUE);
 	if (ret != STATUS_SUCCESS)
