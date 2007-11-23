@@ -1811,7 +1811,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	if (ret != STATUS_SUCCESS)
 		EXIT1(return);
 
-	if (ansi.length < sizeof(mac))
+	if (ansi.length < 2 * sizeof(mac))
 		EXIT1(return);
 	for (i = 0; i < sizeof(mac); i++) {
 		char c[3];
