@@ -1,6 +1,10 @@
 Version 1.50 2007-XX-XX
 =======================	
-* Added support for 2.6.24-rcX kerenls
+* Added support for 2.6.24-rcX kernels
+* Fixed issue with changing mac address (with 'ifconfig <iface> hw ether
+  <mac>') - its broken since 1.45-rc2. Now one can also edit appropriate .conf
+  file to set the NetworkAddress setting to whatever mac address should be
+  used by the driver (e.g., NetworkAddress|0123456789ab)
 
 Version 1.49 2007-10-27
 =======================	
