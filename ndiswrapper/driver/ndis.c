@@ -1811,18 +1811,18 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	if (ret != STATUS_SUCCESS)
 		EXIT1(return);
 
-	if (ansi.length < 2 * sizeof(mac))
-		EXIT1(return);
-	for (i = 0; i < sizeof(mac); i++) {
-		char c[3];
-		int x;
-		c[0] = ansi.buf[i*2];
-		c[1] = ansi.buf[i*2+1];
-		c[2] = 0;
-		ret = sscanf(c, "%x", &x);
-		if (ret != 1)
-			break;
-		mac[i] = x;
+	if (ansi.length >= 2 * sizeof(mac)) {
+		for (i = 0; i < sizeof(mac); i++) {
+			char c[3];
+			int x;
+			c[0] = ansi.buf[i*2];
+			c[1] = ansi.buf[i*2+1];
+			c[2] = 0;
+			ret = sscanf(c, "%x", &x);
+			if (ret != 1)
+				break;
+			mac[i] = x;
+		}
 	}
 	TRACE2("%s, %d, " MACSTR, ansi.buf, i, MAC2STR(mac));
 	RtlFreeAnsiString(&ansi);
