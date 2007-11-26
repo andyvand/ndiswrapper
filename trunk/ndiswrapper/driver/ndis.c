@@ -2515,12 +2515,13 @@ wstdcall void NdisMQueryInformationComplete(struct ndis_mp_block *nmb,
 					    NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+	typeof(wnd->ndis_req_task) task;
 
 	ENTER2("nmb: %p, wnd: %p, %08X", nmb, wnd, status);
 	wnd->ndis_req_status = status;
 	wnd->ndis_req_done = 1;
-	if (wnd->ndis_req_task)
-		wake_up_process(xchg(&wnd->ndis_req_task, NULL));
+	if ((task = xchg(&wnd->ndis_req_task, NULL)))
+		wake_up_process(task);
 	else
 		WARNING("invalid task");
 	EXIT2(return);
@@ -2531,12 +2532,13 @@ wstdcall void NdisMSetInformationComplete(struct ndis_mp_block *nmb,
 					  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+	typeof(wnd->ndis_req_task) task;
 
 	ENTER2("status = %08X", status);
 	wnd->ndis_req_status = status;
 	wnd->ndis_req_done = 1;
-	if (wnd->ndis_req_task)
-		wake_up_process(xchg(&wnd->ndis_req_task, NULL));
+	if ((task = xchg(&wnd->ndis_req_task, NULL)))
+		wake_up_process(task);
 	else
 		WARNING("invalid task");
 	EXIT2(return);
@@ -2547,12 +2549,13 @@ wstdcall void NdisMResetComplete(struct ndis_mp_block *nmb,
 				 NDIS_STATUS status, BOOLEAN address_reset)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+	typeof(wnd->ndis_req_task) task;
 
 	ENTER2("status: %08X, %u", status, address_reset);
 	wnd->ndis_req_status = status;
 	wnd->ndis_req_done = address_reset + 1;
-	if (wnd->ndis_req_task)
-		wake_up_process(xchg(&wnd->ndis_req_task, NULL));
+	if ((task = xchg(&wnd->ndis_req_task, NULL)))
+		wake_up_process(task);
 	else
 		WARNING("invalid task");
 	EXIT2(return);
@@ -2841,12 +2844,13 @@ wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
 	 struct ndis_request *ndis_request)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+	typeof(wnd->ndis_req_task) task;
 
 	ENTER3("%08X", status);
 	wnd->ndis_req_status = status;
 	wnd->ndis_req_done = 1;
-	if (wnd->ndis_req_task)
-		wake_up_process(xchg(&wnd->ndis_req_task, NULL));
+	if ((task = xchg(&wnd->ndis_req_task, NULL)))
+		wake_up_process(task);
 	else
 		WARNING("invalid task");
 	EXIT3(return);
