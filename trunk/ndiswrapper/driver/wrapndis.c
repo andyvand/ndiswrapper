@@ -398,20 +398,22 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 	TRACE1("new mac: %s", mac_string);
 
 	RtlInitAnsiString(&ansi, mac_string);
-	if (RtlAnsiStringToUnicodeString(&param.data.string, &ansi, TRUE)) {
-		RtlFreeUnicodeString(&key);
+	if (RtlAnsiStringToUnicodeString(&param.data.string, &ansi,
+					 TRUE) != STATUS_SUCCESS)
 		EXIT1(return -EINVAL);
-	}
+
 	param.type = NdisParameterString;
 	RtlInitAnsiString(&ansi, "NetworkAddress");
-	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS) {
+		RtlFreeUnicodeString(&param.data.string);
 		EXIT1(return -EINVAL);
+	}
 	NdisWriteConfiguration(&res, wnd->nmb, &key, &param);
 	RtlFreeUnicodeString(&key);
 	RtlFreeUnicodeString(&param.data.string);
 
 	if (res != NDIS_STATUS_SUCCESS)
-		EXIT1(return -EINVAL);
+		EXIT1(return -EFAULT);
 	if (ndis_reinit(wnd) == NDIS_STATUS_SUCCESS) {
 		res = mp_query(wnd, OID_802_3_CURRENT_ADDRESS,
 			       mac, sizeof(mac));
