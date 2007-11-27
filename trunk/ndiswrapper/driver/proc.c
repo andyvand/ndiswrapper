@@ -358,9 +358,7 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		if (res)
 			WARNING("setting packet_filter failed: %08X", res);
 	} else if (!strcmp(setting, "reinit")) {
-		if (ndis_reinit(wnd) == NDIS_STATUS_SUCCESS)
-			return 0;
-		else
+		if (ndis_reinit(wnd) != NDIS_STATUS_SUCCESS)
 			return -EFAULT;
 	} else {
 		struct ndis_configuration_parameter param;
@@ -372,11 +370,12 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		p++;
 		RtlInitAnsiString(&ansi, p);
 		if (RtlAnsiStringToUnicodeString(&param.data.string, &ansi,
-						 TRUE))
+						 TRUE) != STATUS_SUCCESS)
 			EXIT1(return -EFAULT);
 		param.type = NdisParameterString;
 		RtlInitAnsiString(&ansi, setting);
-		if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE)) {
+		if (RtlAnsiStringToUnicodeString(&key, &ansi,
+						 TRUE) != STATUS_SUCCESS) {
 			RtlFreeUnicodeString(&param.data.string);
 			EXIT1(return -EINVAL);
 		}
