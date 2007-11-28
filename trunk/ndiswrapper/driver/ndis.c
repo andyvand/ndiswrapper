@@ -525,9 +525,8 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 		}
 	}
 	up(&loader_mutex);
-	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
+	setting = kzalloc(sizeof(*setting), GFP_KERNEL);
 	if (setting) {
-		memset(setting, 0, sizeof(*setting));
 		if (ansi.length == ansi.max_length)
 			ansi.length--;
 		memcpy(setting->name, keyname, ansi.length);
@@ -609,6 +608,7 @@ wstdcall void WIN_FUNC(NdisInitializeString,2)
 		dest->buf = NULL;
 	} else {
 		RtlInitAnsiString(&ansi, src);
+		/* the string is freed with NdisFreeMemory */
 		RtlAnsiStringToUnicodeString(dest, &ansi, TRUE);
 	}
 	EXIT2(return);
