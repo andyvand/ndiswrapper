@@ -612,7 +612,9 @@ struct wrap_device {
 #define NTOS_WQ 1
 #endif
 
+#ifndef NTOS_WQ
 #define NTOS_WQ 1
+#endif
 
 #ifdef NTOS_WQ
 extern workqueue_struct_t *ntos_wq;
@@ -853,8 +855,8 @@ static inline void nt_spin_lock(NT_SPIN_LOCK *lock)
 		"2:\t"
 		"  rep; nop\n\t"
 		"  cmpl %2, %0\n\t"
-		"  jne 2b\n\t"
-		"  jmp 1b\n"
+		"  je 1b\n\t"
+		"  jmp 2b\n"
 		"3:\n\t"
 		: "+m" (*lock)
 		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
