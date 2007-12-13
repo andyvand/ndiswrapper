@@ -458,9 +458,9 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 	sg_element->address =
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
 				   skb_headlen(skb), PCI_DMA_TODEVICE);
-	sg_element++;
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++, sg_element++) {
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+		sg_element++;
 		sg_element->length = frag->size;
 		sg_element->address =
 			pci_map_page(wnd->wd->pci.pdev, frag->page,
