@@ -1185,7 +1185,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 {
 	ndis_buffer *descr;
 
-	ENTER4("pool: %p, allocated: %d", pool, pool->num_allocated_descr);
+	ENTER4("pool: %p (%d)", pool, pool->num_allocated_descr);
 	/* NDIS drivers should call this at DISPATCH_LEVEL, but
 	 * alloc_tx_packet calls at SOFT_IRQL */
 	assert_irql(_irql_ <= SOFT_LEVEL);
@@ -1252,7 +1252,7 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
-		pool->num_allocated_descr--;
+		atomic_dec_var(pool->num_allocated_descr);
 		buffer->pool = NULL;
 		spin_unlock_bh(&pool->lock);
 		free_mdl(buffer);
@@ -1530,7 +1530,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		}
 		atomic_inc_var(pool->num_allocated_descr);
 	}
-	TRACE4("%p, %p, %p", pool, packet, pool->free_descr);
+	TRACE4("%p, %p", pool, packet);
 	atomic_inc_var(pool->num_used_descr);
 	memset(packet, 0, packet_length);
 	packet->private.oob_offset =
@@ -1554,30 +1554,31 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 {
 	struct ndis_packet_pool *pool;
 
-	ENTER4("packet: %p, pool: %p", packet, packet->private.pool);
+	ENTER4("%p, %p", packet, packet->private.pool);
 	pool = packet->private.pool;
 	if (!pool) {
-		ERROR("pool for descriptor %p is invalid", packet);
+		ERROR("invalid pool %p", packet);
 		EXIT4(return);
 	}
-	spin_lock_bh(&pool->lock);
-	pool->num_used_descr--;
+	assert((int)pool->num_used_descr > 0);
+	atomic_dec_var(pool->num_used_descr);
 	if (packet->reserved[1]) {
 		TRACE3("%p, %p", packet, (void *)packet->reserved[1]);
 		kfree((void *)packet->reserved[1]);
 		packet->reserved[1] = 0;
 	}
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		TRACE3("%p", packet);
-		pool->num_allocated_descr--;
+		TRACE3("%p", pool);
+		atomic_dec_var(pool->num_allocated_descr);
 		kfree(packet);
 	} else {
 		TRACE4("%p, %p, %p", pool, packet, pool->free_descr);
+		spin_lock_bh(&pool->lock);
 		packet->reserved[0] =
 			(typeof(packet->reserved[0]))pool->free_descr;
 		pool->free_descr = packet;
+		spin_unlock_bh(&pool->lock);
 	}
-	spin_unlock_bh(&pool->lock);
 	EXIT4(return);
 }
 
