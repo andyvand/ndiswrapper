@@ -1,3 +1,8 @@
+Version 1.51 2007-12-17
+=======================	
+* Fixed an smp issue that may cause ndiswrapper to stop transmitting packets
+  after a while (noticed with Marvell Pre-N USB driver)
+
 Version 1.50 2007-11-27
 =======================	
 * Added support for 2.6.24-rcX kernels
