@@ -1247,16 +1247,15 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		EXIT4(return);
 	}
 	pool = buffer->pool;
-	spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
-		 * NdisFreeBuffer causing deadlock (for spinlock) */
+		 * NdisFreeBuffer back */
 		atomic_dec_var(pool->num_allocated_descr);
 		buffer->pool = NULL;
-		spin_unlock_bh(&pool->lock);
 		free_mdl(buffer);
 	} else {
+		spin_lock_bh(&pool->lock);
 		buffer->next = pool->free_descr;
 		pool->free_descr = buffer;
 		spin_unlock_bh(&pool->lock);
