@@ -711,6 +711,8 @@ do {									\
 #endif
 #endif
 
+//#undef WRAP_PREEMPT
+
 #ifdef WRAP_PREEMPT
 
 typedef struct {
@@ -896,16 +898,17 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 
 #define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
-	preempt_disable();						\
 	local_irq_save(flags);						\
+	preempt_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
 #define nt_spin_unlock_irqrestore(lock, flags)				\
 do {									\
 	nt_spin_unlock(lock);						\
+	preempt_enable_no_resched();					\
 	local_irq_restore(flags);					\
-	preempt_enable();						\
+	preempt_check_resched();					\
 } while (0)
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)

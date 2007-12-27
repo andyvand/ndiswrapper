@@ -81,7 +81,7 @@
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
-#define TODO() ERROR("not fully implemented (yet)")
+#define TODO() WARNING("not fully implemented (yet)")
 
 #define TRACE(fmt, ...) do { } while (0)
 #define TRACE1(fmt, ...) do { } while (0)
