@@ -492,7 +492,7 @@ struct nt_thread {
 	NTSTATUS status;
 	struct task_struct *task;
 	struct nt_list irps;
-	NT_SPIN_LOCK lock;
+	spinlock_t lock;
 };
 
 #define set_object_type(dh, type)	((dh)->type = (type))

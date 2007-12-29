@@ -117,7 +117,7 @@ struct ndis_buffer_pool {
 	int max_descr;
 	int num_allocated_descr;
 	ndis_buffer *free_descr;
-	NT_SPIN_LOCK lock;
+	spinlock_t lock;
 };
 
 #define NDIS_PROTOCOL_ID_DEFAULT	0x00
@@ -1098,7 +1098,7 @@ struct net_buffer_pool {
 	ULONG data_length;
 	BOOLEAN with_mdl;
 	unsigned int count;
-	NT_SPIN_LOCK lock;
+	spinlock_t lock;
 };
 
 struct net_buffer_list_pool {
@@ -1299,7 +1299,7 @@ struct wrap_ndis_device {
 	struct semaphore tx_buffer_list_mutex;
 	unsigned int max_tx_packets;
 	u8 tx_ok;
-	NT_SPIN_LOCK tx_ring_lock;
+	spinlock_t tx_ring_lock;
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
 	s8 ndis_comm_done;
@@ -1884,48 +1884,5 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define IF_TYPE_FASTETHER		62
 #define IF_TYPE_IEEE80211		71
 #define IF_TYPE_GIGABITETHERNET		117
-
-//#define deserialized_driver(wnd) (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
-
-#define deserialized_driver(wnd) 1
-
-static inline void serialize_lock(struct wrap_ndis_device *wnd)
-{
-	nt_spin_lock(&wnd->lock);
-}
-
-static inline void serialize_unlock(struct wrap_ndis_device *wnd)
-{
-	nt_spin_unlock(&wnd->lock);
-}
-
-static inline KIRQL serialize_lock_irql(struct wrap_ndis_device *wnd)
-{
-	if (deserialized_driver(wnd))
-		return raise_irql(DISPATCH_LEVEL);
-	else
-		return nt_spin_lock_irql(&wnd->lock, DISPATCH_LEVEL);
-}
-
-static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
-					 KIRQL irql)
-{
-	if (deserialized_driver(wnd))
-		lower_irql(irql);
-	else
-		nt_spin_unlock_irql(&wnd->lock, irql);
-}
-
-static inline void if_serialize_lock(struct wrap_ndis_device *wnd)
-{
-	if (!deserialized_driver(wnd))
-		nt_spin_lock(&wnd->lock);
-}
-
-static inline void if_serialize_unlock(struct wrap_ndis_device *wnd)
-{
-	if (!deserialized_driver(wnd))
-		nt_spin_unlock(&wnd->lock);
-}
 
 #endif /* NDIS_H */

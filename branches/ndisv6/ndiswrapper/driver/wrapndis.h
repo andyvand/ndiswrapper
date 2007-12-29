@@ -25,18 +25,35 @@ void wrapndis_exit(void);
 NDIS_STATUS mp_reset(struct wrap_ndis_device *wnd);
 NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
 			  ULONG bufsize, UINT *needed, UINT *written);
-NDIS_STATUS mp_query(struct wrap_ndis_device *wnd, ndis_oid oid,
-		     void *buf, ULONG bufsize);
-NDIS_STATUS mp_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			 ULONG *data);
 NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
 			ULONG bufsize, UINT *needed, UINT *written);
-NDIS_STATUS mp_set(struct wrap_ndis_device *wnd, ndis_oid oid,
-		   void *buf, ULONG bufsize);
-NDIS_STATUS mp_set_int(struct wrap_ndis_device *wnd, ndis_oid oid, ULONG data);
 NDIS_STATUS mp_request_method(struct wrap_ndis_device *wnd, ndis_oid oid,
 			      void *buf, ULONG buf_len, UINT *needed,
 			      UINT *written);
+static inline NDIS_STATUS mp_query(struct wrap_ndis_device *wnd, ndis_oid oid,
+				   void *buf, ULONG buf_len)
+{
+	return mp_query_info(wnd, oid, buf, buf_len, NULL, NULL);
+}
+
+static inline NDIS_STATUS mp_query_int(struct wrap_ndis_device *wnd,
+				       ndis_oid oid, UINT *value)
+{
+	return mp_query_info(wnd, oid, (void *)value, sizeof(UINT), NULL, NULL);
+}
+
+static inline NDIS_STATUS mp_set(struct wrap_ndis_device *wnd,
+				 ndis_oid oid, void *buf, ULONG buf_len)
+{
+	return mp_set_info(wnd, oid, buf, buf_len, NULL, NULL);
+}
+
+static inline NDIS_STATUS mp_set_int(struct wrap_ndis_device *wnd,
+				     ndis_oid oid, UINT value)
+{
+	return mp_set_info(wnd, oid, (void *)&value, sizeof(UINT), NULL, NULL);
+}
+
 void free_tx_buffer_list(struct wrap_ndis_device *wnd,
 			 struct net_buffer_list *buffer_list);
 int init_ndis_driver(struct driver_object *drv_obj);

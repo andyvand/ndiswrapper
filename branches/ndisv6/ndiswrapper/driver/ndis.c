@@ -26,7 +26,7 @@ workqueue_struct_t *ndis_wq;
 static void ndis_worker(worker_param_t dummy);
 static work_struct_t ndis_work;
 static struct nt_list ndis_worker_list;
-static NT_SPIN_LOCK ndis_work_list_lock;
+static spinlock_t ndis_work_list_lock;
 static struct nt_thread *ndis_worker_thread;
 
 extern struct semaphore loader_mutex;
@@ -350,13 +350,33 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 	return 0;
 }
 
+static int read_setting(struct nt_list *setting_list, char *keyname, int length,
+			struct ndis_configuration_parameter **param,
+			enum ndis_parameter_type type)
+{
+	struct wrap_device_setting *setting;
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	nt_list_for_each_entry(setting, setting_list, list) {
+		if (strnicmp(keyname, setting->name, length) == 0) {
+			TRACE2("setting %s='%s'", keyname, setting->value);
+			up(&loader_mutex);
+			*param = ndis_encode_setting(setting, type);
+			if (*param)
+				EXIT2(return 0);
+			else
+				EXIT2(return -1);
+		}
+	}
+	up(&loader_mutex);
+	EXIT2(return -1);
+}
+
 wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
 	 enum ndis_parameter_type type)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
-	struct wrap_device_setting *setting;
 	struct ansi_string ansi;
 	char *keyname;
 	int ret;
@@ -372,25 +392,15 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	TRACE3("%d, %s", type, ansi.buf);
 	keyname = ansi.buf;
 
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
-	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
-		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			TRACE2("setting %s='%s'", keyname, setting->value);
-			up(&loader_mutex);
-			*param = ndis_encode_setting(setting, type);
-			if (*param)
-				*status = NDIS_STATUS_SUCCESS;
-			else
-				*status = NDIS_STATUS_FAILURE;
-			RtlFreeAnsiString(&ansi);
-			TRACE2("%d", *status);
-			EXIT2(return);
-		}
+	if (read_setting(&nmb->wnd->wd->settings, keyname,
+			 ansi.length, param, type) == 0 ||
+	    read_setting(&nmb->wnd->wd->driver->settings, keyname,
+			 ansi.length, param, type) == 0)
+		*status = NDIS_STATUS_SUCCESS;
+	else {
+		TRACE2("setting %s not found (type:%d)", keyname, type);
+		*status = NDIS_STATUS_FAILURE;
 	}
-	up(&loader_mutex);
-	TRACE2("setting %s not found (type:%d)", keyname, type);
-	*status = NDIS_STATUS_FAILURE;
 	RtlFreeAnsiString(&ansi);
 	EXIT2(return);
 }
@@ -841,7 +851,7 @@ wstdcall struct net_buffer_pool *WIN_FUNC(NdisAllocateNetBufferPool,3)
 	pool->slist.next = NULL;
 	pool->count = 0;
 	TRACE4("%p, %u", pool, pool->data_length);
-	nt_spin_lock_init(&pool->lock);
+	spin_lock_init(&pool->lock);
 	return pool;
 }
 
@@ -860,11 +870,10 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 	 ULONG data_offset, SIZE_T data_length)
 {
 	struct net_buffer *buffer;
-	KIRQL irql;
 
 	/* TODO: use pool */
 	ENTER4("%p, %p, %u, %lu", pool, mdl, data_offset, data_length);
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	spin_lock_bh(&pool->lock);
 	if (pool->count) {
 		void *entry = pool->slist.next;
 		assert(entry);
@@ -874,7 +883,7 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 		pool->count--;
 	} else
 		buffer = NULL;
-	nt_spin_unlock_irql(&pool->lock, irql);
+	spin_unlock_bh(&pool->lock);
 	if (!buffer) {
 		buffer = kmalloc(sizeof(*buffer), irql_gfp());
 		if (!buffer) {
@@ -899,13 +908,12 @@ wstdcall void WIN_FUNC(NdisFreeNetBuffer,1)
 {
 	struct net_buffer_pool *pool;
 	struct mdl *mdl;
-	KIRQL irql;
 
 	ENTER3("%p", buffer);
 	if (!buffer)
 		EXIT1(return);
 	pool = buffer->pool;
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	spin_lock_bh(&pool->lock);
 	while (buffer) {
 		struct net_buffer *next;
 		next = buffer->header.data.next;
@@ -926,7 +934,7 @@ wstdcall void WIN_FUNC(NdisFreeNetBuffer,1)
 			kfree(buffer);
 		buffer = next;
 	}
-	nt_spin_unlock_irql(&pool->lock, irql);
+	spin_unlock_bh(&pool->lock);
 }
 
 wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBufferMdlAndData,1)
@@ -1133,7 +1141,7 @@ wstdcall struct net_buffer_list_pool *WIN_FUNC(NdisAllocateNetBufferListPool,2)
 
 	pool->list_pool.count = 0;
 	pool->list_pool.slist.next = NULL;
-	nt_spin_lock_init(&pool->list_pool.lock);
+	spin_lock_init(&pool->list_pool.lock);
 	TRACE4("%p", pool);
 	return pool;
 }
@@ -1155,7 +1163,6 @@ wstdcall void WIN_FUNC(NdisFreeNetBufferList,1)
 {
 	struct net_buffer_list_pool *pool;
 	struct net_buffer_list_context *ctx;
-	KIRQL irql;
 	struct net_buffer *buffer;
 
 	ENTER3("%p", buffer_list);
@@ -1171,24 +1178,23 @@ wstdcall void WIN_FUNC(NdisFreeNetBufferList,1)
 	}
 	pool = buffer_list->pool;
 	TRACE3("%p", pool);
-	irql = nt_spin_lock_irql(&pool->list_pool.lock, DISPATCH_LEVEL);
+	spin_lock_bh(&pool->list_pool.lock);
 	if (pool->list_pool.count < MAX_ALLOCATED_NDIS_BUFFERS) {
 		buffer_list->header.link.next = pool->list_pool.slist.next;
 		pool->list_pool.slist.next = buffer_list->header.link.next;
 		pool->list_pool.count++;
 	} else
 		kfree(buffer_list);
-	nt_spin_unlock_irql(&pool->list_pool.lock, irql);
+	spin_unlock_bh(&pool->list_pool.lock);
 }
 
 wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
 	(struct net_buffer_list_pool *pool, USHORT ctx_size, USHORT backfill)
 {
 	struct net_buffer_list *buffer_list;
-	KIRQL irql;
 
 	ENTER3("%p, %u, %u", pool, ctx_size, backfill);
-	irql = nt_spin_lock_irql(&pool->list_pool.lock, DISPATCH_LEVEL);
+	spin_lock_bh(&pool->list_pool.lock);
 	TRACE3("%d, %p", pool->list_pool.count, pool->list_pool.slist.next);
 	if (pool->list_pool.slist.next) {
 		void *entry = pool->list_pool.slist.next;
@@ -1200,7 +1206,7 @@ wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
 		TRACE3("%d, %p", pool->list_pool.count, buffer_list);
 	} else
 		buffer_list = NULL;
-	nt_spin_unlock_irql(&pool->list_pool.lock, irql);
+	spin_unlock_bh(&pool->list_pool.lock);
 	if (!buffer_list) {
 		buffer_list = kmalloc(sizeof(*buffer_list), irql_gfp());
 		if (!buffer_list) {
@@ -1401,7 +1407,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 {
 	struct alloc_shared_mem *alloc_shared_mem;
 
-	ENTER3("wnd: %p", wnd);
+	ENTER3("sg_dma: %p", sg_dma);
 	alloc_shared_mem = kzalloc(sizeof(*alloc_shared_mem), irql_gfp());
 	if (!alloc_shared_mem) {
 		WARNING("couldn't allocate memory");
@@ -1636,11 +1642,7 @@ wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 		    timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
-	if (!deserialized_driver(nmb->wnd))
-		serialize_lock(nmb->wnd);
 	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
-	if (!deserialized_driver(nmb->wnd))
-		serialize_unlock(nmb->wnd);
 	EXIT5(return);
 }
 WIN_FUNC_DECL(wrap_miniport_timer,4)
@@ -1784,13 +1786,9 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx)
 	BOOLEAN recognized, queue_handler;
 	ULONG proc = 0;
 
-	ENTER6("%p, %d", wnd, irq);
-	/* this spinlock should be shared with NdisMSynchronizeWithInterruptEx
-	 */
-	nt_spin_lock(&wnd->isr_lock);
+	ENTER6("%p", wnd);
 	recognized = LIN2WIN3(wnd->interrupt_chars.isr, wnd->isr_ctx,
 			      &queue_handler, &proc);
-	nt_spin_unlock(&wnd->isr_lock);
 	/* TODO: schedule worker on processors indicated */
 	if (queue_handler)
 		queue_kdpc(&wnd->irq_kdpc);
@@ -2153,16 +2151,15 @@ wstdcall void WIN_FUNC(NdisMPauseComplete,1)
 
 static void ndis_worker(worker_param_t dummy)
 {
-	KIRQL irql;
 	struct ndis_work_entry *ndis_work_entry;
 	struct nt_list *ent;
 	struct ndis_work_item *ndis_work_item;
 
 	WORKENTER("");
 	while (1) {
-		irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+		spin_lock_bh(&ndis_work_list_lock);
 		ent = RemoveHeadList(&ndis_worker_list);
-		nt_spin_unlock_irql(&ndis_work_list_lock, irql);
+		spin_unlock_bh(&ndis_work_list_lock);
 		if (!ent)
 			break;
 		ndis_work_entry = container_of(ent, struct ndis_work_entry,
@@ -2182,16 +2179,15 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	(struct ndis_work_item *ndis_work_item)
 {
 	struct ndis_work_entry *ndis_work_entry;
-	KIRQL irql;
 
 	ENTER3("%p", ndis_work_item);
 	ndis_work_entry = kzalloc(sizeof(*ndis_work_entry), irql_gfp());
 	if (!ndis_work_entry)
 		BUG();
 	ndis_work_entry->ndis_work_item = ndis_work_item;
-	irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&ndis_work_list_lock);
 	InsertTailList(&ndis_worker_list, &ndis_work_entry->list);
-	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
+	spin_unlock_bh(&ndis_work_list_lock);
 	WORKTRACE("scheduling %p", ndis_work_item);
 	schedule_ndis_work(&ndis_work);
 	EXIT3(return NDIS_STATUS_SUCCESS);
@@ -2271,7 +2267,7 @@ int ndis_init(void)
 	ndis_worker_thread = wrap_worker_init(ndis_wq);
 	TRACE1("%p", ndis_worker_thread);
 	InitializeListHead(&ndis_worker_list);
-	nt_spin_lock_init(&ndis_work_list_lock);
+	spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
 
 	return 0;

@@ -50,8 +50,20 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 	res = mp_set(wnd, OID_DOT11_DESIRED_SSID_LIST, &ssid_list,
 		     sizeof(ssid_list));
 	if (res)
-		WARNING("setting essid failed: %08X", res);
-//	res = mp_set(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
+		WARNING("setting ssid list failed: %08X", res);
+	res = mp_set_int(wnd, OID_DOT11_DESIRED_BSS_TYPE,
+			 ndis_dot11_bss_type_infrastructure);
+	if (res)
+		WARNING("setting bss type failed: %08X", res);
+	res = set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
+	if (res)
+		WARNING("setting authentication mode failed: %08X", res);
+	res = set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
+	if (res)
+		WARNING("setting encryption mode failed: %08X", res);
+	res = mp_set(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
+	if (res)
+		WARNING("connection request failed: %08X", res);
 	EXIT2(return res);
 }
 
@@ -607,7 +619,7 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 	EXIT2(return res);
 }
 
-enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd)
+enum ndis_dot11_cipher_algorithm get_cipher_algo(struct wrap_ndis_device *wnd)
 {
 	struct ndis_dot11_cipher_algorithm_list cipher_algos;
 	NDIS_STATUS res;
@@ -673,7 +685,7 @@ static int iw_get_cipher(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	/* transmit key */
-	mode = get_cipher_mode(wnd);
+	mode = get_cipher_algo(wnd);
 	if (mode < 0)
 		EXIT2(return -EOPNOTSUPP);
 
