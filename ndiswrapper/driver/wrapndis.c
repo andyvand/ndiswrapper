@@ -107,18 +107,6 @@ NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
 	return status;
 }
 
-NDIS_STATUS mp_query(struct wrap_ndis_device *wnd, ndis_oid oid,
-		     void *buf, ULONG buf_len)
-{
-	return mp_query_info(wnd, oid, buf, buf_len, NULL, NULL);
-}
-
-NDIS_STATUS mp_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			 UINT *value)
-{
-	return mp_query_info(wnd, oid, (void *)value, sizeof(UINT), NULL, NULL);
-}
-
 NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 			void *buf, ULONG buf_len, UINT *needed, UINT *written)
 {
@@ -139,17 +127,6 @@ NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	if (written)
 		*written = oid_req.data.set.bytes_written;
 	return res;
-}
-
-NDIS_STATUS mp_set(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
-		   ULONG buf_len)
-{
-	return mp_set_info(wnd, oid, buf, buf_len, NULL, NULL);
-}
-
-NDIS_STATUS mp_set_int(struct wrap_ndis_device *wnd, ndis_oid oid, UINT value)
-{
-	return mp_set_info(wnd, oid, (void *)&value, sizeof(UINT), NULL, NULL);
 }
 
 NDIS_STATUS mp_request_method(struct wrap_ndis_device *wnd, ndis_oid oid,
@@ -235,8 +212,10 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 
 	sleep_hz(HZ / 5);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	TRACE1("%08X", mp_query(wnd, OID_PNP_QUERY_POWER,
-				&status, sizeof(ULONG)));
+	status = mp_set_int(wnd, OID_DOT11_POWER_MGMT_REQUEST,
+			    DOT11_POWER_SAVING_NO_POWER_SAVING);
+	TRACE1("%08X", status);
+	mp_query_int(wnd, OID_PNP_QUERY_POWER, &status);
 	TRACE1("%d", status);
 	status = mp_set_int(wnd, OID_PNP_SET_POWER, NdisDeviceStateD0);
 	TRACE1("%08X", status);
@@ -366,10 +345,10 @@ static void tx_worker(worker_param_t param)
 	while (wnd->tx_ok) {
 		struct net_buffer_list *last;
 
-		nt_spin_lock_bh(&wnd->tx_ring_lock);
+		spin_lock_bh(&wnd->tx_ring_lock);
 		last = wnd->last_tx_buffer_list;
 		wnd->last_tx_buffer_list = NULL;
-		nt_spin_unlock_bh(&wnd->tx_ring_lock);
+		spin_unlock_bh(&wnd->tx_ring_lock);
 		if (last)
 			LIN2WIN4(mp_driver->tx_net_buffer_lists,
 				 wnd->nmb->adapter_ctx, last, 0, 0);
@@ -1387,7 +1366,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
 	}
-	register_netdevice_notifier(&netdev_notifier);
 	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	wnd->tx_ok = 1;
 	memset(buf, 0, buf_len);
@@ -1400,25 +1378,15 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	mp_query_int(wnd, OID_GEN_DRIVER_VERSION, &wnd->drv_ndis_version);
 	mp_query_int(wnd, OID_GEN_VENDOR_DRIVER_VERSION, &n);
 
-	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using %sNDIS "
+	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using NDIS "
 	       "driver: %s, version: 0x%x, NDIS version: 0x%x, vendor: '%s', "
 	       "%s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
-	       deserialized_driver(wnd) ? "" : "serialized ",
 	       wnd->wd->driver->name, n, wnd->drv_ndis_version, buf,
 	       wnd->wd->conf_file_name);
 
-	if (deserialized_driver(wnd)) {
-		/* deserialized drivers don't have a limit, but we
-		 * keep max at TX_RING_SIZE */
-		wnd->max_tx_packets = TX_RING_SIZE;
-	} else {
-		res = mp_query_int(wnd, OID_GEN_MAXIMUM_SEND_PACKETS,
-				   &wnd->max_tx_packets);
-		if (res != NDIS_STATUS_SUCCESS)
-			wnd->max_tx_packets = 1;
-		if (wnd->max_tx_packets > TX_RING_SIZE)
-			wnd->max_tx_packets = TX_RING_SIZE;
-	}
+	/* deserialized drivers don't have a limit, but we
+	 * keep max at TX_RING_SIZE */
+	wnd->max_tx_packets = TX_RING_SIZE;
 	TRACE2("maximum send packets: %d", wnd->max_tx_packets);
 	/* we need at least one extra packet for
 	 * EthRxIndicateHandler */
@@ -1500,9 +1468,9 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		down_interruptible(&wnd->ndis_comm_mutex);
 	}
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
-	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
-	unregister_netdev(wnd->net_dev);
+	if (wnd->max_tx_packets)
+		unregister_netdev(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
 	wrap_procfs_remove_ndis_device(wnd);
 	mp_halt(wnd);
@@ -1607,7 +1575,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 //		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	SET_MODULE_OWNER(net_dev);
 	if (wrap_is_pci_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
 	if (wrap_is_usb_bus(wd->dev_bus))
