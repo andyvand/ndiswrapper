@@ -26,7 +26,7 @@ use Cwd;
 $ENV{PATH} = "/sbin:/usr/sbin:$ENV{PATH}";
 
 my $WRAP_PCI_BUS = 5;
-my $WRAP_PCIMCIA_BUS = 8;
+my $WRAP_PCMCIA_BUS = 8;
 my $WRAP_USB_BUS = 15;
 
 my %sections;
@@ -34,6 +34,7 @@ my %parsed_sections;
 my $confdir = "/etc/ndiswrapper";
 my $src_dir;
 my $driver_name;
+my @source_disks_files;
 
 my $re_dev_id = "([[:xdigit:]]{4})";
 my $re_sub_dev_conf = "$re_dev_id:$re_dev_id:$re_dev_id:$re_dev_id" .
@@ -56,9 +57,9 @@ my $modconf;
 if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
     if ($2 > 4) {
 	if (-d "/etc/modprobe.d") {
-	    $modconf = "/etc/modprobe.d/ndiswrapper"
+	    $modconf = "/etc/modprobe.d/ndiswrapper";
 	} else {
-	    $modconf = "/etc/modprobe.conf"
+	    $modconf = "/etc/modprobe.conf";
 	}
     } else {
 	if (-d "/etc/modutils") {
@@ -72,16 +73,16 @@ if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
 my $res;
 my $dbg_file;
 
-$dbg_file = ">/dev/null";
+$dbg_file = "/dev/null";
 
 # "-D" is for development/debugging only
 if ($ARGV[0] eq "-D") {
-    $dbg_file = ">/tmp/ndiswrapper.dbg";
+    $dbg_file = "/tmp/ndiswrapper.dbg";
     $confdir = "/tmp/ndiswrapper";
     shift;
 }
 
-open(DBG, $dbg_file) or die "couldn't open $dbg_file: $!";
+open(DBG, "> $dbg_file") or die "couldn't open $dbg_file: $!";
 
 if ($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = install($ARGV[1]);
@@ -94,10 +95,7 @@ if ($ARGV[0] eq "-i" and @ARGV == 2) {
 } elsif ($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = add_module_alias();
 } elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
-    printf "utils "; system("loadndisdriver -v");
-    printf "driver ";
-    system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
-    $res = 0;
+    $res = check_version();
 } elsif ($ARGV[0] eq "-ma" and @ARGV == 1) {
     $res = generate_module_device_map(0);
 } elsif ($ARGV[0] eq "-mi" and @ARGV == 1) {
@@ -112,7 +110,7 @@ sub usage() {
     print "install/manage Windows drivers for ndiswrapper\n\n" .
         "usage: ndiswrapper OPTION\n" .
 	"-i inffile       install driver described by 'inffile'\n" .
-	"-a devid driver  use installed 'driver' for 'devid'\n" .
+	"-a devid driver  use installed 'driver' for 'devid' (dangerous)\n" .
 	"-r driver        remove 'driver'\n" .
 	"-l               list installed drivers\n" .
 	"-m               write configuration for modprobe\n" .
@@ -131,26 +129,73 @@ sub remove_driver {
     return 0;
 }
 
+sub abort {
+    remove_driver($driver_name);
+    exit 1;
+}
+
+sub check_version {
+    my ($utils_version, $module_utils_version, $res);
+    $res = 0;
+    $utils_version = `loadndisdriver -v`;
+    chomp($utils_version);
+    $utils_version =~ s/^version: //;
+    if (length($utils_version) eq 0) {
+	printf "utils version is too old!\n";
+	$res = -1;
+    }
+    $module_utils_version = 0;
+    open(MODINFO, "modinfo ndiswrapper |");
+    while (my $line = <MODINFO>) {
+	if ($line =~ /utils_version:.*read only:\s([0-9\.]+)/) {
+	    $module_utils_version = $1;
+	    last;
+	}
+    }
+    if ($module_utils_version eq 0) {
+	printf "module version is too old!\n";
+	$res = -1;
+    } elsif ($utils_version ne $module_utils_version) {
+	printf "utils version '%s' is incompatible with utils version needed" .
+	  " by driver ('%s')!\n", $utils_version, $module_utils_version;
+	$res = -1;
+    }
+    printf "utils version: '%s', utils version needed by module: '%s'\n",
+      $utils_version, $module_utils_version;
+    printf "module details:\n";
+    system("modinfo ndiswrapper | grep -E '^(version|vermagic|filename)'");
+
+    if ($res) {
+	printf "\nYou may need to upgrade driver and/or utils to latest " .
+	  "versions available at\n" .
+	  "http://ndiswrapper.sourceforge.net\n";
+    }
+    return $res;
+}
+
 sub install {
     my $inf = shift;
     chomp($inf);
     $src_dir = dirname($inf);
     $driver_name = lc(basename($inf));
-    $driver_name =~ s/\.inf//;
+    unless ($driver_name =~ s/\.inf$//) {
+	die "install argument must be .inf file\n";
+    }
 
     if (! -d $confdir) {
 	mkdir($confdir) or die "couldn't create $confdir: $!";
     }
     (-d "$confdir/$driver_name") and
       die "driver $driver_name is already installed\n";
-    mkdir("$confdir/$driver_name") or
-      die "couldn't create $confdir/$driver_name: $!";
-    print "installing $driver_name ...\n";
     read_sections($inf);
     parse_section("Strings");
     parse_section("Version");
+    parse_source_disks_files();
+    mkdir("$confdir/$driver_name") or
+      die "couldn't create $confdir/$driver_name: $!";
+    print "installing $driver_name ...\n";
     parse_mfr();
-    copy_file(basename($inf));
+    copy_file(basename($inf), basename($inf));
     create_fuzzy_conf($driver_name);
     return 0;
 }
@@ -221,20 +266,23 @@ sub parse_mfr() {
     $lines or die "couldn't get manufacturer section - " .
       "installation may be incomplete\n";
     foreach  my $line (@{$lines}) {
-	(my $strkey, my $val) = parse_key_value($line);
+	my ($strkey, $val) = parse_key_value($line);
 	if ($strkey) {
-	    (my $models, my @targets) = split(",", $val);
+	    my ($models, @targets) = split(",", $val);
 	    if ($models) {
 		printf DBG "mfr: %s, %s\n", $line, $models;
-		parse_models($models);
+		my $target = choose_target_os(@targets);
+		printf DBG "target: '%s'\n", $target;
+		parse_models($models, $target);
 	    }
 	}
     }
 }
 
 sub parse_models {
-    my $models = shift;
-    my $lines = get_target_os_section($models);
+    my ($models, $target) = @_;
+    printf DBG "models: target: '%s'.'%s'\n", $models, $target;
+    my $lines = get_target_os_section($models, $target);
     if (!$lines) {
 	warn "couldn't find models section \"$models\" -\n" .
 	  "installation may be incomplete\n";
@@ -249,34 +297,42 @@ sub parse_models {
 	    printf "couldn't find install directive: %s\n", $line;
 	    next;
 	}
-	my $install_section = trim($fields[0]);
+	my $section = trim($fields[0]);
 	my $hwid = trim($fields[1]);
+	if ($hwid =~ /^%.+%$/) {
+	    $hwid = get_string_value($hwid);
+	}
 	# TODO: deal with compatible IDs as hwid?
-	(my $bus_type, my $vendor, my $device, my $subvendor, my $subdevice) =
+	my ($bus_type, $vendor, $device, $subvendor, $subdevice) =
 	  parse_hwid($hwid);
-	printf DBG "models: %s, %s\n", $install_section, $hwid, $vendor;
 	next if (!$vendor);
-	parse_install($install_section, $bus_type, $vendor, $device,
+	printf DBG "models: %s, %s, %s\n", $section, $hwid, $vendor;
+	parse_install($section, $target, $bus_type, $vendor, $device,
 		      $subvendor, $subdevice);
     }
 }
 
 sub parse_install {
-    (my $secn, my $bus_type, my $vendor, my $device,
-     my $subvendor, my $subdevice) = @_;
-    my $lines = get_target_os_section($secn);
+    my ($section, $target, $bus_type, $vendor, $device,
+	$subvendor, $subdevice) = @_;
+    my $lines = get_target_os_section($section, $target);
     if (!$lines) {
-	warn "couldn't find install section \"$secn\" -\n" .
+	warn "couldn't find install section \"$section\" -\n" .
 	  "installation may be incomplete\n";
 	return -1;
     }
 
-    my @addregs;
-    my @copyfiles;
+    my $filename = "$vendor:$device";
+    if ($subvendor) {
+	$filename .= ":$subvendor:$subdevice"
+    }
+    $filename .= sprintf(".%X.conf", $bus_type);
+
+    my (@addregs, @copyfiles);
     foreach my $line (@{$lines}) {
 	$line =~ s/^;\s*//;
 	$line = trim(del_comment($line));
-	(my $key, my $val) = parse_key_value($line);
+	my ($key, $val) = parse_key_value($line);
 	my @array;
 	if ($key) {
 	    if (lc($key) eq "addreg") {
@@ -287,8 +343,8 @@ sub parse_install {
 	    } elsif (lc($key) eq "copyfiles") {
 		printf DBG "copyfiles: %s\n", $val;
 		@array = split(",", $val);
-		foreach my $copy_file (@array) {
-		    my @copy_sec = split(",", $copy_file);
+		foreach my $copy_file_dirs (@array) {
+		    my @copy_sec = split(",", $copy_file_dirs);
 		    foreach my $file (@copy_sec) {
 			push @copyfiles, trim($file);
 		    }
@@ -300,14 +356,14 @@ sub parse_install {
 	}
     }
 
-    my $filename = "$vendor:$device";
-    if ($subvendor) {
-	$filename .= ":$subvendor:$subdevice"
-    }
-    $filename .= sprintf(".%X.conf", $bus_type);
-
     open(CONF, ">$confdir/$driver_name/$filename") or
-      die "couldn't create file $filename: $!";
+      die "couldn't create file $confdir/$driver_name/$filename: $!";
+
+    printf CONF "sys_files|";
+    foreach my $file (@copyfiles) {
+	parse_copy_file($file);
+    }
+    printf CONF "\n";
 
     my $version = get_section_value("Version", "DriverVer");
     my $provider = get_section_value("Version", "Provider");
@@ -316,12 +372,13 @@ sub parse_install {
     $classguid =~ s/^\s*{//;
     $classguid =~ s/}\s*$//;
 
-    printf CONF "NdisVersion|0x00060000\n";
+    printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
     printf CONF "class_guid|%s\n", $classguid;
-    printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
     printf CONF "BusType|%s\n", $bus_type;
+    printf CONF "SlotNumber|01\n";
+    printf CONF "NetCfgInstanceId|{28022A01-1234-5678-ABCDE-123813291A00}\n";
     printf CONF "\n";
     close(CONF);
 
@@ -331,19 +388,11 @@ sub parse_install {
     foreach my $reg (@addregs) {
 	parse_registry($reg);
     }
-    foreach my $file (@copyfiles) {
-	parse_copy_file($file);
-    }
-    # RTL8185L driver crashes if DriverDesc setting is not found
-    if ($vendor == "10EC" && $device == "8185") {
-	printf CONF "DriverDesc|Realtek RTL8185 54M Wireless LAN Network Adapter\n";
-    }
     close(CONF);
 }
 
 sub parse_registry {
-    my $reg = shift;
-    my $conf = shift;
+    my ($reg, $conf) = @_;
     my $lines = get_section($reg);
     if (!$lines) {
 	warn "couldn't find section \"$reg\" -\n" .
@@ -351,6 +400,7 @@ sub parse_registry {
 	return -1;
     }
 
+    my $driver_desc = 0;
     foreach my $line (@{$lines}) {
 	$line = del_comment($line);
 	my @fields = split(",", $line);
@@ -358,8 +408,7 @@ sub parse_registry {
 	my $value;
 	my $param = trim($fields[1]);
 	if ($param =~ /^ndi\\/i) {
-	    if ($param =~ /^ndi\\params\\(.+)/i or
-		$param =~ /^ndi\\xparams\\(.+)/i) {
+	    if ($param =~ /^ndi\\params\\(.+)/i) {
 		$param = strip_quotes(trim($1));
 		$param =~ s/\\.*$//;
 		next if (lc(trim($fields[2])) ne "default");
@@ -381,7 +430,13 @@ sub parse_registry {
 		printf "forcing parameter $param from $orig_value to $value\n";
 	    }
 	    printf CONF "%s|%s\n", $param, $value;
+	    if ($param =~ /^DriverDesc$/) {
+		$driver_desc = 1;
+	    }
 	}
+    }
+    if ($driver_desc == 0) {
+	printf CONF "DriverDesc|NDIS Network Adapter\n";
     }
 }
 
@@ -390,7 +445,10 @@ sub parse_copy_file {
 
     if ($copy_name =~ /^\@/) {
 	$copy_name =~ s/^\@//;
-	return copy_file($copy_name);
+	$copy_name = trim($copy_name);
+	if (valid_copy_file_name($copy_name)) {
+	    return copy_file($copy_name, $copy_name);
+	}
     }
 
     my $lines = get_section($copy_name);
@@ -402,29 +460,36 @@ sub parse_copy_file {
     foreach my $line (@{$lines}) {
 	$line = trim($line);
 
+	# some inf files have file names commented out; get file names from them
+	$line =~ s/^\s*;//;
 	my @files = split(",", $line);
 	if (@files == 0) {
 	    printf DBG "copyfiles section $copy_name has no files\n";
 	    return -1;
 	}
-	my $file;
-	if (@files > 1 and length($files[1]) > 0) {
-	    $file = $files[1];
-	} else {
-	    $file = $files[0];
-	}
-	printf DBG "file: '%s'\n", $file;
-	# some inf files have file names commented out; get file names from them
-	$file =~ s/^\s*;//;
-	# remove (trailing) comment
-	$file = del_comment($file);
-	$file = trim($file);
-	if (length($file) > 0) {
-	    if (valid_copy_file_name($file)) {
-		copy_file($file);
+	my $src, my $dst;
+	if (@files > 1 and length(trim($files[1])) > 0) {
+	    $src = $files[1];
+	    if (length(trim($files[0])) > 0) {
+		$dst = $files[0];
 	    } else {
-		printf DBG "invalid file '%s' ignored\n", $file;
+		$dst = $src;
 	    }
+	} else {
+	    $src = $files[0];
+	    $dst = $src;
+	}
+	$src =~ s/^.*\\//;
+	$dst =~ s/^.*\\//;
+	printf DBG "src: '%s', dst: '%s'\n", $src, $dst;
+	$src = trim(del_comment($src));
+	next if (length($src) eq 0);
+	if (valid_copy_file_name($src)) {
+	    $dst = trim(del_comment($dst));
+	    printf DBG "src: '%s', dst: '%s'\n", $src, $dst;
+	    copy_file($src, $dst);
+	} else {
+	    printf DBG "invalid file '%s' ignored\n", $src;
 	}
     }
     return 0;
@@ -454,41 +519,74 @@ sub parse_key_value {
     }
 }
 
-sub get_target_os_section {
-    my $secn = shift;
+sub choose_target_os {
+    my @targets = @_;
     my $arch = `uname -m`;
     chomp($arch);
+    printf DBG "arch: %s\n", $arch;
+    if ($arch =~ /64$/) {
+	$arch = "amd64";
+    } else {
+	$arch = "x86";
+    }
+    printf DBG "arch: %s\n", $arch;
+    my @prefs = ("NT($arch)\.6\.0", "NT($arch)", "NT\.6\.0", "NT");
+    foreach my $pref (@prefs) {
+	foreach my $target (@targets) {
+	    $target = trim($target);
+	    printf DBG "target: '%s', pref: '%s'\n", $target, $pref;
+	    if ($target =~ /NT((amd64)|(x86))/i) {
+		printf DBG "target arch: '%s'\n", $1;
+		next if ($1 !~ /$arch/i);
+	    }
+	    if ($target =~ /$pref/i) {
+		return $target;
+	    }
+	}
+    }
+    return "";
+}
+
+sub get_target_os_section {
+    my ($section, $target) = @_;
+    my $lines;
+
+    chomp($section);
+    $section =~ s/^\s*"\s*//;
+    $section =~ s/\s*"\s*$//;
+    printf DBG "section: \"%s\", target: \"%s\"\n", $section, $target;
+
+    if (length($target) gt 0) {
+	$lines = get_section($section . "." . $target);
+	return $lines if ($lines);
+    }
+
+    my $arch = `uname -m`;
+    chomp($arch);
+    printf DBG "arch: %s\n", $arch;
     if ($arch =~ /64$/) {
 	$arch = "AMD64";
     } else {
 	$arch = "X86";
     }
-    chomp($secn);
-    printf DBG "secn: \"%s\"\n", $secn;
-    $secn =~ s/^\s*//;
-    $secn =~ s/\s*$//;
-    $secn =~ s/\.NT($arch)?(\.5\.1)?$//;
-    printf DBG "secn: \"%s\"\n", $secn;
+    printf DBG "arch: %s\n", $arch;
 
-    my $lines = get_section($secn . ".NT" . $arch . ".6.0");
+    my @prefs = ("NT$arch.5.1", "NT$arch.5", "NT$arch",
+		 "NT.5.1", "NT.5", "NT");
+    foreach my $pref (@prefs) {
+	$lines = get_section($section . "." . $pref);
+	return $lines if ($lines);
+    }
+    $lines = get_section($section);
     return $lines if ($lines);
 
-    $lines = get_section($secn . ".NT" . $arch);
-    return $lines if ($lines);
-
-    $lines = get_section($secn . ".NT");
-    return $lines if ($lines);
-
-    $lines = get_section($secn);
-    return $lines if ($lines);
-
-    printf DBG "couldn't find section \"$secn\" for \"$arch\"\n";
+    printf DBG "couldn't find section \"$section\" for \"$arch\"\n";
     return 0;
 }
 
 sub get_section_value {
-    (my $secn, my $name) = @_;
-    return $parsed_sections{$secn}->{$name};
+    (my $section, my $name) = @_;
+    return $parsed_sections{$section}->{$name};
 }
 
 sub get_string_value {
@@ -502,20 +600,27 @@ sub get_string_value {
 }
 
 sub copy_file {
-    my $file = shift;
+    my ($src, $dst) = @_;
 
-    $file = trim(del_comment($file));
-    my $real_file = get_file($file);
+    # ignore files not needed
+    return 0 if (lc($src) =~ /\.((exe)|(dll)|(cpl)|(hlp))$/);
+    my $real_file = get_file($src);
     if (length($real_file) gt 0) {
-	$file = lc($real_file);
-	copy("$src_dir/$real_file", "$confdir/$driver_name/$file") or
+	$dst = lc($dst);
+	printf DBG "copying \"$src_dir/$real_file\" to " .
+	  "\"$confdir/$driver_name/$dst\"\n";
+	copy("$src_dir/$real_file", "$confdir/$driver_name/$dst") or
 	  warn "couldn't copy \"$src_dir/$real_file\" to " .
 	    "\"$confdir/$driver_name\": $! -\n" .
 	      "installation may be incomplete\n";
-	chmod(0644, "$confdir/$driver_name/$file");
+	printf DBG "chmod: $confdir/$driver_name/$dst\n";
+	chmod(0644, "$confdir/$driver_name/$dst");
+	if ($dst =~ /\.sys$/) {
+	    printf CONF "%s ", $dst;
+	}
     } else {
-	warn "couldn't find \"$file\" in \"$src_dir\"; make sure " .
-	  "all driver files, including .inf, .sys (and .bin, if any) " .
+	warn "couldn't find \"$src\" in \"$src_dir\"; make sure " .
+	  "all driver files, including .inf, .sys (and any firmware files) " .
 	    "are in \"$src_dir\" -\n" .
 	      "installation may be incomplete\n";
     }
@@ -530,7 +635,7 @@ sub create_fuzzy_conf {
     open(LS, "ls -1 . |") or die "couldn't open $confdir/$driver: $!";
     while (my $file = <LS>) {
 	chomp($file);
-	if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+	if ($file =~ /$re_sub_dev_conf/) {
 	    my $fuzzy_file = "$1:$2.$5.conf";
 	    printf DBG "file: $file, fuzzy file: $fuzzy_file\n";
 	    if (! -e "$confdir/$driver/$fuzzy_file") {
@@ -558,7 +663,8 @@ sub get_file {
 	}
 	closedir(DIR);
     } else {
-	warn "couldn't open \"$src_dir\": $! - installation may be incomplete\n";
+	warn "couldn't open \"$src_dir\": $! -\n" .
+	  "installation may be incomplete\n";
     }
     return "";
 }
@@ -585,9 +691,49 @@ sub trim {
 
 sub valid_copy_file_name {
     my $file = shift;
+    $file = lc($file);
     printf DBG "file name: %s\n", $file;
-    # as of now, copy file name extensions known: .sys, .bin, .out
-    return 1 if (lc($file) =~ /^[a-z0-9]*\.((sys)|(bin)|(out))$/);
+    foreach my $disk_file (@source_disks_files) {
+	return 1 if ($file eq $disk_file);
+    }
+    # some inf files may not have SourceDisksFiles section, so use
+    # known file names
+    return 1 if ($file =~ /\.((sys)|(bin)|(out))$/);
+    return 0;
+}
+
+sub parse_source_disks_files {
+    my $lines = get_source_disks_files();
+    if ($lines) {
+	foreach my $line (@{$lines}) {
+	    $line = del_comment($line);
+	    next if (length($line) eq 0);
+	    my @file = split("=", $line);
+	    next if (@file eq 0 or length($file[0] eq 0));
+	    printf DBG "source disk file: \"%s\"\n", trim($file[0]);
+	    push (@source_disks_files, lc(trim($file[0])));
+	}
+    } else {
+	warn "couldn't find SourceDisksFiles section - " .
+	  "continuing anyway...\n";
+    }
+}
+
+sub get_source_disks_files {
+    my $arch = `uname -m`;
+    chomp($arch);
+    if ($arch =~ /64$/) {
+	$arch = "AMD64";
+    } else {
+	$arch = "X86";
+    }
+
+    my $lines = get_section("SourceDisksFiles." . $arch);
+    return $lines if ($lines);
+
+    $lines = get_section("SourceDisksFiles");
+    return $lines if ($lines);
+
     return 0;
 }
 
@@ -602,11 +748,19 @@ sub device_driver_alias {
     }
     open(LS, "ls -1 $confdir/$driver/ |") or
       die "couldn't open $confdir/$driver: $!";
+
     while (my $f = <LS>) {
 	chomp($f);
 	if ($f =~ /\.([[:xdigit:]]+)\.conf$/) {
+	    if (stat("$confdir/$driver/$devid.$1.conf")) {
+		printf "Driver '$driver' is already used for '$devid'\n";
+		$done = 1;
+		last;
+	    }
 	    if (symlink("$f", "$confdir/$driver/$devid.$1.conf")) {
-		printf "driver '$driver' is used for '$devid'\n";
+		printf "WARNING: Driver '$driver' will be used for '$devid'\n" .
+		  "This is safe _only_ if driver $driver is meant for " .
+		    "chip in device $devid\n";
 		$done = 1;
 		last;
 	    } else {
@@ -625,18 +779,18 @@ sub device_driver_alias {
 
 sub generate_module_device_map {
     my $mode = shift;
-    my $vendor, my $device, my $subvendor, my $subdevice, my $bustype, my $busid;
+    my ($vendor, $device, $subvendor, $subdevice, $bustype, $busid);
 
     my $device_map;
     if (-d "/etc/modprobe.d") {
-	$device_map = "/etc/modprobe.d/ndiswrapper";
+	$device_map = $modconf;
     } elsif (-d "/etc/modules.d") {
 	$device_map = "/etc/modules.d/ndiswrapper";
     } else {
 	$device_map = "/etc/ndiswrapper/ndiswrapper";
     }
 
-    open(CONF, "| sort >$device_map") or
+    open(DEVMAP, "| sort >$device_map") or
       die "couldn't create modules alias file $device_map: $!";
     open(LS, "ls -1 $confdir|") or
       die "couldn't open $confdir: $!";
@@ -648,16 +802,16 @@ sub generate_module_device_map {
 	      die "couldn't open $confdir/$driver: $!";
 	    while (my $file = <LS2>) {
 		chomp ($file);
-		if ($file =~ /.conf$/) {
-		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+		if ($file =~ /\.conf$/) {
+		    if ($file =~ /^$re_sub_dev_conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  (uc($1), uc($2), "0000$3", "0000$4", hex($5));
-		    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf$/) {
+		    } elsif ($file =~ /^$re_dev_conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  (uc($1), uc($2), "*", "*", hex($3));
 		    }
 		    my $devstring;
-		    if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
+		    if ($busid eq $WRAP_USB_BUS or $busid eq 0) {
 			$devstring = sprintf("usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
 					     $vendor, $device);
 		    } elsif ($busid eq $WRAP_PCI_BUS) {
@@ -670,9 +824,9 @@ sub generate_module_device_map {
 			next;
 		    }
 		    if ($mode == 0) {
-			printf CONF "alias %s ndiswrapper\n", $devstring;
+			printf DEVMAP "alias %s ndiswrapper\n", $devstring;
 		    } else {
-			printf CONF "install %s /sbin/modprobe ndiswrapper\n",
+			printf DEVMAP "install %s /sbin/modprobe ndiswrapper\n",
 			  $devstring;
 		    }
 		}
@@ -681,7 +835,7 @@ sub generate_module_device_map {
 	}
     }
     close(LS);
-    close(CONF);
+    close(DEVMAP);
 
     printf "module configuration information is stored in $device_map\n";
     return 0;
@@ -768,12 +922,12 @@ sub get_cards {
 sub install_status {
     my ($cards, $driver) = @_;
 
-    if (!$cards || !$driver) {
+    if (!$cards or !$driver) {
 	return;
     }
 
-    my $sys, my $conf, my $inf;
-    my $vendor, my $device, my $subvendor, my $subdevice, my $busid, my $ret;
+    my ($sys, $conf, $inf);
+    my ($vendor, $device, $subvendor, $subdevice, $busid, $ret);
 
     $sys = $conf = $inf = 0;
     open(LS2, "ls -1 $confdir/$driver|") or
@@ -789,13 +943,13 @@ sub install_status {
 	    $conf = 1 if ($busid eq $WRAP_PCI_BUS);
 	} elsif ($file =~ /^$re_dev_conf$/) {
 	    $busid = hex($3);
-	    $conf = 1 if ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
+	    $conf = 1 if ($busid eq $WRAP_USB_BUS or $busid eq 0 or
 			  $busid eq $WRAP_PCI_BUS);
 	}
     }
     close(LS2);
     printf DBG "status: $sys, $inf, $conf\n";
-    if ($sys eq 0 || $inf eq 0 || $conf eq 0) {
+    if ($sys eq 0 or $inf eq 0 or $conf eq 0) {
 	$ret = "invalid driver!";
 	return $ret;
     }
@@ -830,7 +984,7 @@ sub install_status {
 	    foreach my $card (@{$cards}) {
 		if ($card->{vendor} eq $vendor and
 		    $card->{device} eq $device and
-		    ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
+		    ($busid eq $WRAP_USB_BUS or $busid eq 0 or
 		     $busid eq $WRAP_PCI_BUS)) {
 		    $ret .= "\n\tdevice ($vendor:$device) present";
 		    $conf = 2;
@@ -841,7 +995,7 @@ sub install_status {
 	next if ($conf le 1);
 	# find if kernel knows of an alternate driver for this device
 	my $devstring;
-	if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
+	if ($busid eq $WRAP_USB_BUS or $busid eq 0) {
 	    $devstring = sprintf("usb:v%sp%sd", $vendor, $device);
 	} elsif ($busid eq $WRAP_PCI_BUS) {
 	    $devstring = sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
