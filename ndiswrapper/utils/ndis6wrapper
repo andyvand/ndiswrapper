@@ -31,7 +31,7 @@ my $WRAP_USB_BUS = 15;
 
 my %sections;
 my %parsed_sections;
-my $confdir = "/etc/ndiswrapper";
+my $confdir = "/etc/ndis6wrapper";
 my $src_dir;
 my $driver_name;
 my @source_disks_files;
