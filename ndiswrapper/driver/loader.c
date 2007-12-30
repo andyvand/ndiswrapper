@@ -90,7 +90,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 	up(&loader_mutex);
 
 	if (!wrap_driver) {
-		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DRIVER,
+		char *argv[] = {"loadndis6driver", WRAP_CMD_LOAD_DRIVER,
 #if defined(DEBUG) && DEBUG >= 1
 				"1",
 #else
@@ -106,7 +106,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			EXIT1(return NULL);
 		}
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
 #endif
@@ -114,7 +114,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		if (ret) {
 			up(&loader_mutex);
 			ERROR("couldn't load driver %s; check system log "
-			      "for messages from 'loadndisdriver'",
+			      "for messages from 'loadndis6driver'",
 			      wd->driver_name);
 			EXIT1(return NULL);
 		}
@@ -254,7 +254,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 	}
 
 	if (!driver->bin_files[i].data) {
-		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_BIN_FILE,
+		char *argv[] = {"loadndis6driver", WRAP_CMD_LOAD_BIN_FILE,
 #if defined(DEBUG) && DEBUG >= 1
 				"1",
 #else
@@ -272,7 +272,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			EXIT1(return NULL);
 		}
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
 #endif
@@ -280,7 +280,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		if (ret) {
 			up(&loader_mutex);
 			ERROR("couldn't load file %s/%s; check system log "
-			      "for messages from 'loadndisdriver'",
+			      "for messages from 'loadndis6driver'",
 			      driver->name, driver->bin_files[i].name);
 			EXIT1(return NULL);
 		}
@@ -698,7 +698,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	    sprintf(subvendor, "%04x", load_device->subvendor) == 4 &&
 	    sprintf(subdevice, "%04x", load_device->subdevice) == 4 &&
 	    sprintf(bus, "%04x", load_device->bus) == 4) {
-		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICE,
+		char *argv[] = {"loadndis6driver", WRAP_CMD_LOAD_DEVICE,
 #if defined(DEBUG) && DEBUG >= 1
 				"1",
 #else
@@ -714,7 +714,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			EXIT1(return NULL);
 		}
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
 #endif
@@ -722,7 +722,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 		if (ret) {
 			up(&loader_mutex);
 			TRACE1("couldn't load device %04x:%04x; check system "
-			       "log for messages from 'loadndisdriver'",
+			       "log for messages from 'loadndis6driver'",
 			       load_device->vendor, load_device->device);
 			EXIT1(return NULL);
 		}

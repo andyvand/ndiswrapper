@@ -7,27 +7,24 @@ DRIVER_DIR ?= ../driver
 CC = gcc
 CFLAGS = -g -Wall -I$(DRIVER_DIR)
 
-DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
+DISTFILES=Makefile ndis6wrapper loadndisdriver.c ndiswrapper-buginfo
 
-all: loadndisdriver
+all: loadndis6driver
 
-loadndisdriver: loadndisdriver.c
+loadndis6driver: loadndisdriver.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
-	rm -f *~ *.o loadndisdriver
+	rm -f *~ *.o loadndis6driver
 
 distclean: clean
 	rm -f .\#*
 
 install: all
-	install -D -m 755 loadndisdriver $(sbindir)/loadndisdriver
-	install -D -m 755 ndiswrapper $(usrsbindir)/ndiswrapper
+	install -D -m 755 loadndis6driver $(sbindir)/loadndis6driver
+	install -D -m 755 ndis6wrapper $(usrsbindir)/ndis6wrapper
 	install -D -m 755 ndiswrapper-buginfo $(usrsbindir)/ndiswrapper-buginfo
 	@echo
-	@echo "NOTE: Windows driver configuration file format has changed since" \
-	      "1.5. You must re-install Windows drivers if they were" \
-	      "installed before."
 
 dist:
 	@for file in $(DISTFILES); do \

@@ -40,7 +40,7 @@
 
 #define SETTING_LEN (MAX_SETTING_NAME_LEN + MAX_SETTING_VALUE_LEN + 2)
 
-static const char confdir[] = "/etc/ndiswrapper";
+static const char confdir[] = "/etc/ndis6wrapper";
 static const char ioctl_file[] = "/dev/ndiswrapper";
 static int debug;
 

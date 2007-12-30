@@ -381,7 +381,7 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	char *keyname;
 	int ret;
 
-	ENTER2("wnd: %p", wnd);
+	ENTER2("nmb: %p", nmb);
 	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
 	if (ret || ansi.buf == NULL) {
 		*param = NULL;
@@ -1782,8 +1782,10 @@ wstdcall void ndis_irq_handler(struct kdpc *kdpc, void *ctx,
 	mp_isr_dpc_handler isr_dpc_handler = arg1;
 
 	ENTER4("%p, %p", arg1, arg2);
-	LIN2WIN4(isr_dpc_handler, ctx, NULL, 0, 0);
+	LIN2WIN4(isr_dpc_handler, ctx, NULL, NULL, NULL);
+	EXIT4(return);
 }
+WIN_FUNC_DECL(ndis_irq_handler,4)
 
 wstdcall BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx)
 {
@@ -1814,7 +1816,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterruptEx,4)
 	memcpy(&wnd->interrupt_chars, mp_interrupt_chars,
 	       sizeof(wnd->interrupt_chars));
 	mp_interrupt_chars->interrupt_type = NDIS_CONNECT_LINE_BASED;
-
+	wnd->isr_ctx = isr_ctx;
 	KeInitializeDpc(&wnd->irq_kdpc, WIN_FUNC_PTR(ndis_irq_handler,4),
 			isr_ctx);
 	wnd->irq_kdpc.arg1 = mp_interrupt_chars->isr_dpc_handler;
