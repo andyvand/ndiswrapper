@@ -51,17 +51,13 @@ NDIS_STATUS mp_oid_request(struct wrap_ndis_device *wnd,
 	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver;
 	TRACE2("%08X", oid_req->data.query.oid);
 	wnd->ndis_comm_done = 0;
-
 	init_ndis_object_header(oid_req, NDIS_OBJECT_TYPE_OID_REQUEST,
 				NDIS_OID_REQUEST_REVISION_1);
 	oid_req->id = NULL;
 	oid_req->handle = oid_req;
-
 	res = LIN2WIN2(mp_driver->oid_request, wnd->nmb->adapter_ctx, oid_req);
-
 	TRACE2("%08X, %08X", res, oid_req->data.query.oid);
-	if (res == NDIS_STATUS_PENDING ||
-	    res == NDIS_STATUS_INDICATION_REQUIRED) {
+	if (res == NDIS_STATUS_PENDING) {
 		/* wait for completion */
 		if (wait_condition((wnd->ndis_comm_done > 0), 0,
 				   TASK_INTERRUPTIBLE) < 0)
@@ -198,12 +194,14 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 	init_params.port_auth_states.header.size =
 		sizeof(init_params.port_auth_states);
 	init_params.port_auth_states.tx_control_state =
-		NdisPortControlStateUnknown;
+		NdisPortControlStateUncontrolled;
 	init_params.port_auth_states.rx_control_state =
-		NdisPortControlStateUnknown;
+		NdisPortControlStateUncontrolled;
+	init_params.port_auth_states.tx_auth_state = NdisPortUnauthorized;
+	init_params.port_auth_states.rx_auth_state = NdisPortUnauthorized;
 
 	status = LIN2WIN3(ndis_driver->mp_driver.initialize,
-			  wnd->nmb, wnd->wd->driver->ndis_driver->mp_driver_ctx,
+			  wnd->nmb, ndis_driver->mp_driver_ctx,
 			  &init_params);
 	TRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {

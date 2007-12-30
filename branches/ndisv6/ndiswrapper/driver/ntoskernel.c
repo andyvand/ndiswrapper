@@ -605,6 +605,7 @@ static void kdpc_worker(worker_param_t dummy)
 	KIRQL irql;
 
 	WORKENTER("");
+	irql = raise_irql(DISPATCH_LEVEL);
 	while (1) {
 		spin_lock_irqsave(&kdpc_list_lock, flags);
 		entry = RemoveHeadList(&kdpc_list);
@@ -619,12 +620,11 @@ static void kdpc_worker(worker_param_t dummy)
 			break;
 		WORKTRACE("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
-		irql = raise_irql(DISPATCH_LEVEL);
 		assert_irql(_irql_ == DISPATCH_LEVEL);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		assert_irql(_irql_ == DISPATCH_LEVEL);
-		lower_irql(irql);
 	}
+	lower_irql(irql);
 	WORKEXIT(return);
 }
 
@@ -2516,14 +2516,15 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
-#ifdef WARP_PREEMPT
-	warp_preempt_count = 0;
-#elif defined(CONFIG_PREEMPT_RT)
+#ifdef WRAP_PREEMPT
 	do {
-		int i;
-		for (i = 0; i < NR_CPUS; i++) {
-			spin_lock_init(&per_cpu(warp_preempt_lock, i));
-			per_cpu(warp_preempt_count, i) = 0;
+		int cpu;
+		for_each_possible_cpu(cpu) {
+			irql_info_t *info;
+			info = &per_cpu(irql_info, cpu);
+			mutex_init(&(info->lock));
+			info->task = NULL;
+			info->count = 0;
 		}
 	} while (0);
 #endif
