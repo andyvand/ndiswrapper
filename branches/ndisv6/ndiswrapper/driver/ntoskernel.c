@@ -165,12 +165,11 @@ static int add_bus_driver(const char *name)
 {
 	struct bus_driver *bus_driver;
 
-	bus_driver = kmalloc(sizeof(*bus_driver), GFP_KERNEL);
+	bus_driver = kzalloc(sizeof(*bus_driver), GFP_KERNEL);
 	if (!bus_driver) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	memset(bus_driver, 0, sizeof(*bus_driver));
 	strncpy(bus_driver->name, name, sizeof(bus_driver->name));
 	bus_driver->name[sizeof(bus_driver->name)-1] = 0;
 	spin_lock_bh(&ntoskernel_lock);
@@ -446,15 +445,14 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	 * freed, so we use slack_kmalloc so it gets freed when driver
 	 * is unloaded */
 	if (nmb)
-		wrap_timer = kmalloc(sizeof(*wrap_timer), irql_gfp());
+		wrap_timer = kzalloc(sizeof(*wrap_timer), irql_gfp());
 	else
-		wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
+		wrap_timer = slack_kzalloc(sizeof(*wrap_timer));
 	if (!wrap_timer) {
 		ERROR("couldn't allocate memory for timer");
 		return;
 	}
 
-	memset(wrap_timer, 0, sizeof(*wrap_timer));
 	init_timer(&wrap_timer->timer);
 	wrap_timer->timer.data = (unsigned long)wrap_timer;
 	wrap_timer->timer.function = timer_proc;
@@ -2049,9 +2047,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		TRACE2("%s, %s", bin_file->name, file_basename);
 		fo->flags = FILE_OPENED;
 	} else if (access_mask & FILE_WRITE_DATA) {
-		bin_file = kmalloc(sizeof(*bin_file), GFP_KERNEL);
+		bin_file = kzalloc(sizeof(*bin_file), GFP_KERNEL);
 		if (bin_file) {
-			memset(bin_file, 0, sizeof(*bin_file));
 			strncpy(bin_file->name, file_basename,
 				sizeof(bin_file->name));
 			bin_file->name[sizeof(bin_file->name)-1] = 0;

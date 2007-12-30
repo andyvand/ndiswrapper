@@ -580,12 +580,11 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 	}
 	n = sizeof(*ndis_stats) +
 		sizeof(*phy_stats) * (wnd->phy_types->num_entries - 1);
-	ndis_stats = kmalloc(n, GFP_KERNEL);
+	ndis_stats = kzalloc(n, GFP_KERNEL);
 	if (!ndis_stats) {
 		WARNING("couldn't allocate memory");
 		return;
 	}
-	memset(ndis_stats, 0, n);
 	init_ndis_object_header(ndis_stats, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_STATISTICS_REVISION_1);
 	res = mp_query(wnd, OID_DOT11_STATISTICS, ndis_stats, n);

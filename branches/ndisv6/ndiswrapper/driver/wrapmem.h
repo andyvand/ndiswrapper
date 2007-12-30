@@ -33,11 +33,13 @@ enum alloc_type { ALLOC_TYPE_KMALLOC_ATOMIC, ALLOC_TYPE_KMALLOC_NON_ATOMIC,
 int wrapmem_init(void);
 void wrapmem_exit(void);
 void *slack_kmalloc(size_t size);
+void *slack_kzalloc(size_t size);
 void slack_kfree(void *ptr);
 void wrapmem_info(void);
 
 #ifdef ALLOC_DEBUG
 void *wrap_kmalloc(size_t size, unsigned int flags, const char *file, int line);
+void *wrap_kzalloc(size_t size, unsigned int flags, const char *file, int line);
 void wrap_kfree(void *ptr);
 void *wrap_vmalloc(unsigned long size, const char *file, int line);
 void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
@@ -50,12 +52,15 @@ int alloc_size(enum alloc_type type);
 
 #ifndef _WRAPMEM_C_
 #undef kmalloc
+#undef kzalloc
 #undef kfree
 #undef vmalloc
 #undef __vmalloc
 #undef vfree
 #define kmalloc(size, flags)				\
 	wrap_kmalloc(size, flags, __FILE__, __LINE__)
+#define kzalloc(size, flags)				\
+	wrap_kzalloc(size, flags, __FILE__, __LINE__)
 #define vmalloc(size)				\
 	wrap_vmalloc(size, __FILE__, __LINE__)
 #define __vmalloc(size, flags, prot)				\

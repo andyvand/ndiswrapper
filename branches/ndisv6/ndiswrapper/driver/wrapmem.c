@@ -108,6 +108,14 @@ void slack_kfree(void *ptr)
 	EXIT4(return);
 }
 
+void *slack_kzalloc(size_t size)
+{
+	void *ptr = slack_kmalloc(size);
+	if (ptr)
+		memset(ptr, 0, size);
+	return ptr;
+}
+
 #if defined(ALLOC_DEBUG)
 void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
@@ -136,6 +144,14 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 	spin_unlock_bh(&alloc_lock);
 #endif
 	return (info + 1);
+}
+
+void *wrap_kzalloc(size_t size, unsigned flags, const char *file, int line)
+{
+	void *ptr = wrap_kmalloc(size, flags, file, line);
+	if (ptr)
+		memset(ptr, 0, size);
+	return ptr;
 }
 
 void wrap_kfree(void *ptr)
