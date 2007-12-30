@@ -1715,10 +1715,12 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	(NDIS_STATUS *status, void **addr, UINT *len,
 	 struct ndis_miniport_block *nmb)
 {
+	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ndis_configuration_parameter *param;
 	struct unicode_string key;
 	struct ansi_string ansi;
-	int ret;
+	typeof(wnd->mac) mac;
+	int i, ret;
 
 	ENTER1("");
 	RtlInitAnsiString(&ansi, "mac_address");
@@ -1727,31 +1729,34 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
 		EXIT1(return);
 
-	NdisReadConfiguration(status, &param, nmb, &key, NdisParameterString);
+	NdisReadConfiguration(&ret, &param, nmb, &key, NdisParameterString);
 	RtlFreeUnicodeString(&key);
+	if (ret != NDIS_STATUS_SUCCESS)
+		EXIT1(return);
+	ret = RtlUnicodeStringToAnsiString(&ansi, &param->data.string, TRUE);
+	if (ret != STATUS_SUCCESS)
+		EXIT1(return);
 
-	if (*status == NDIS_STATUS_SUCCESS) {
-		int int_mac[ETH_ALEN];
-		ret = RtlUnicodeStringToAnsiString(&ansi, &param->data.string,
-						   TRUE);
-		if (ret != NDIS_STATUS_SUCCESS)
-			EXIT1(return);
-
-		ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
-		if (ret != ETH_ALEN)
-			ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
-		RtlFreeAnsiString(&ansi);
-		if (ret == ETH_ALEN) {
-			int i;
-			for (i = 0; i < ETH_ALEN; i++)
-				nmb->wnd->mac[i] = int_mac[i];
-			printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP
-			       "\n", nmb->wnd->net_dev->name, DRIVER_NAME,
-			       MAC2STR(nmb->wnd->mac));
-			*len = ETH_ALEN;
-			*addr = nmb->wnd->mac;
-			*status = NDIS_STATUS_SUCCESS;
+	i = 0;
+	if (ansi.length >= 2 * sizeof(mac)) {
+		for (i = 0; i < sizeof(mac); i++) {
+			char c[3];
+			int x;
+			c[0] = ansi.buf[i*2];
+			c[1] = ansi.buf[i*2+1];
+			c[2] = 0;
+			ret = sscanf(c, "%x", &x);
+			if (ret != 1)
+				break;
+			mac[i] = x;
 		}
+	}
+	RtlFreeAnsiString(&ansi);
+	if (i == sizeof(mac)) {
+		memcpy(wnd->mac, mac, sizeof(wnd->mac));
+		*len = sizeof(mac);
+		*addr = wnd->mac;
+		*status = NDIS_STATUS_SUCCESS;
 	}
 	EXIT1(return);
 }
@@ -2004,7 +2009,10 @@ wstdcall void WIN_FUNC(NdisMIndicateReceiveNetBufferLists,5)
 		skb->protocol = eth_type_trans(skb, wnd->net_dev);
 		pre_atomic_add(wnd->stats.rx_bytes, total_length);
 		atomic_inc_var(wnd->stats.rx_packets);
-		netif_rx(skb);
+		if (in_interrupt())
+			netif_rx(skb);
+		else
+			netif_rx_ni(skb);
 	} else {
 		WARNING("couldn't allocate skb; packet dropped");
 		atomic_inc_var(wnd->stats.rx_dropped);
