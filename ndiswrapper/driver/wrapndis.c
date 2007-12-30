@@ -203,7 +203,8 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 		NdisPortControlStateUnknown;
 
 	status = LIN2WIN3(ndis_driver->mp_driver.initialize,
-			  wnd->nmb, wnd->nmb, &init_params);
+			  wnd->nmb, wnd->wd->driver->ndis_driver->mp_driver_ctx,
+			  &init_params);
 	TRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
