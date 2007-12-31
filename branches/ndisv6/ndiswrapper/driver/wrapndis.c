@@ -363,6 +363,8 @@ static void tx_worker(worker_param_t param)
 		if (tx_buffer_list)
 			LIN2WIN4(mp_driver->tx_net_buffer_lists,
 				 wnd->nmb->adapter_ctx, tx_buffer_list, 0, 0);
+		else
+			break;
 	}
 	EXIT3(return);
 }
@@ -380,9 +382,10 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	TRACE3("%p, %p", tx_buffer_list, skb);
 	nt_spin_lock(&wnd->tx_ring_lock);
 	if (wnd->tx_buffer_list) {
-		tx_buffer_list->ndis_reserved[0] =
-			wnd->tx_buffer_list->ndis_reserved[0];
-		wnd->tx_buffer_list->header.data.next = tx_buffer_list;
+		struct net_buffer_list *last;
+		last = wnd->tx_buffer_list->ndis_reserved[0];
+		last->header.data.next = tx_buffer_list;
+		wnd->tx_buffer_list->ndis_reserved[0] = tx_buffer_list;
 	}
 	wnd->tx_buffer_list = tx_buffer_list;
 	nt_spin_unlock(&wnd->tx_ring_lock);
