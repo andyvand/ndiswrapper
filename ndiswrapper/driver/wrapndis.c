@@ -307,41 +307,28 @@ alloc_tx_buffer_list(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 void free_tx_buffer_list(struct wrap_ndis_device *wnd,
 			 struct net_buffer_list *buffer_list)
 {
-	struct net_buffer_list *blist, *next;
+	struct net_buffer_list *blist;
+	unsigned long n = 0;
 
-	blist = buffer_list;
-	while (blist) {
-		struct net_buffer *buffer, *next_buffer;
+	for (blist = buffer_list; blist; blist = blist->header.data.next) {
+		struct net_buffer *buffer;
 
-		next = blist->header.data.next;
-		buffer = buffer_list->header.data.first_buffer;
-		while (buffer) {
-			struct mdl *mdl, *next_mdl;
+		for (buffer = buffer_list->header.data.first_buffer; buffer;
+		     buffer = buffer->header.data.next) {
 			struct sk_buff *skb;
-			next_buffer = buffer->header.data.next;
-			mdl = buffer->header.data.mdl_chain;
-			while (mdl) {
-				next_mdl = mdl->next;
-				free_mdl(mdl);
-				mdl = next_mdl;
-			}
 			skb = buffer->ndis_reserved[0];
-			if (buffer_list->status == NDIS_STATUS_SUCCESS) {
-				pre_atomic_add(wnd->net_stats.tx_bytes,
-					       skb->len);
-				atomic_inc_var(wnd->net_stats.tx_packets);
-			} else {
-				TRACE1("packet dropped: %08X",
-				       buffer_list->status);
-				atomic_inc_var(wnd->net_stats.tx_dropped);
-			}
+			n += skb->len;
 			dev_kfree_skb_any(skb);
-			NdisFreeNetBuffer(buffer);
-			buffer = next_buffer;
 		}
-		NdisFreeNetBufferList(blist);
-		blist = next;
 	}
+	if (buffer_list->status == NDIS_STATUS_SUCCESS) {
+		pre_atomic_add(wnd->net_stats.tx_bytes, n);
+		atomic_inc_var(wnd->net_stats.tx_packets);
+	} else {
+		TRACE1("packet dropped: %08X", buffer_list->status);
+		atomic_inc_var(wnd->net_stats.tx_dropped);
+	}
+	NdisFreeNetBufferList(buffer_list);
 }
 
 static void tx_worker(worker_param_t param)
@@ -360,11 +347,10 @@ static void tx_worker(worker_param_t param)
 		wnd->tx_buffer_list = NULL;
 		spin_unlock_bh(&wnd->tx_ring_lock);
 		TRACE3("%p", tx_buffer_list);
-		if (tx_buffer_list)
-			LIN2WIN4(mp_driver->tx_net_buffer_lists,
-				 wnd->nmb->adapter_ctx, tx_buffer_list, 0, 0);
-		else
+		if (!tx_buffer_list)
 			break;
+		LIN2WIN4(mp_driver->tx_net_buffer_lists, wnd->nmb->adapter_ctx,
+			 tx_buffer_list, 0, 0);
 	}
 	EXIT3(return);
 }
