@@ -894,14 +894,14 @@ struct ndis_dot11_association_info_ex {
 	USHORT capability_info;
 	USHORT listen_interval;
 	UCHAR peer_supported_rates[MAX_NUM_SUPPORTED_RATES_V2];
-	USHORT association_id;
-	enum ndis_dot11_association_state association_state;
+	USHORT assoc_id;
+	enum ndis_dot11_association_state assoc_state;
 	enum ndis_dot11_power_mode power_mode;
-	LARGE_INTEGER association_uptime;
+	LARGE_INTEGER assoc_uptime;
 	ULONGLONG num_tx_packet_success;
-	ULONGLONG num_tx_packet_failre;
+	ULONGLONG num_tx_packet_failure;
 	ULONGLONG num_rx_packet_success;
-	ULONGLONG num_rx_packet_failre;
+	ULONGLONG num_rx_packet_failure;
 };
 
 #define DOT11_ASSOCIATION_INFO_LIST_REVISION_1	1
