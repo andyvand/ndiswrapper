@@ -53,7 +53,7 @@ typedef uint64_t NDIS_PHY_ADDRESS;
 typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS;
 
 #define NDIS_SG_LIST_WRITE_TO_DEVICE	0x000000001
-#define NDIS_SG_LIST_WRAP_ALLOC		0x000100000
+#define WRAP_NDIS_SG_LIST		0x000100000
 
 struct ndis_object_header {
 	UCHAR type;
@@ -1325,7 +1325,6 @@ struct wrap_ndis_device {
 	struct auth_encr_capa capa;
 	int num_pmkids;
 	mac_address mac;
-	mac_address peer_mac;
 	struct proc_dir_entry *procfs_iface;
 
 	struct net_device_stats net_stats;

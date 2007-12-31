@@ -424,15 +424,13 @@ static int iw_get_rts_threshold(struct net_device *dev,
 				union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	ULONG n;
 	NDIS_STATUS res;
 
-	res = mp_query(wnd, OID_DOT11_RTS_THRESHOLD, &n, sizeof(n));
+	res = mp_query_int(wnd, OID_DOT11_RTS_THRESHOLD, &wrqu->rts.value);
 	if (res) {
 		WARNING("getting fragmentation threshold failed: %08X", res);
 		return -EOPNOTSUPP;
 	}
-	wrqu->rts.value = n;
 	return 0;
 }
 
@@ -441,10 +439,9 @@ static int iw_set_rts_threshold(struct net_device *dev,
 				union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	ULONG n = wrqu->rts.value;
 	NDIS_STATUS res;
 
-	res = mp_set(wnd, OID_DOT11_RTS_THRESHOLD, &n, sizeof(n));
+	res = mp_set_int(wnd, OID_DOT11_RTS_THRESHOLD, wrqu->rts.value);
 	if (res) {
 		WARNING("setting fragmentation threshold failed: %08X", res);
 		return -EINVAL;
@@ -457,15 +454,14 @@ static int iw_get_frag_threshold(struct net_device *dev,
 				 union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	ULONG n;
 	NDIS_STATUS res;
 
-	res = mp_query(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD, &n, sizeof(n));
+	res = mp_query_int(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD,
+			   &wrqu->frag.value);
 	if (res) {
 		WARNING("getting fragmentation threshold failed: %08X", res);
 		return -EOPNOTSUPP;
 	}
-	wrqu->frag.value = n;
 	return 0;
 }
 
@@ -474,10 +470,10 @@ static int iw_set_frag_threshold(struct net_device *dev,
 				 union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	ULONG n = wrqu->frag.value;
 	NDIS_STATUS res;
 
-	res = mp_set(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD, &n, sizeof(n));
+	res = mp_set_int(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD,
+			 wrqu->frag.value);
 	if (res) {
 		WARNING("setting fragmentation threshold failed: %08X", res);
 		return -EINVAL;
@@ -485,22 +481,33 @@ static int iw_set_frag_threshold(struct net_device *dev,
 	return 0;
 }
 
-int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
-{
-	memcpy(ap_addr, wnd->peer_mac, sizeof(ap_addr));
-	EXIT2(return 0);
-}
-
 static int iw_get_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	mac_address ap_addr;
+	struct ndis_dot11_association_info_list assoc_list;
+	struct ndis_dot11_association_info_ex *assoc_info;
+	NDIS_STATUS res;
 
-	get_ap_address(wnd, ap_addr);
-	TRACE2("ap: " MACSTRSEP, MAC2STR(ap_addr));
-	memcpy(wrqu->ap_addr.sa_data, ap_addr, ETH_ALEN);
+	memset(&assoc_list, 0, sizeof(assoc_list));
+	init_ndis_object_header(&assoc_list, NDIS_OBJECT_TYPE_DEFAULT,
+				DOT11_ASSOCIATION_INFO_LIST_REVISION_1);
+	res = mp_query(wnd, OID_DOT11_ENUM_ASSOCIATION_INFO, &assoc_list,
+		       sizeof(assoc_list));
+	if (res) {
+		WARNING("getting association info failed: %08X", res);
+		return -EOPNOTSUPP;
+	}
+	assoc_info = &assoc_list.assoc_info[0];
+	TRACE2("ap: " MACSTRSEP "%d, %Lu, %Lu, %Lu, %Lu",
+	       MAC2STR(assoc_info->peer_mac), assoc_info->assoc_state,
+	       assoc_info->num_tx_packet_success,
+	       assoc_info->num_tx_packet_failure, 
+	       assoc_info->num_rx_packet_success, 
+	       assoc_info->num_rx_packet_failure); 
+	memcpy(wrqu->ap_addr.sa_data, assoc_info->peer_mac,
+	       sizeof(assoc_info->peer_mac));
 	wrqu->ap_addr.sa_family = ARPHRD_ETHER;
 	EXIT2(return 0);
 }

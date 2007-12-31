@@ -1490,7 +1490,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
 	(struct wrap_ndis_device *wnd, struct net_buffer *buffer,
 	 void *ctx, ULONG flags, struct ndis_sg_list *sg_list, ULONG size)
 {
-	int i, n, dir, alloc;
+	int i, n, dir;
 	struct net_buffer *b;
 	struct ndis_sg_element *sg_elements;
 
@@ -1499,6 +1499,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
 	/* TODO: one buffer may have more than one mdl */
 	for (n = 0, b = buffer; b; b = b->header.data.next)
 		n++;
+	assert(n == 1);
 	if (sg_list == NULL ||
 	    size < sizeof(*sg_list) + n * sizeof(*sg_elements)) {
 		size = sizeof(*sg_list) + n * sizeof(*sg_elements);
@@ -1507,19 +1508,17 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
 			WARNING("couldn't allocate memory");
 			return NDIS_STATUS_RESOURCES;
 		}
-		alloc = 1;
-	} else
-		alloc = 0;
+		sg_list->reserved = WRAP_NDIS_SG_LIST;
+	}
 
 	if (flags & NDIS_SG_LIST_WRITE_TO_DEVICE)
 		dir = PCI_DMA_TODEVICE;
 	else
 		dir = PCI_DMA_FROMDEVICE;
 
+	assert(dir == PCI_DMA_TODEVICE);
 	sg_list->nent = n;
-	sg_list->reserved = flags & NDIS_SG_LIST_WRITE_TO_DEVICE;
-	if (alloc)
-		sg_list->reserved |= NDIS_SG_LIST_WRAP_ALLOC;
+	sg_list->reserved |= flags & NDIS_SG_LIST_WRITE_TO_DEVICE;
 	sg_elements = sg_list->elements;
 	for (i = 0, b = buffer; i < n && b; i++, b = b->header.data.next) {
 		struct mdl *mdl = b->header.data.current_mdl;
@@ -1529,6 +1528,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
 					   MmGetMdlVirtualAddress(mdl),
 					   sg_elements[i].length, dir);
 	}
+	TRACE3("%p", sg_list);
 	LIN2WIN4(wnd->ndis_sg_dma.sg_list_handler, wnd->pdo, NULL,
 		 sg_list, ctx);
 	EXIT2(return NDIS_STATUS_SUCCESS);
@@ -1541,17 +1541,18 @@ wstdcall void WIN_FUNC(NdisMFreeNetBufferSGList,6)
 	int i, dir;
 	struct ndis_sg_element *sg_elements;
 
-	ENTER2("%p, %p, %p", wnd, sg_list, buffer);
+	ENTER3("%p, %p, %p", wnd, sg_list, buffer);
 	if (sg_list->reserved & NDIS_SG_LIST_WRITE_TO_DEVICE)
 		dir = PCI_DMA_TODEVICE;
 	else
 		dir = PCI_DMA_FROMDEVICE;
+	assert(dir == PCI_DMA_TODEVICE);
 	sg_elements = sg_list->elements;
 	for (i = 0; i < sg_list->nent; i++) {
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_elements[i].address,
 				     sg_elements[i].length, dir);
 	}
-	if (sg_list->reserved & NDIS_SG_LIST_WRAP_ALLOC)
+	if (sg_list->reserved & WRAP_NDIS_SG_LIST)
 		kfree(sg_list);
 	EXIT4(return);
 }
@@ -1907,10 +1908,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		TRACE2("ap: " MACSTRSEP ", 0x%x, 0x%x, 0x%x",
 		       MAC2STR(assoc_comp->mac), assoc_comp->status,
 		       assoc_comp->auth_algo, assoc_comp->unicast_cipher);
-		memcpy(wnd->peer_mac, assoc_comp->mac, sizeof(wnd->peer_mac));
 		break;
 	case NDIS_STATUS_DOT11_DISASSOCIATION:
-		memset(wnd->peer_mac, 0, sizeof(wnd->peer_mac));
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
