@@ -385,9 +385,9 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		struct net_buffer_list *last;
 		last = wnd->tx_buffer_list->ndis_reserved[0];
 		last->header.data.next = tx_buffer_list;
-		wnd->tx_buffer_list->ndis_reserved[0] = tx_buffer_list;
-	}
-	wnd->tx_buffer_list = tx_buffer_list;
+	} else
+		wnd->tx_buffer_list = tx_buffer_list;
+	wnd->tx_buffer_list->ndis_reserved[0] = tx_buffer_list;
 	nt_spin_unlock(&wnd->tx_ring_lock);
 	schedule_wrapndis_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
