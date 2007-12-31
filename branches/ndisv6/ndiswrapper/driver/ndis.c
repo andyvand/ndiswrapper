@@ -872,15 +872,16 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 	struct net_buffer *buffer;
 
 	/* TODO: use pool */
-	ENTER4("%p, %p, %u, %lu", pool, mdl, data_offset, data_length);
+	ENTER3("%p, %d, %p, %u, %lu", pool, pool->count, mdl,
+	       data_offset, data_length);
 	spin_lock_bh(&pool->lock);
 	if (pool->count) {
-		void *entry = pool->slist.next;
-		assert(entry);
-		buffer = container_of(entry, struct net_buffer,
-				      header.link.next);
-		pool->slist.next = ((struct nt_slist *)entry)->next;
-		pool->count--;
+		buffer = (typeof(buffer))pool->slist.next;
+		if (buffer) {
+			pool->slist.next = buffer->header.link.next;
+			TRACE3("%p, %p", buffer, pool->slist.next);
+			pool->count--;
+		}
 	} else
 		buffer = NULL;
 	spin_unlock_bh(&pool->lock);
@@ -900,7 +901,7 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 	buffer->header.data.data_length.ulength = data_length;
 	buffer->header.data.data_offset = data_offset;
 	buffer->header.data.next = NULL;
-	EXIT4(return buffer);
+	EXIT3(return buffer);
 }
 
 wstdcall void WIN_FUNC(NdisFreeNetBuffer,1)
@@ -913,6 +914,7 @@ wstdcall void WIN_FUNC(NdisFreeNetBuffer,1)
 	if (!buffer)
 		EXIT1(return);
 	pool = buffer->pool;
+	TRACE3("%p, %d", pool, pool->count);
 	spin_lock_bh(&pool->lock);
 	while (buffer) {
 		struct net_buffer *next;
@@ -928,7 +930,7 @@ wstdcall void WIN_FUNC(NdisFreeNetBuffer,1)
 		}
 		if (pool->count < MAX_ALLOCATED_NDIS_BUFFERS) {
 			buffer->header.link.next = pool->slist.next;
-			pool->slist.next = buffer->header.link.next;
+			pool->slist.next = (void *)buffer;
 			pool->count++;
 		} else
 			kfree(buffer);
@@ -1638,28 +1640,28 @@ wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 	struct ndis_miniport_timer *timer;
 
 	timer = ctx;
-	ENTER5("timer: %p, func: %p, ctx: %p, nmb: %p",
-		    timer, timer->func, timer->ctx, timer->nmb);
+	ENTER3("timer: %p, func: %p, ctx: %p, nmb: %p",
+	       timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
-	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
-	EXIT5(return);
+	LIN2WIN4(timer->func, &timer->kdpc, timer->ctx, NULL, NULL);
+	EXIT3(return);
 }
-WIN_FUNC_DECL(wrap_miniport_timer,4)
+WIN_FUNC_DECL(mp_timer_dpc,4)
 
 wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
 	 DPC func, void *ctx)
 {
-	ENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
-		    timer, func, ctx, nmb);
+	ENTER3("timer: %p, func: %p, ctx: %p, nmb: %p",
+	       timer, func, ctx, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-//	KeInitializeDpc(&timer->kdpc, func, ctx);
-	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4), timer);
+	KeInitializeDpc(&timer->kdpc, func, ctx);
+//	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(mp_timer_dpc,4), timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb);
-	EXIT4(return);
+	EXIT3(return);
 }
 
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
@@ -1667,9 +1669,9 @@ wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 {
 	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
-	ENTER4("%p, %u, %ld", timer, period_ms, expires);
-	wrap_set_timer(&timer->nt_timer, expires, expires, NULL);
-	EXIT4(return);
+	ENTER3("%p, %u, %ld, %p", timer, period_ms, expires, &timer->kdpc);
+	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
+	EXIT3(return);
 }
 
 wstdcall void WIN_FUNC(NdisMCancelTimer,2)
@@ -1901,11 +1903,13 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		TRACE2("ap: " MACSTRSEP ", 0x%x, 0x%x, 0x%x",
 			  MAC2STR(assoc_comp->mac), assoc_comp->status,
 			  assoc_comp->auth_algo, assoc_comp->unicast_cipher);
+		memcpy(wnd->peer_mac, assoc_comp->mac, sizeof(wnd->peer_mac));
 		netif_carrier_on(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_DISASSOCIATION:
+		memset(wnd->peer_mac, 0, sizeof(wnd->peer_mac));
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrapndis_work(&wnd->wrap_ndis_work);
@@ -2030,6 +2034,7 @@ wstdcall void WIN_FUNC(NdisMSendNetBufferListsComplete,3)
 	(struct ndis_miniport_block *nmb, struct net_buffer_list *buffer_list,
 	 ULONG flags)
 {
+	TRACE3("%p, %08X", buffer_list, buffer_list->status);
 	free_tx_buffer_list(nmb->wnd, buffer_list);
 }
 

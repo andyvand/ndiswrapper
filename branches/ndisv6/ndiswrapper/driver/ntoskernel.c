@@ -1793,8 +1793,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		spin_unlock_bh(&dispatcher_lock);
 		mdl = wrap_mdl->mdl;
-		TRACE3("allocated mdl from cache: %p(%p), %p(%d)",
-		       wrap_mdl, mdl, virt, length);
+		TRACE4("%p(%p), %p(%d)", wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, MDL_CACHE_SIZE);
 		MmInitializeMdl(mdl, virt, length);
 		/* mark the MDL as allocated from cache pool so when
@@ -1806,8 +1805,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		if (!wrap_mdl)
 			return NULL;
 		mdl = wrap_mdl->mdl;
-		TRACE3("allocated mdl from memory: %p(%p), %p(%d)",
-		       wrap_mdl, mdl, virt, length);
+		TRACE4("%p(%p), %p(%d)", wrap_mdl, mdl, virt, length);
 		spin_lock_bh(&dispatcher_lock);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		spin_unlock_bh(&dispatcher_lock);
@@ -1831,11 +1829,11 @@ void free_mdl(struct mdl *mdl)
 	spin_unlock_bh(&dispatcher_lock);
 
 	if (mdl->flags & MDL_CACHE_ALLOCATED) {
-		TRACE3("freeing mdl cache: %p, %p, %p",
+		TRACE4("freeing mdl cache: %p, %p, %p",
 		       wrap_mdl, mdl, mdl->mappedsystemva);
 		kmem_cache_free(mdl_cache, wrap_mdl);
 	} else {
-		TRACE3("freeing mdl: %p, %p, %p",
+		TRACE4("freeing mdl: %p, %p, %p",
 		       wrap_mdl, mdl, mdl->mappedsystemva);
 		kfree(wrap_mdl);
 	}

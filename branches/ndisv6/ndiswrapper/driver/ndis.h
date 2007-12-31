@@ -1295,7 +1295,7 @@ struct wrap_ndis_device {
 	struct ndis_wireless_stats ndis_stats;
 
 	work_struct_t tx_work;
-	struct net_buffer_list *last_tx_buffer_list;
+	struct net_buffer_list *tx_buffer_list;
 	struct semaphore tx_buffer_list_mutex;
 	unsigned int max_tx_packets;
 	u8 tx_ok;
@@ -1325,8 +1325,10 @@ struct wrap_ndis_device {
 	struct auth_encr_capa capa;
 	int num_pmkids;
 	mac_address mac;
+	mac_address peer_mac;
 	struct proc_dir_entry *procfs_iface;
 
+	struct net_device_stats net_stats;
 	work_struct_t wrap_ndis_work;
 	unsigned long wrap_ndis_pending_work;
 	int iw_auth_set;

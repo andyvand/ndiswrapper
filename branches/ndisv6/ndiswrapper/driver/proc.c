@@ -95,11 +95,39 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 			       int count, int *eof, void *data)
 {
 	char *p = page;
+	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
+	int i;
+	NDIS_STATUS status;
+	char buf[100];
+	struct ndis_dot11_current_operation_mode *op_mode;
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
+
+	i = 0;
+	status = mp_query_int(wnd, OID_DOT11_NIC_POWER_STATE, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "nic power=%d\n", i);
+	i = 0;
+	status = mp_query_int(wnd, OID_DOT11_HARDWARE_PHY_STATE, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "phy power=%d\n", i);
+	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "phy id=%d\n", i);
+	status = mp_query_int(wnd, OID_DOT11_POWER_MGMT_REQUEST, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "power mgmt=%d\n", i);
+	op_mode = (void *)buf;
+	status = mp_query(wnd, OID_DOT11_CURRENT_OPERATION_MODE,
+			  op_mode, sizeof(*op_mode));
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "operational mode=0x%x\n", op_mode->mode);
+	status = mp_query_int(wnd, OID_DOT11_RF_USAGE, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "rf usage=%d\n", i);
 
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
