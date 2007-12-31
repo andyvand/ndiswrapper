@@ -95,7 +95,7 @@ NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd, ndis_oid oid, void *buf,
 	oid_req.data.query.buf_length = buf_len;
 	status = mp_oid_request(wnd, &oid_req);
 	TRACE2("%d/%d/%d", buf_len, oid_req.data.query.bytes_written,
-		  oid_req.data.query.bytes_needed);
+	       oid_req.data.query.bytes_needed);
 	if (needed)
 		*needed = oid_req.data.query.bytes_needed;
 	if (written)
@@ -117,7 +117,7 @@ NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	oid_req.data.set.buf_length = buf_len;
 	res = mp_oid_request(wnd, &oid_req);
 	TRACE2("%d/%d/%d", buf_len, oid_req.data.set.bytes_written,
-		  oid_req.data.set.bytes_needed);
+	       oid_req.data.set.bytes_needed);
 	if (needed)
 		*needed = oid_req.data.set.bytes_needed;
 	if (written)
@@ -211,9 +211,8 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 
 	sleep_hz(HZ / 5);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	status = mp_set_int(wnd, OID_DOT11_POWER_MGMT_REQUEST,
-			    DOT11_POWER_SAVING_NO_POWER_SAVING);
-	TRACE1("%08X", status);
+
+#if 0
 	mp_query_int(wnd, OID_PNP_QUERY_POWER, &status);
 	TRACE1("%d", status);
 	status = mp_set_int(wnd, OID_PNP_SET_POWER, NdisDeviceStateD0);
@@ -222,6 +221,7 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 			      NdisPowerProfileAcOnLine);
 	if (status != NDIS_STATUS_SUCCESS)
 		TRACE1("couldn't set power profile: %08X", status);
+#endif
 	/* although some NDIS drivers support suspend, Linux kernel
 	 * has issues with suspending USB devices */
 	if (wrap_is_usb_bus(wnd->wd->dev_bus))
@@ -299,6 +299,8 @@ alloc_tx_buffer_list(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 		return NULL;
 	}
 	buffer->ndis_reserved[0] = skb;
+	buffer_list->header.data.first_buffer = buffer;
+	TRACE3("%p, %p, %p", buffer_list, buffer, skb);
 	return buffer_list;
 }
 
@@ -324,6 +326,15 @@ void free_tx_buffer_list(struct wrap_ndis_device *wnd,
 				mdl = next_mdl;
 			}
 			skb = buffer->ndis_reserved[0];
+			if (buffer_list->status == NDIS_STATUS_SUCCESS) {
+				pre_atomic_add(wnd->net_stats.tx_bytes,
+					       skb->len);
+				atomic_inc_var(wnd->net_stats.tx_packets);
+			} else {
+				TRACE1("packet dropped: %08X",
+				       buffer_list->status);
+				atomic_inc_var(wnd->net_stats.tx_dropped);
+			}
 			dev_kfree_skb_any(skb);
 			NdisFreeNetBuffer(buffer);
 			buffer = next_buffer;
@@ -342,15 +353,16 @@ static void tx_worker(worker_param_t param)
 	ENTER3("tx_ok %d", wnd->tx_ok);
 	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver;
 	while (wnd->tx_ok) {
-		struct net_buffer_list *last;
+		struct net_buffer_list *tx_buffer_list;
 
 		spin_lock_bh(&wnd->tx_ring_lock);
-		last = wnd->last_tx_buffer_list;
-		wnd->last_tx_buffer_list = NULL;
+		tx_buffer_list = wnd->tx_buffer_list;
+		wnd->tx_buffer_list = NULL;
 		spin_unlock_bh(&wnd->tx_ring_lock);
-		if (last)
+		TRACE3("%p", tx_buffer_list);
+		if (tx_buffer_list)
 			LIN2WIN4(mp_driver->tx_net_buffer_lists,
-				 wnd->nmb->adapter_ctx, last, 0, 0);
+				 wnd->nmb->adapter_ctx, tx_buffer_list, 0, 0);
 	}
 	EXIT3(return);
 }
@@ -358,20 +370,21 @@ static void tx_worker(worker_param_t param)
 static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct net_buffer_list *buffer_list;
+	struct net_buffer_list *tx_buffer_list;
 
-	buffer_list = alloc_tx_buffer_list(wnd, skb);
-	if (!buffer_list) {
+	tx_buffer_list = alloc_tx_buffer_list(wnd, skb);
+	if (!tx_buffer_list) {
 		WARNING("couldn't allocate packet");
 		return NETDEV_TX_BUSY;
 	}
+	TRACE3("%p, %p", tx_buffer_list, skb);
 	nt_spin_lock(&wnd->tx_ring_lock);
-	if (wnd->last_tx_buffer_list) {
-		buffer_list->ndis_reserved[0] =
-			wnd->last_tx_buffer_list->ndis_reserved[0];
-		wnd->last_tx_buffer_list->header.data.next = buffer_list;
+	if (wnd->tx_buffer_list) {
+		tx_buffer_list->ndis_reserved[0] =
+			wnd->tx_buffer_list->ndis_reserved[0];
+		wnd->tx_buffer_list->header.data.next = tx_buffer_list;
 	}
-	wnd->last_tx_buffer_list = buffer_list;
+	wnd->tx_buffer_list = tx_buffer_list;
 	nt_spin_unlock(&wnd->tx_ring_lock);
 	schedule_wrapndis_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
@@ -965,6 +978,7 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 {
 	struct ndis_dot11_reset_request *reset_req;
 	struct ndis_dot11_current_operation_mode *op_mode;
+	struct ndis_dot11_op_mode_capability *op_mode_capa;
 	struct ndis_dot11_country_or_region_string_list *country_region_list;
 	NDIS_STATUS res;
 
@@ -1007,6 +1021,14 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 	       test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth) ?
 	       ", WPA2PSK" : "");
 
+	op_mode_capa = buf;
+	op_mode_capa->major_version = 2;
+	op_mode_capa->minor_version = 0;
+	res = mp_query(wnd, OID_DOT11_OPERATION_MODE_CAPABILITY,
+		       op_mode_capa, sizeof(*op_mode_capa));
+	TRACE2("%d, %d, %d, %d, 0x%x", op_mode_capa->major_version,
+	       op_mode_capa->minor_version, op_mode_capa->num_tx_buffers,
+	       op_mode_capa->num_rx_buffers, op_mode_capa->mode);
 	op_mode = buf;
 	op_mode->reserved = 0;
 	op_mode->mode = DOT11_OPERATION_MODE_EXTENSIBLE_STATION;
@@ -1036,6 +1058,7 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 		TRACE1("regulatory domain: 0x%x", *((ULONG *)buf));
 
 	country_region_list = (typeof(country_region_list))buf;
+#if 0
 	init_ndis_object_header(country_region_list, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_COUNTRY_OR_REGION_STRING_LIST_REVISION_1);	
 	res = mp_query(wnd, OID_DOT11_SUPPORTED_COUNTRY_OR_REGION_STRING,
@@ -1056,18 +1079,25 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 	res = mp_query(wnd, OID_DOT11_DESIRED_COUNTRY_OR_REGION_STRING,
 		       buf, buf_len);
 	TRACE2("%08X, %c%c", res, ((char *)buf)[0], ((char *)buf)[1]);
+#endif
 
+	res = mp_set_int(wnd, OID_DOT11_CURRENT_PHY_ID, 0);
+	TRACE2("%08X", res);
 	res = mp_query(wnd, OID_DOT11_CURRENT_PHY_ID,
 		       &wnd->phy_id, sizeof(wnd->phy_id));
 	TRACE2("%08X, %u", res, wnd->phy_id);
-//	*((ULONG *)buf) = 1;
-//	res = mpm_set_info(wnd, OID_DOT11_CURRENT_PHY_ID,
-//				buf, sizeof(ULONG));
-//	TRACE2("%08X, %u", res, *((ULONG *)buf));
 
-	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
-	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
-	set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
+	res = mp_set_int(wnd, OID_DOT11_NIC_POWER_STATE, TRUE);
+	TRACE1("%08X", res);
+	res = mp_set_int(wnd, OID_DOT11_HARDWARE_PHY_STATE, TRUE);
+	TRACE1("%08X", res);
+	res = mp_set_int(wnd, OID_DOT11_POWER_MGMT_REQUEST,
+			 DOT11_POWER_SAVING_NO_POWER_SAVING);
+	TRACE1("%08X", res);
+
+//	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
+//	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
+//	set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
 	EXIT1(return);
 }
 
@@ -1474,11 +1504,9 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	mp_halt(wnd);
 	ndis_exit_device(wnd);
 
-	if (wnd->last_tx_buffer_list) {
-		struct net_buffer_list *buffer_list;
-		buffer_list = wnd->last_tx_buffer_list->ndis_reserved[0];
-		free_tx_buffer_list(wnd, buffer_list);
-	}
+	if (wnd->tx_buffer_list)
+		free_tx_buffer_list(wnd, wnd->tx_buffer_list);
+
 	if (wnd->tx_buffer_list_pool) {
 		NdisFreeNetBufferListPool(wnd->tx_buffer_list_pool);
 		wnd->tx_buffer_list_pool = NULL;

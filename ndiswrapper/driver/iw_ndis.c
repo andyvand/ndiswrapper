@@ -51,6 +51,7 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 		     sizeof(ssid_list));
 	if (res)
 		WARNING("setting ssid list failed: %08X", res);
+#if 0
 	res = mp_set_int(wnd, OID_DOT11_DESIRED_BSS_TYPE,
 			 ndis_dot11_bss_type_infrastructure);
 	if (res)
@@ -61,6 +62,7 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 	res = set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
 	if (res)
 		WARNING("setting encryption mode failed: %08X", res);
+#endif
 	res = mp_set(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
 	if (res)
 		WARNING("connection request failed: %08X", res);
@@ -485,26 +487,7 @@ static int iw_set_frag_threshold(struct net_device *dev,
 
 int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 {
-	struct ndis_dot11_bssid_list bssid_list;
-	NDIS_STATUS res;
-
-	memset(&bssid_list, 0, sizeof(bssid_list));
-	init_ndis_object_header(&bssid_list, NDIS_OBJECT_TYPE_DEFAULT,
-				DOT11_BSSID_LIST_REVISION_1);
-	bssid_list.num_entries = 1;
-	bssid_list.num_total_entries = 1;
-	res = mp_query(wnd, OID_DOT11_DESIRED_BSSID_LIST,
-		       &bssid_list, sizeof(bssid_list));
-	if (res) {
-		WARNING("getting bssid list failed: %08X", res);
-		return -EOPNOTSUPP;
-	}
-	TRACE2("ap: " MACSTRSEP, MAC2STR(bssid_list.bssids[0]));
-	if (memcmp(bssid_list.bssids[0], "\xff\xff\xff\xff\xff\xff",
-		   ETH_ALEN) == 0)
-		memset(ap_addr, 0, sizeof(ap_addr));
-	else
-		memcpy(ap_addr, bssid_list.bssids[0], sizeof(ap_addr));
+	memcpy(ap_addr, wnd->peer_mac, sizeof(ap_addr));
 	EXIT2(return 0);
 }
 
@@ -609,8 +592,9 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 			exclude_unencr = FALSE;
 		else
 			exclude_unencr = TRUE;
-		res = mp_set(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED,
-			     &exclude_unencr, sizeof(ULONG));
+		res = 0;
+/* 		res = mp_set(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED, */
+/* 			     &exclude_unencr, sizeof(ULONG)); */
 		if (res)
 			WARNING("setting cipher failed: %08X", res);
 		else
@@ -629,11 +613,13 @@ enum ndis_dot11_cipher_algorithm get_cipher_algo(struct wrap_ndis_device *wnd)
 				DOT11_CIPHER_ALGORITHM_LIST_REVISION_1);
 	cipher_algos.num_entries = 1;
 	cipher_algos.num_total_entries = 1;
+#if 0
 	res = mp_query(wnd, OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM,
 		       &cipher_algos, sizeof(cipher_algos));
 	if (res)
 		WARNING("getting cipher algorithm failed: %08X", res);
 	TRACE2("%d, %d", cipher_algos.algo_ids[0], wnd->cipher_info.algo);
+#endif
 	res = mp_query(wnd, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
 		       &cipher_algos, sizeof(cipher_algos));
 	if (res) {
@@ -729,11 +715,13 @@ int add_cipher_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		WARNING("invalid key index (%d)", index);
 		EXIT2(return -EINVAL);
 	}
+#if 0
 	if (wnd->cipher_info.algo != DOT11_CIPHER_ALGO_NONE &&
 	    wnd->cipher_info.algo != algo) {
 		WARNING("invalid algorithm: %d/%d", wnd->cipher_info.algo, algo);
 		return -EINVAL;
 	}
+#endif
 	ndis_key = kzalloc(sizeof(*ndis_key) + key_len - 1, GFP_KERNEL);
 	if (!ndis_key)
 		return -ENOMEM;
@@ -752,7 +740,7 @@ int add_cipher_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 	memcpy(ndis_key->key, key, key_len);
 
 	res = mp_set(wnd, OID_DOT11_CIPHER_DEFAULT_KEY, ndis_key,
-		     sizeof(*ndis_key));
+		     sizeof(*ndis_key) + key_len - 1);
 	if (res) {
 		WARNING("adding key %d failed (%08X)", index + 1, res);
 		kfree(ndis_key);
@@ -848,7 +836,7 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 
 	if (res) {
 		WARNING("setting authentication mode failed (%08X)", res);
-		EXIT2(return -EINVAL);
+//		EXIT2(return -EINVAL);
 	}
 
 	TRACE2("key length: %d", wrqu->data.length);
@@ -883,9 +871,10 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 			WARNING("couldn't set tx key to %d: %08X", index, res);
 			return -EINVAL;
 		} else {
+			set_cipher_algo(wnd, algo);
 			/* ndis drivers want essid to be set after
 			 * setting encr */
-			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
+//			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 		}
 	}
 	EXIT2(return 0);
@@ -1046,9 +1035,9 @@ int set_scan(struct wrap_ndis_device *wnd)
 		return -ENOMEM;
 	TRACE2("%d, %d, %d", sizeof(*scan_req), len,
 		  sizeof(struct ndis_dot11_ssid));
-	memset(scan_req, 0, len);
 	scan_req->bss_type = ndis_dot11_bss_type_any;
 	memset(scan_req->bssid, 0xff, sizeof(scan_req->bssid));
+	scan_req->ssids_offset = 0;
 	scan_req->scan_type = ndis_dot11_scan_type_auto;
 	scan_req->restricted_scan = FALSE;
 	scan_req->num_ssids = 1;
@@ -1489,18 +1478,21 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	int res;
 
 	ENTER2("");
+	memset(reset_req.mac, 0x00, sizeof(reset_req.mac));
 	if (wrqu->param.value == 0)
 		res = mp_reset(netdev_priv(dev));
 	else if (wrqu->param.value == 1) {
 		reset_req.type = ndis_dot11_reset_type_phy;
-		reset_req.set_default_mib = FALSE;
-		res = mp_set(wnd, OID_DOT11_RESET_REQUEST,
-			     &reset_req, sizeof(reset_req));
+		reset_req.set_default_mib = TRUE;
+		res = mp_request_method(wnd, OID_DOT11_RESET_REQUEST,
+					&reset_req, sizeof(reset_req),
+					NULL, NULL);
 	} else if (wrqu->param.value == 2) {
 		reset_req.type = ndis_dot11_reset_type_phy_and_mac;
-		reset_req.set_default_mib = FALSE;
-		res = mp_set(wnd, OID_DOT11_RESET_REQUEST,
-			     &reset_req, sizeof(reset_req));
+		reset_req.set_default_mib = TRUE;
+		res = mp_request_method(wnd, OID_DOT11_RESET_REQUEST,
+					&reset_req, sizeof(reset_req),
+					NULL, NULL);
 	} else {
 		res = mp_set(wnd, OID_DOT11_DISCONNECT_REQUEST, NULL, 0);
 	}
