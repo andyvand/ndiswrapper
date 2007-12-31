@@ -1168,25 +1168,30 @@ wstdcall void WIN_FUNC(NdisFreeNetBufferList,1)
 	struct net_buffer *buffer;
 
 	ENTER3("%p", buffer_list);
-	buffer = buffer_list->header.data.first_buffer;
-	NdisFreeNetBuffer(buffer);
-
-	ctx = buffer_list->context;
-	TRACE3("%p", ctx);
-	while (ctx) {
-		struct net_buffer_list_context *next = ctx->next;
-		kfree(ctx);
-		ctx = next;
-	}
 	pool = buffer_list->pool;
 	TRACE3("%p", pool);
 	spin_lock_bh(&pool->list_pool.lock);
-	if (pool->list_pool.count < MAX_ALLOCATED_NDIS_BUFFERS) {
-		buffer_list->header.link.next = pool->list_pool.slist.next;
-		pool->list_pool.slist.next = buffer_list->header.link.next;
-		pool->list_pool.count++;
-	} else
-		kfree(buffer_list);
+	while (buffer_list) {
+		struct net_buffer_list *next;
+		next = (typeof(next))buffer_list->header.link.next;
+		buffer = buffer_list->header.data.first_buffer;
+		NdisFreeNetBuffer(buffer);
+		ctx = buffer_list->context;
+		TRACE3("%p", ctx);
+		while (ctx) {
+			struct net_buffer_list_context *next = ctx->next;
+			kfree(ctx);
+			ctx = next;
+		}
+		if (pool->list_pool.count < MAX_ALLOCATED_NDIS_BUFFERS) {
+			buffer_list->header.link.next =
+				pool->list_pool.slist.next;
+			pool->list_pool.slist.next = (void *)buffer_list;
+			pool->list_pool.count++;
+		} else
+			kfree(buffer_list);
+		buffer_list = next;
+	}
 	spin_unlock_bh(&pool->list_pool.lock);
 }
 
@@ -1198,13 +1203,13 @@ wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
 	ENTER3("%p, %u, %u", pool, ctx_size, backfill);
 	spin_lock_bh(&pool->list_pool.lock);
 	TRACE3("%d, %p", pool->list_pool.count, pool->list_pool.slist.next);
-	if (pool->list_pool.slist.next) {
-		void *entry = pool->list_pool.slist.next;
-		assert(entry);
-		buffer_list = container_of(entry, struct net_buffer_list,
-					   header.link.next);
-		pool->list_pool.slist.next = ((struct nt_slist *)entry)->next;
-		pool->list_pool.count--;
+	if (pool->list_pool.count) {
+		buffer_list = (typeof(buffer_list))pool->list_pool.slist.next;
+		if (buffer_list) {
+			pool->list_pool.slist.next =
+				buffer_list->header.link.next;
+			pool->list_pool.count--;
+		}
 		TRACE3("%d, %p", pool->list_pool.count, buffer_list);
 	} else
 		buffer_list = NULL;
@@ -1892,21 +1897,17 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_START:
 		assoc_start = status->buf;
-		TRACE2("0x%x, 0x%x", assoc_start->header.size,
-			  sizeof(*assoc_start));
-		TRACE2("ap: " MACSTRSEP, MAC2STR(assoc_start->mac));
+		TRACE2("0x%x, 0x%x, " MACSTRSEP, assoc_start->header.size,
+		       sizeof(*assoc_start), MAC2STR(assoc_start->mac));
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION:
 		assoc_comp = status->buf;
 		TRACE2("0x%x, 0x%x, 0x%x", assoc_comp->header.size,
-			  sizeof(*assoc_comp), status->buf_len);
+		       sizeof(*assoc_comp), status->buf_len);
 		TRACE2("ap: " MACSTRSEP ", 0x%x, 0x%x, 0x%x",
-			  MAC2STR(assoc_comp->mac), assoc_comp->status,
-			  assoc_comp->auth_algo, assoc_comp->unicast_cipher);
+		       MAC2STR(assoc_comp->mac), assoc_comp->status,
+		       assoc_comp->auth_algo, assoc_comp->unicast_cipher);
 		memcpy(wnd->peer_mac, assoc_comp->mac, sizeof(wnd->peer_mac));
-		netif_carrier_on(wnd->net_dev);
-		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_DISASSOCIATION:
 		memset(wnd->peer_mac, 0, sizeof(wnd->peer_mac));
@@ -1917,12 +1918,12 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 	case NDIS_STATUS_DOT11_CONNECTION_START:
 		conn_start = status->buf;
 		TRACE2("0x%x, 0x%x, 0x%x", conn_start->header.size,
-			  sizeof(*conn_start), conn_start->bss_type);
+		       sizeof(*conn_start), conn_start->bss_type);
 		break;
 	case NDIS_STATUS_DOT11_CONNECTION_COMPLETION:
 		conn_comp = status->buf;
 		TRACE2("0x%x, 0x%x, 0x%x", conn_comp->header.size,
-			  sizeof(*conn_comp), conn_comp->status);
+		       sizeof(*conn_comp), conn_comp->status);
 		if (conn_comp->status == DOT11_ASSOC_STATUS_SUCCESS) {
 			netif_carrier_on(wnd->net_dev);
 			set_bit(LINK_STATUS_CHANGED,
@@ -1932,26 +1933,25 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_SCAN_CONFIRM:
 		TRACE2("status: %08X, %p, %p, %u, %u", status->code,
-			  status->dst_handle, status->request_id,
-			  *((ULONG *)status->buf), status->buf_len);
+		       status->dst_handle, status->request_id,
+		       *((ULONG *)status->buf), status->buf_len);
 		break;
 	case NDIS_STATUS_DOT11_PHY_STATE_CHANGED:
 		phy_state = status->buf;
 		TRACE2("%d, %d, %d", phy_state->phy_id, phy_state->hw_state,
-			  phy_state->sw_state);
+		       phy_state->sw_state);
 		break;
 	case NDIS_STATUS_DOT11_LINK_QUALITY:
 		link_quality = status->buf;
 		link_quality_entry = (typeof(link_quality_entry))
 			&((char *)status->buf)[link_quality->list_offset];
-		TRACE2(MACSTRSEP ", %u",
-			  MAC2STR(link_quality_entry->peer_mac),
-			  link_quality_entry->quality);
+		TRACE2(MACSTRSEP ", %u", MAC2STR(link_quality_entry->peer_mac),
+		       link_quality_entry->quality);
 		break;
 	default:
 		TRACE2("unknown status: %08X, %p, %p, %p %u", status->code,
-			  status->dst_handle, status->request_id, status->buf,
-			  status->buf_len);
+		       status->dst_handle, status->request_id, status->buf,
+		       status->buf_len);
 		break;
 	}
 
