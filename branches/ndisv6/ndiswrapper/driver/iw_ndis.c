@@ -670,10 +670,8 @@ static int iw_get_cipher(struct net_device *dev, struct iw_request_info *info,
 			wrqu->data.length = cipher_info->keys[index].length;
 			memcpy(extra, cipher_info->keys[index].key,
 			       cipher_info->keys[index].length);
-		}
-		else
+		} else
 			wrqu->data.flags |= IW_ENCODE_DISABLED;
-
 		EXIT2(return 0);
 	}
 
@@ -977,7 +975,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 		char *current_val;
 		TRACE2("0x%x, %u", ie->id, ie->length);
 		switch (ie->id) {
-		case DOT11_INFO_ELEMENT_ID_SSID:
+		case DOT11_IE_SSID:
 			memset(&iwe, 0, sizeof(iwe));
 			iwe.cmd = SIOCGIWESSID;
 			iwe.u.data.length = ie->length;
@@ -988,8 +986,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 			event = iwe_stream_add_point(event, end_buf, &iwe,
 						     ((char *)ie) + sizeof(*ie));
 			break;
-		case DOT11_INFO_ELEMENT_ID_SUPPORTED_RATES:
-		case DOT11_INFO_ELEMENT_ID_EXTD_SUPPORTED_RATES:
+		case DOT11_IE_SUPPORTED_RATES:
+		case DOT11_IE_EXTD_SUPPORTED_RATES:
 			memset(&iwe, 0, sizeof(iwe));
 			current_val = event + IW_EV_LCP_LEN;
 			iwe.cmd = SIOCGIWRATE;
@@ -1007,9 +1005,9 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 			if ((current_val - event) > IW_EV_LCP_LEN)
 				event = current_val;
 			break;
-		case DOT11_INFO_ELEMENT_ID_ERP:
+		case DOT11_IE_ERP:
 			break;
-		case DOT11_INFO_ELEMENT_ID_RSN:
+		case DOT11_IE_RSN:
 			memset(&iwe, 0, sizeof(iwe));
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ie->length;
