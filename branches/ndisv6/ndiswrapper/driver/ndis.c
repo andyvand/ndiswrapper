@@ -656,10 +656,11 @@ wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
 	ENTER3("%p, %p, %u, %u, %u", nmb, wd->pci.pdev, slot, offset, len);
-	for (i = 0; i < len; i++)
+	for (i = 0; i < len; i++) {
 		if (pci_read_config_byte(wd->pci.pdev, offset + i, &buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
+	}
 	DBG_BLOCK(2) {
 		if (i != len)
 			WARNING("%u, %u", i, len);
@@ -681,10 +682,11 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
 	ENTER3("%p, %p, %u, %u, %u", nmb, wd->pci.pdev, slot, offset, len);
-	for (i = 0; i < len; i++)
+	for (i = 0; i < len; i++) {
 		if (pci_write_config_byte(wd->pci.pdev, offset + i, buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
+	}
 	DBG_BLOCK(2) {
 		if (i != len)
 			WARNING("%u, %u", i, len);
@@ -693,23 +695,41 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 }
 
 wstdcall ULONG WIN_FUNC(NdisMGetBusData,5)
-	(struct ndis_miniport_block *nmb, ULONG from, ULONG offset, char *buf,
+	(struct ndis_miniport_block *nmb, ULONG where, ULONG offset, char *buf,
 	 ULONG len)
 {
-	ENTER3("0x%x, %u, %u", from, offset, len);
-	if (from != PCI_WHICHSPACE_CONFIG)
-		TRACE4("reading from 0x%x not supported", from);
-	return NdisReadPciSlotInformation(nmb, from, offset, buf, len);
+	ENTER3("0x%x, %u, %u", where, offset, len);
+	/* TODO: map ROM for PCI_WHICHSPACE_ROM */
+	if (where == PCI_WHICHSPACE_CONFIG)
+		return NdisReadPciSlotInformation(nmb, where, offset, buf, len);
+	else if (where == PCI_WHICHSPACE_ROM && nmb->wnd->wd->pci.rom) {
+		ULONG i;
+		for (i = 0; i < len; i++)
+			buf[i] = readb(nmb->wnd->wd->pci.rom + offset + i);
+		EXIT3(return i);
+	} else {
+		ERROR("reading from 0x%x not supported", where);
+		EXIT1(return 0);
+	}
 }
 
 wstdcall ULONG WIN_FUNC(NdisMSetBusData,5)
-	(struct ndis_miniport_block *nmb, ULONG from, ULONG offset, char *buf,
+	(struct ndis_miniport_block *nmb, ULONG where, ULONG offset, char *buf,
 	 ULONG len)
 {
-	ENTER5("0x%x, %u, %u", from, offset, len);
-	if (from != PCI_WHICHSPACE_CONFIG)
-		TRACE4("reading from 0x%x not supported", from);
-	return NdisWritePciSlotInformation(nmb, from, offset, buf, len);
+	ENTER3("0x%x, %u, %u", where, offset, len);
+	/* TODO: map ROM for PCI_WHICHSPACE_ROM */
+	if (where == PCI_WHICHSPACE_CONFIG)
+		return NdisWritePciSlotInformation(nmb, where, offset, buf, len);
+	else if (where == PCI_WHICHSPACE_ROM && nmb->wnd->wd->pci.rom) {
+		ULONG i;
+		for (i = 0; i < len; i++)
+			writeb(buf[i], nmb->wnd->wd->pci.rom + offset + i);
+		EXIT3(return i);
+	} else {
+		ERROR("writing to 0x%x not supported", where);
+		EXIT1(return 0);
+	}
 }
 
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)

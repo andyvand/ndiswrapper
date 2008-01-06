@@ -154,6 +154,7 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 
 	TRACE2("resource list count %d, irq: %d",
 	       partial_resource_list->count, pdev->irq);
+	wd->pci.rom = pci_map_rom(pdev, &count);
 	pci_set_drvdata(pdev, wd);
 	EXIT1(return STATUS_SUCCESS);
 err_regions:
@@ -174,6 +175,8 @@ static void remove_pdo(struct device_object *pdo)
 		struct pci_dev *pdev = wd->pci.pdev;
 		pci_release_regions(pdev);
 		pci_disable_device(pdev);
+		if (wd->pci.rom)
+			pci_unmap_rom(pdev, wd->pci.rom);
 		wd->pci.pdev = NULL;
 		pci_set_drvdata(pdev, NULL);
 	} else if (wrap_is_usb_bus(wd->dev_bus)) {
