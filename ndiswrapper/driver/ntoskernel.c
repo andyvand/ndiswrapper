@@ -1341,6 +1341,64 @@ wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 	EVENTEXIT(return ret);
 }
 
+wfastcall void WIN_FUNC(KeInitializeGuardedMutex,1)
+	(struct kguarded_mutex *mutex)
+{
+	memset(mutex, 0, sizeof(*mutex));
+	initialize_object(&mutex->gate.dh, GuardedMutexObject, 1);
+}
+
+wfastcall void WIN_FUNC(KeAcquireGuardedMutex,1)
+	(struct kguarded_mutex *mutex)
+{
+	TRACE3("%p, %p, %d, %d", mutex, current,
+	       mutex->count, mutex->gate.dh.signal_state);
+	spin_lock_bh(&dispatcher_lock);
+	mutex->count++;
+	if (!mutex->gate.dh.signal_state) {
+		struct wait_block wb;
+		int res, wait_done;
+
+		assert(mutex->count > 1);
+		wait_done = 0;
+		wb.wait_done = &wait_done;
+		wb.object = mutex;
+		wb.thread = current;
+		TRACE3("%p", &wb);
+		InsertTailList(&mutex->gate.dh.wait_blocks, &wb.list);
+		spin_unlock_bh(&dispatcher_lock);
+		res = wait_condition(wait_done, 0, TASK_INTERRUPTIBLE);
+		spin_lock_bh(&dispatcher_lock);
+		assert(mutex->gate.dh.signal_state);
+	}
+	mutex->gate.dh.signal_state = 0;
+	spin_unlock_bh(&dispatcher_lock);
+	EXIT3(return);
+}
+
+wfastcall void WIN_FUNC(KeReleaseGuardedMutex,1)
+	(struct kguarded_mutex *mutex)
+{
+	TRACE3("%p, %p, %d, %d", mutex, current,
+	       mutex->count, mutex->gate.dh.signal_state);
+	spin_lock_bh(&dispatcher_lock);
+	assert(mutex->gate.dh.signal_state == 0);
+	mutex->gate.dh.signal_state = 1;
+	if (--mutex->count) {
+		struct nt_list *cur;
+		struct wait_block *wb;
+
+		cur = RemoveHeadList(&mutex->gate.dh.wait_blocks);
+		assert(cur != NULL);
+		wb = container_of(cur, struct wait_block, list);
+		TRACE3("%p, %p", wb, wb->thread);
+		assert(wb->object == mutex);
+		*(wb->wait_done) = 1;
+		wake_up_process(wb->thread);
+	}
+	spin_unlock_bh(&dispatcher_lock);
+}
+
 wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *interval)
 {

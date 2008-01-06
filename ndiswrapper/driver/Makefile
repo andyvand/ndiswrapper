@@ -315,9 +315,9 @@ prereq_check:
 	fi
 
 clean:
-	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o win2lin_stubs.o \
+	rm -rf $(MODULE) ndis6wrapper.o $(OBJS) usb.o win2lin_stubs.o \
 	   divdi3.o workqueue.o .*.ko.cmd .*.o.cmd  compat.h \
-	   ndiswrapper.mod.[oc] *~ .tmp_versions Modules.symvers Module.symvers
+	   ndis6wrapper.mod.[oc] *~ .tmp_versions Modules.symvers Module.symvers
 
 distclean: clean
 	rm -f *_exports.h .\#* win2lin_stubs.h built-in.o

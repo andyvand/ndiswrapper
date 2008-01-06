@@ -1,3 +1,18 @@
+/*
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ */
+
 #define DOT11_BSSID_LIST_REVISION_1 		1
 struct ndis_dot11_bssid_list {
 	struct ndis_object_header header;
@@ -12,9 +27,10 @@ enum ndis_dot11_phy_type {
 	ndis_dot11_phy_type_fhss = 1,
 	ndis_dot11_phy_type_dsss = 2,
 	ndis_dot11_phy_type_irbaseband = 3,
-	ndis_dot11_phy_type_ofdm = 4,
-	ndis_dot11_phy_type_hrdsss = 5,
-	ndis_dot11_phy_type_erp = 6,
+	ndis_dot11_phy_type_ofdm = 4, /* 802.11a */
+	ndis_dot11_phy_type_hrdsss = 5, /* 802.11b */
+	ndis_dot11_phy_type_erp = 6, /* 802.11g */
+	ndis_dot11_phy_type_ht = 7, /* 802.11n */
 	ndis_dot11_phy_type_ihv_start = 0x80000000,
 	ndis_dot11_phy_type_ihv_end = 0xffffffff
 };
@@ -261,7 +277,6 @@ struct ndis_dot11_info_element {
 #define DOT11_IE_RSN			48
 #define DOT11_IE_EXTD_SUPPORTED_RATES	50
 #define DOT11_IE_VENDOR_SPECIFIC	221
-
 
 struct ndis_dot11_scan_request_v2 {
 	enum ndis_dot11_bss_type bss_type;

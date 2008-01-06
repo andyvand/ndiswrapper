@@ -393,6 +393,8 @@ typedef u32 pm_message_t;
 #define SECSPERDAY		86400
 #define TICKSPERJIFFY		((TICKSPERSEC + HZ - 1) / HZ)
 
+#define int_div_round(x, y)	(((x) + (y) - 1) / (y))
+
 /* 1601 to 1970 is 369 years plus 89 leap days */
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
@@ -400,11 +402,12 @@ typedef u32 pm_message_t;
 /* 100ns units to HZ; if sys_time is negative, relative to current
  * clock, otherwise from year 1601 */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	((((sys_time) <= 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
-	  (((s64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
+	(((sys_time) <= 0) ? \
+	 int_div_round(((u64)HZ * (-(sys_time))), TICKSPERSEC) :	\
+	 int_div_round(((s64)HZ * ((sys_time) - ticks_1601())), TICKSPERSEC))
 
-#define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
-#define USEC_TO_HZ(us) ((us) * HZ / 1000000)
+#define MSEC_TO_HZ(ms) int_div_round((ms * HZ), 1000)
+#define USEC_TO_HZ(us) int_div_round((us * HZ), 1000000)
 
 extern u64 wrap_ticks_to_boot;
 

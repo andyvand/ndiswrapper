@@ -655,7 +655,7 @@ wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
-	ENTER5("%p, %p, %u, %u, %u", nmb, wd->pci.pdev, slot, offset, len);
+	ENTER3("%p, %p, %u, %u, %u", nmb, wd->pci.pdev, slot, offset, len);
 	for (i = 0; i < len; i++)
 		if (pci_read_config_byte(wd->pci.pdev, offset + i, &buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
@@ -680,7 +680,7 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
-	ENTER5("%p, %p, %u, %u, %u", nmb, wd->pci.pdev, slot, offset, len);
+	ENTER3("%p, %p, %u, %u, %u", nmb, wd->pci.pdev, slot, offset, len);
 	for (i = 0; i < len; i++)
 		if (pci_write_config_byte(wd->pci.pdev, offset + i, buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
@@ -696,7 +696,7 @@ wstdcall ULONG WIN_FUNC(NdisMGetBusData,5)
 	(struct ndis_miniport_block *nmb, ULONG from, ULONG offset, char *buf,
 	 ULONG len)
 {
-	ENTER5("0x%x, %u, %u", from, offset, len);
+	ENTER3("0x%x, %u, %u", from, offset, len);
 	if (from != PCI_WHICHSPACE_CONFIG)
 		TRACE4("reading from 0x%x not supported", from);
 	return NdisReadPciSlotInformation(nmb, from, offset, buf, len);
@@ -1673,7 +1673,7 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 	(struct ndis_miniport_timer *timer, UINT period_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
+	unsigned long expires = MSEC_TO_HZ(period_ms);
 
 	ENTER3("%p, %u, %ld, %p", timer, period_ms, expires, &timer->kdpc);
 	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
@@ -1703,7 +1703,7 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 wstdcall void WIN_FUNC(NdisSetTimer,2)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
+	unsigned long expires = MSEC_TO_HZ(duetime_ms);
 
 	ENTER4("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
 		    duetime_ms, expires);
@@ -1939,6 +1939,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		phy_state = status->buf;
 		TRACE2("%d, %d, %d", phy_state->phy_id, phy_state->hw_state,
 		       phy_state->sw_state);
+		set_bit(PHY_STATE_CHANGED, &wnd->wrap_ndis_pending_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_LINK_QUALITY:
 		link_quality = status->buf;

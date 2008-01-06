@@ -52,10 +52,6 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 	if (res)
 		WARNING("setting ssid list failed: %08X", res);
 #if 0
-	res = mp_set_int(wnd, OID_DOT11_DESIRED_BSS_TYPE,
-			 ndis_dot11_bss_type_infrastructure);
-	if (res)
-		WARNING("setting bss type failed: %08X", res);
 	res = set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
 	if (res)
 		WARNING("setting authentication mode failed: %08X", res);
@@ -63,6 +59,7 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 	if (res)
 		WARNING("setting encryption mode failed: %08X", res);
 #endif
+	sleep_hz(HZ);
 	res = mp_set(wnd, OID_DOT11_CONNECT_REQUEST, NULL, 0);
 	if (res)
 		WARNING("connection request failed: %08X", res);
@@ -140,7 +137,7 @@ NDIS_STATUS set_infra_mode(struct wrap_ndis_device *wnd,
 			   enum ndis_dot11_bss_type type)
 {
 	NDIS_STATUS res;
-	res = mp_set(wnd, OID_DOT11_DESIRED_BSS_TYPE, &type, sizeof(type));
+	res = mp_set_int(wnd, OID_DOT11_DESIRED_BSS_TYPE, type);
 	if (res)
 		WARNING("setting mode to %d failed: %08X", type, res);
 	else
@@ -180,8 +177,7 @@ static int iw_get_infra_mode(struct net_device *dev,
 	NDIS_STATUS res;
 	enum ndis_dot11_bss_type bss_type;
 
-	res = mp_query(wnd, OID_DOT11_DESIRED_BSS_TYPE,
-		       &bss_type, sizeof(bss_type));
+	res = mp_query_int(wnd, OID_DOT11_DESIRED_BSS_TYPE, &bss_type);
 	if (res) {
 		WARNING("getting mode failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -303,36 +299,26 @@ static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct ndis_dot11_supported_power_levels *power_levels;
+	struct ndis_dot11_supported_power_levels power_levels;
 	NDIS_STATUS res;
 	ULONG n;
 
-	res = mp_query(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, &n, sizeof(n));
-	TRACE2("%08X, %d", res, n);
-	res = mp_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
-			    NULL, 0, &n, NULL);
-	if (res != NDIS_STATUS_BUFFER_OVERFLOW) {
+	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, &power_levels,
+		       sizeof(power_levels));
+	if (res) {
 		WARNING("query failed: %08X", res);
-		return -EOPNOTSUPP;
-	}
-	power_levels = kzalloc(n, GFP_KERNEL);
-	if (!power_levels)
-		EXIT2(return -ENOMEM);
-	
-	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, power_levels, n);
-	if (res || power_levels->num_levels > OID_DOT11_MAX_TX_POWER_LEVELS) {
-		WARNING("query failed: %08X", res);
-		kfree(power_levels);
 		return -EOPNOTSUPP;
 	}
 	res = mp_query(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, &n, sizeof(n));
-	if (res || n < 1 || n > power_levels->num_levels) {
-		WARNING("query failed: %08X", res);
-		kfree(power_levels);
+	TRACE2("%d", n);
+	if (res || n < 1 || n > power_levels.num_levels) {
+		WARNING("query failed: %08X, %d", res, n);
 		return -EOPNOTSUPP;
 	}
-	n = power_levels->levels[n - 1];
-	kfree(power_levels);
+	wrqu->txpower.flags = IW_TXPOW_MWATT;
+	wrqu->txpower.disabled = 0;
+	wrqu->txpower.fixed = 0;
+	wrqu->txpower.value = power_levels.levels[n - 1];
 	return 0;
 }
 
@@ -340,24 +326,15 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct ndis_dot11_supported_power_levels *power_levels;
+	struct ndis_dot11_supported_power_levels power_levels;
 	NDIS_STATUS res;
 	ULONG i, n;
 
-	res = mp_query_info(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, NULL, 0,
-			    &n, NULL);
-	if (res != NDIS_STATUS_BUFFER_OVERFLOW) {
-		WARNING("query failed: %08X", res);
-		return -EOPNOTSUPP;
-	}
-	power_levels = kzalloc(n, GFP_KERNEL);
-	if (!power_levels)
-		EXIT2(return -ENOMEM);
 	
-	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, power_levels, n);
-	if (res || power_levels->num_levels > OID_DOT11_MAX_TX_POWER_LEVELS) {
+	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, &power_levels,
+		       sizeof(power_levels));
+	if (res) {
 		WARNING("query failed: %08X", res);
-		kfree(power_levels);
 		return -EOPNOTSUPP;
 	}
 	if (wrqu->txpower.flags == IW_TXPOW_MWATT)
@@ -375,12 +352,13 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 			n = (unsigned char)tmp;
 		}
 	}
-	for (i = 0; i < power_levels->num_levels - 1; i++)
-		if (n <= power_levels->levels[i])
+	for (i = 1; i < power_levels.num_levels; i++) {
+		if (n >= power_levels.levels[i-1] &&
+		    n <= power_levels.levels[i])
 			break;
-	n = power_levels->levels[i];
-	res = mp_set(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, &n, sizeof(n));
-	kfree(power_levels);
+	}
+	i = max(i, power_levels.num_levels-1);
+	res = mp_set_int(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL, i+1);
 	if (res) {
 		WARNING("query failed: %08X", res);
 		return -EOPNOTSUPP;
@@ -493,12 +471,14 @@ static int iw_get_ap_address(struct net_device *dev,
 	memset(&assoc_list, 0, sizeof(assoc_list));
 	init_ndis_object_header(&assoc_list, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_ASSOCIATION_INFO_LIST_REVISION_1);
+
 	res = mp_query(wnd, OID_DOT11_ENUM_ASSOCIATION_INFO, &assoc_list,
 		       sizeof(assoc_list));
 	if (res) {
 		WARNING("getting association info failed: %08X", res);
 		return -EOPNOTSUPP;
 	}
+	TRACE2("%d", assoc_list.num_entries);
 	assoc_info = &assoc_list.assoc_info[0];
 	TRACE2("ap: " MACSTRSEP "%d, %Lu, %Lu, %Lu, %Lu",
 	       MAC2STR(assoc_info->peer_mac), assoc_info->assoc_state,
@@ -593,6 +573,7 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 	if (res)
 		WARNING("setting cipher algorithm to %d failed: %08X",
 			algo_id, res);
+#if 0
 	else {
 		BOOLEAN exclude_unencr;
 		if (algo_id == DOT11_CIPHER_ALGO_NONE)
@@ -600,13 +581,14 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 		else
 			exclude_unencr = TRUE;
 		res = 0;
-/* 		res = mp_set(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED, */
-/* 			     &exclude_unencr, sizeof(ULONG)); */
+		res = mp_set(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED,
+			     &exclude_unencr, sizeof(ULONG));
 		if (res)
 			WARNING("setting cipher failed: %08X", res);
 		else
 			wnd->cipher_info.algo = algo_id;
 	}
+#endif
 	EXIT2(return res);
 }
 
@@ -869,6 +851,7 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 	if (add_cipher_key(wnd, key, key_len, index, algo, NULL))
 		EXIT2(return -EINVAL);
 
+#if 0
 	if (index == cipher_info->tx_index) {
 		res = mp_set(wnd, OID_DOT11_CIPHER_DEFAULT_KEY_ID,
 			     &index, sizeof(ULONG));
@@ -876,12 +859,13 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 			WARNING("couldn't set tx key to %d: %08X", index, res);
 			return -EINVAL;
 		} else {
-			set_cipher_algo(wnd, algo);
 			/* ndis drivers want essid to be set after
 			 * setting encr */
 //			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 		}
 	}
+#endif
+	set_cipher_algo(wnd, algo);
 	EXIT2(return 0);
 }
 
@@ -968,7 +952,6 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
 
-	/* add essid */
 	i = 0;
 	ie = (typeof(ie))bss->buffer;
 	while (i < bss->buffer_length) {
@@ -1016,8 +999,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 						     &iwe, cbuf);
 			break;
 		default:
-			TRACE2("unknown element: 0x%x, %u",
-				  ie->id, ie->length);
+			TRACE2("unknown element: 0x%x, %u", ie->id, ie->length);
+			break;
 		}
 		i += ie->length;
 		ie = (void *)ie + ie->length;
@@ -1035,6 +1018,7 @@ int set_scan(struct wrap_ndis_device *wnd)
 	ENTER2("");
 	len = sizeof(*scan_req) + sizeof(struct ndis_dot11_ssid) +
 		sizeof(struct ndis_dot11_phy_type_info);
+	len = sizeof(*scan_req) + sizeof(struct ndis_dot11_ssid);
 	scan_req = kzalloc(len, GFP_KERNEL);
 	if (!scan_req)
 		return -ENOMEM;
@@ -1046,19 +1030,12 @@ int set_scan(struct wrap_ndis_device *wnd)
 	scan_req->scan_type = ndis_dot11_scan_type_auto;
 	scan_req->restricted_scan = FALSE;
 	scan_req->num_ssids = 1;
-//	scan_req->phy_types_offset = sizeof(struct ndis_dot11_ssid);
-//	TRACE1("");
+	scan_req->num_phy_types = 0;
 //	dump_bytes(__FUNCTION__, (void *)scan_req, len);
-//	scan_req->num_phy_types = 0;
-//	((char *)scan_req)[15] = 0x80;
 	res = mp_set(wnd, OID_DOT11_SCAN_REQUEST, scan_req, len);
 	kfree(scan_req);
-	if (res && res != NDIS_STATUS_DOT11_MEDIA_IN_USE) {
-		if (res == NDIS_STATUS_DOT11_POWER_STATE_INVALID)
-			WARNING("%s: NIC or radio is turned off",
-				wnd->netdev_name);
-		else
-			WARNING("scanning failed (%08X)", res);
+	if (res) {
+		WARNING("scanning failed (%08X)", res);
 		EXIT2(return -EOPNOTSUPP);
 	}
 	wnd->scan_timestamp = jiffies;
@@ -1068,8 +1045,9 @@ int set_scan(struct wrap_ndis_device *wnd)
 static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	return set_scan(wnd);
+//	struct wrap_ndis_device *wnd = netdev_priv(dev);
+//	return set_scan(wnd);
+	return 0;
 }
 
 static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
@@ -1083,8 +1061,10 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_dot11_bss_entry *bss;
 
 	ENTER2("");
+#if 0
 	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
+#endif
 	/* try with space for a few scan items */
 	len = sizeof(*byte_array) + sizeof(*bss) * 8;
 	len = 1024;
@@ -1097,11 +1077,11 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	TRACE2("%d", sizeof(*byte_array));
 	res = mp_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
 				byte_array, len, &len, NULL);
+	TRACE2("%d", len);
 	if (res == NDIS_STATUS_INVALID_LENGTH ||
 	    res == NDIS_STATUS_BUFFER_OVERFLOW ||
 	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
 		/* now try with required space */
-		TRACE2("%d", len);
 		kfree(byte_array);
 		byte_array = kzalloc(len, GFP_KERNEL);
 		if (!byte_array) {
@@ -1483,7 +1463,7 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	int res;
 
 	ENTER2("");
-	memset(reset_req.mac, 0x00, sizeof(reset_req.mac));
+	memset(reset_req.mac, 0xff, sizeof(reset_req.mac));
 	if (wrqu->param.value == 0)
 		res = mp_reset(netdev_priv(dev));
 	else if (wrqu->param.value == 1) {
@@ -1595,6 +1575,16 @@ static int priv_connect(struct net_device *dev, struct iw_request_info *info,
 		return 0;
 }
 
+static int priv_scan(struct net_device *dev, struct iw_request_info *info,
+		     union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	if (set_scan(wnd))
+		return -EFAULT;
+	return 0;
+}
+
 static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "reset"},
@@ -1604,13 +1594,17 @@ static const struct iw_priv_args priv_args[] = {
 	 "nic_power"},
 	{PRIV_CONNECT, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "connect"},
+	{PRIV_SCAN, 0, 0, "scan"},
 };
 
+#define WEPRIV(id) [id - SIOCIWFIRSTPRIV]
+
 static const iw_handler priv_handler[] = {
-	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
-	[PRIV_SET_PHY_ID 	- SIOCIWFIRSTPRIV] = priv_set_phy_id,
-	[PRIV_SET_NIC_POWER 	- SIOCIWFIRSTPRIV] = priv_set_nic_power,
-	[PRIV_CONNECT	 	- SIOCIWFIRSTPRIV] = priv_connect,
+	WEPRIV(PRIV_RESET)		= priv_reset,
+	WEPRIV(PRIV_SET_PHY_ID)		= priv_set_phy_id,
+	WEPRIV(PRIV_SET_NIC_POWER)	= priv_set_nic_power,
+	WEPRIV(PRIV_CONNECT)		= priv_connect,
+	WEPRIV(PRIV_SCAN)		= priv_scan,
 };
 
 const struct iw_handler_def ndis_handler_def = {

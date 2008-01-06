@@ -43,6 +43,7 @@ int set_scan(struct wrap_ndis_device *wnd);
 #define PRIV_SET_PHY_ID			SIOCIWFIRSTPRIV+18
 #define PRIV_SET_NIC_POWER		SIOCIWFIRSTPRIV+19
 #define PRIV_CONNECT			SIOCIWFIRSTPRIV+20
+#define PRIV_SCAN			SIOCIWFIRSTPRIV+21
 
 #define RSN_INFO_ELEM		0x30
 
