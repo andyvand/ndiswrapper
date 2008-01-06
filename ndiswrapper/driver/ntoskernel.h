@@ -535,6 +535,7 @@ struct wrap_device {
 		struct {
 			struct pci_dev *pdev;
 			enum device_power_state wake_state;
+			void __iomem *rom;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 			u32 pci_state[16];
 #endif
