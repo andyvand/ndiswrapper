@@ -212,16 +212,6 @@ static NDIS_STATUS mp_init(struct wrap_ndis_device *wnd)
 	sleep_hz(HZ / 5);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
 
-#if 0
-	mp_query_int(wnd, OID_PNP_QUERY_POWER, &status);
-	TRACE1("%d", status);
-	status = mp_set_int(wnd, OID_PNP_SET_POWER, NdisDeviceStateD0);
-	TRACE1("%08X", status);
-	status = mp_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
-			      NdisPowerProfileAcOnLine);
-	if (status != NDIS_STATUS_SUCCESS)
-		TRACE1("couldn't set power profile: %08X", status);
-#endif
 	/* although some NDIS drivers support suspend, Linux kernel
 	 * has issues with suspending USB devices */
 	if (wrap_is_usb_bus(wnd->wd->dev_bus))
@@ -285,6 +275,8 @@ alloc_tx_buffer_list(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 	struct mdl *mdl;
 
 	buffer_list = NdisAllocateNetBufferList(wnd->tx_buffer_list_pool, 0, 0);
+	if (!buffer_list)
+		return NULL;
 	mdl = allocate_init_mdl(skb->data, skb->len);
 	if (unlikely(!mdl)) {
 		WARNING("couldn't allocate mdl");
@@ -310,6 +302,7 @@ void free_tx_buffer_list(struct wrap_ndis_device *wnd,
 	struct net_buffer_list *blist;
 	unsigned long n = 0;
 
+	TRACE3("%p", buffer_list);
 	for (blist = buffer_list; blist; blist = blist->header.data.next) {
 		struct net_buffer *buffer;
 
@@ -777,6 +770,14 @@ static void wrap_ndis_worker(worker_param_t param)
 			       &wnd->wrap_ndis_pending_work))
 		link_status_handler(wnd);
 
+	if (test_and_clear_bit(PHY_STATE_CHANGED,
+			       &wnd->wrap_ndis_pending_work)) {
+		NDIS_STATUS res;
+		BOOLEAN b = TRUE;
+		res = mp_set_info(wnd, OID_DOT11_HARDWARE_PHY_STATE, &b,
+				  sizeof(b), NULL, NULL);
+		TRACE1("%08X", res);
+	}
 	if (test_and_clear_bit(MINIPORT_RESET, &wnd->wrap_ndis_pending_work))
 		mp_reset(wnd);
 	EXIT3(return);
@@ -1070,19 +1071,37 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 	TRACE2("%08X, %c%c", res, ((char *)buf)[0], ((char *)buf)[1]);
 #endif
 
-	res = mp_set_int(wnd, OID_DOT11_CURRENT_PHY_ID, 0);
-	TRACE2("%08X", res);
-	res = mp_query(wnd, OID_DOT11_CURRENT_PHY_ID,
-		       &wnd->phy_id, sizeof(wnd->phy_id));
-	TRACE2("%08X, %u", res, wnd->phy_id);
-
-	res = mp_set_int(wnd, OID_DOT11_NIC_POWER_STATE, TRUE);
-	TRACE1("%08X", res);
-	res = mp_set_int(wnd, OID_DOT11_HARDWARE_PHY_STATE, TRUE);
-	TRACE1("%08X", res);
 	res = mp_set_int(wnd, OID_DOT11_POWER_MGMT_REQUEST,
 			 DOT11_POWER_SAVING_NO_POWER_SAVING);
 	TRACE1("%08X", res);
+#if 0
+	mp_query_int(wnd, OID_PNP_QUERY_POWER, &status);
+	TRACE1("%d", status);
+	status = mp_set_int(wnd, OID_PNP_SET_POWER, NdisDeviceStateD0);
+	TRACE1("%08X", status);
+	status = mp_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
+			      NdisPowerProfileAcOnLine);
+	if (status != NDIS_STATUS_SUCCESS)
+		TRACE1("couldn't set power profile: %08X", status);
+
+	res = mp_set_int(wnd, OID_DOT11_AUTO_CONFIG_ENABLED,
+			 DOT11_PHY_AUTO_CONFIG_ENABLED_FLAG |
+			 DOT11_MAC_AUTO_CONFIG_ENABLED_FLAG);
+	TRACE2("%08X", res);
+#endif
+
+	do {
+		BOOLEAN b;
+		b = TRUE;
+		res = mp_set(wnd, OID_DOT11_NIC_POWER_STATE, &b, sizeof(b));
+		TRACE1("%08X", res);
+		res = mp_query(wnd, OID_DOT11_HARDWARE_PHY_STATE, &b, sizeof(b));
+		TRACE1("%d", b);
+	} while (0);
+
+	res = mp_query(wnd, OID_DOT11_CURRENT_PHY_ID,
+		       &wnd->phy_id, sizeof(wnd->phy_id));
+	TRACE2("%08X, %u", res, wnd->phy_id);
 
 //	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
 //	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
@@ -1504,6 +1523,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeNetBufferPool(wnd->tx_buffer_pool);
 		wnd->tx_buffer_pool = NULL;
 	}
+	if (wnd->phy_types)
+		kfree(wnd->phy_types);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	free_netdev(wnd->net_dev);

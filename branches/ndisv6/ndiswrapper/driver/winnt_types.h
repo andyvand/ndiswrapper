@@ -417,6 +417,7 @@ enum dh_type {
 	MutexObject,
 	SemaphoreObject,
 	ThreadObject,
+	GuardedMutexObject,
 };
 
 enum wait_type {
@@ -501,6 +502,7 @@ struct nt_thread {
 #define is_mutex_object(dh)		((dh)->type == MutexObject)
 #define is_semaphore_object(dh)		((dh)->type == SemaphoreObject)
 #define is_nt_thread_object(dh)		((dh)->type == ThreadObject)
+#define is_guarded_mutex_object(dh)	((dh)->type == GuardedMutexObject)
 
 #define IO_TYPE_ADAPTER				1
 #define IO_TYPE_CONTROLLER			2

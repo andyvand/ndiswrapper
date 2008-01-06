@@ -107,27 +107,32 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	}
 
 	i = 0;
+	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "phy_id=%d\n", i);
+	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_NIC_POWER_STATE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "nic power=%d\n", i);
+		p += sprintf(p, "nic_power=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_HARDWARE_PHY_STATE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "phy power=%d\n", i);
-	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
-	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "phy id=%d\n", i);
+		p += sprintf(p, "phy_power=%d\n", i);
+	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_POWER_MGMT_REQUEST, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "power mgmt=%d\n", i);
+		p += sprintf(p, "power_mgmt=%d\n", i);
 	op_mode = (void *)buf;
 	status = mp_query(wnd, OID_DOT11_CURRENT_OPERATION_MODE,
 			  op_mode, sizeof(*op_mode));
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "operational mode=0x%x\n", op_mode->mode);
+		p += sprintf(p, "op_mode=0x%x\n", op_mode->mode);
 	status = mp_query_int(wnd, OID_DOT11_RF_USAGE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "rf usage=%d\n", i);
+		p += sprintf(p, "rf_usage=%d\n", i);
+	status = mp_query_int(wnd, OID_DOT11_AUTO_CONFIG_ENABLED, &i);
+	if (status == NDIS_STATUS_SUCCESS)
+		p += sprintf(p, "auto_config=0x%x\n", i);
 
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
@@ -239,6 +244,40 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		res = mp_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
 		if (res)
 			WARNING("setting packet_filter failed: %08X", res);
+	} else if (!strcmp(setting, "nic_power")) {
+		BOOLEAN b;
+		if (!p)
+			return -EINVAL;
+		p++;
+		if (simple_strtol(p, NULL, 10))
+			b = TRUE;
+		else
+			b = FALSE;
+		res = mp_set_info(wnd, OID_DOT11_NIC_POWER_STATE, &b,
+				  sizeof(b), NULL, NULL);
+		if (res)
+			WARNING("setting nic_power failed: %08X", res);
+	} else if (!strcmp(setting, "phy_power")) {
+		BOOLEAN b;
+		if (!p)
+			return -EINVAL;
+		p++;
+		if (simple_strtol(p, NULL, 10))
+			b = TRUE;
+		else
+			b = FALSE;
+		res = mp_set_info(wnd, OID_DOT11_HARDWARE_PHY_STATE, &b,
+				  sizeof(b), NULL, NULL);
+		if (res)
+			WARNING("setting phy_power failed: %08X", res);
+	} else if (!strcmp(setting, "phy_id")) {
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		res = mp_set_int(wnd, OID_DOT11_CURRENT_PHY_ID, i);
+		if (res)
+			WARNING("setting phy_id to %d failed: %08X", i, res);
 	}
 	return count;
 }
