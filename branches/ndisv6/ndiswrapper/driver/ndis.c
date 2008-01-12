@@ -124,8 +124,8 @@ wstdcall void WIN_FUNC(NdisMGetDeviceProperty,6)
 	 void **next_dev, void **alloc_res, void**trans_res)
 {
 	ENTER2("nmb: %p, phy_dev = %p, func_dev = %p, next_dev = %p, "
-		    "alloc_res = %p, trans_res = %p", nmb, phy_dev, func_dev,
-		    next_dev, alloc_res, trans_res);
+	       "alloc_res = %p, trans_res = %p", nmb, phy_dev, func_dev,
+	       next_dev, alloc_res, trans_res);
 	if (phy_dev)
 		*phy_dev = nmb->wnd->pdo;
 	if (func_dev)
@@ -834,25 +834,43 @@ wstdcall void WIN_FUNC(NdisInitializeReadWriteLock,1)
 {
 	ENTER3("%p", rw_lock);
 	memset(rw_lock, 0, sizeof(*rw_lock));
-	KeInitializeSpinLock(&rw_lock->u.s.klock);
+	KeInitializeSpinLock(&rw_lock->s.klock);
 	EXIT3(return);
 }
+
+/* read/write locks are implemented in a rather simplisitic way - we
+ * should probably use Linux's rw_lock implementation */
 
 wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)
 	(struct ndis_rw_lock *rw_lock, BOOLEAN write,
 	 struct lock_state *lock_state)
 {
-	ENTER3("%p", rw_lock);
-	nt_spin_lock(&rw_lock->u.s.klock);
-	EXIT3(return);
+	if (write) {
+		while (cmpxchg(&rw_lock->count, 0, -1) != 0) {
+			do {
+				cpu_relax();
+			} while (rw_lock->count);
+		}
+		return;
+	}
+	while (1) {
+		typeof(rw_lock->count) count;
+		while ((count = rw_lock->count) < 0)
+			cpu_relax();
+		if (cmpxchg(&rw_lock->count, count, count + 1) == count)
+			return;
+	}
 }
 
-wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,3)
+wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,2)
 	(struct ndis_rw_lock *rw_lock, struct lock_state *lock_state)
 {
-	ENTER3("%p", rw_lock);
-	nt_spin_unlock(&rw_lock->u.s.klock);
-	EXIT3(return);
+	if (rw_lock->count > 0)
+		atomic_dec_var(rw_lock->count);
+	else if (rw_lock->count == -1)
+		rw_lock->count = 0;
+	else
+		WARNING("invalid state: %d", rw_lock->count);
 }
 
 wstdcall struct net_buffer_pool *WIN_FUNC(NdisAllocateNetBufferPool,3)
@@ -1670,7 +1688,7 @@ wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 	       timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
-	LIN2WIN4(timer->func, &timer->kdpc, timer->ctx, NULL, NULL);
+	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
 	EXIT3(return);
 }
 WIN_FUNC_DECL(mp_timer_dpc,4)
@@ -1828,7 +1846,7 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx)
 	if (queue_handler)
 		queue_kdpc(&wnd->irq_kdpc);
 	if (recognized)
-		EXIT4(return TRUE);
+		EXIT5(return TRUE);
 	else
 		return FALSE;
 }

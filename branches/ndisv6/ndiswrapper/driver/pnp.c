@@ -173,10 +173,10 @@ static void remove_pdo(struct device_object *pdo)
 	ntoskernel_exit_device(wd);
 	if (wrap_is_pci_bus(wd->dev_bus)) {
 		struct pci_dev *pdev = wd->pci.pdev;
-		pci_release_regions(pdev);
-		pci_disable_device(pdev);
 		if (wd->pci.rom)
 			pci_unmap_rom(pdev, wd->pci.rom);
+		pci_release_regions(pdev);
+		pci_disable_device(pdev);
 		wd->pci.pdev = NULL;
 		pci_set_drvdata(pdev, NULL);
 	} else if (wrap_is_usb_bus(wd->dev_bus)) {

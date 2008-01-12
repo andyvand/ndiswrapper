@@ -464,24 +464,32 @@ static int iw_get_ap_address(struct net_device *dev,
 			     union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct ndis_dot11_association_info_list assoc_list;
+	struct ndis_dot11_association_info_list *assoc_list;
 	struct ndis_dot11_association_info_ex *assoc_info;
 	NDIS_STATUS res;
 
-	memset(&assoc_list, 0, sizeof(assoc_list));
-	init_ndis_object_header(&assoc_list, NDIS_OBJECT_TYPE_DEFAULT,
+	assoc_list = kzalloc(sizeof(*assoc_list) + 20, GFP_KERNEL);
+	if (!assoc_list)
+		return -ENOMEM;
+
+	init_ndis_object_header(assoc_list, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_ASSOCIATION_INFO_LIST_REVISION_1);
 
-	res = mp_query(wnd, OID_DOT11_ENUM_ASSOCIATION_INFO, &assoc_list,
-		       sizeof(assoc_list));
+	res = mp_query(wnd, OID_DOT11_ENUM_ASSOCIATION_INFO, assoc_list,
+		       sizeof(*assoc_list) + 20);
 	if (res) {
 		WARNING("getting association info failed: %08X", res);
+		kfree(assoc_list);
 		return -EOPNOTSUPP;
 	}
-	TRACE2("%d", assoc_list.num_entries);
-	assoc_info = &assoc_list.assoc_info[0];
-	TRACE2("ap: " MACSTRSEP "%d, %Lu, %Lu, %Lu, %Lu",
-	       MAC2STR(assoc_info->peer_mac), assoc_info->assoc_state,
+	TRACE2("%d, %d", assoc_list->num_entries, assoc_list->num_total_entries);
+	assoc_info = &assoc_list->assoc_info[0];
+	TRACE2("ap: " MACSTRSEP ", " MACSTRSEP
+	       ", %d, %d, %d, %Ld, %Lu, %Lu, %Lu, %Lu",
+	       MAC2STR(assoc_info->peer_mac), MAC2STR(assoc_info->bssid),
+	       assoc_info->assoc_id, assoc_info->assoc_state,
+	       assoc_info->power_mode,
+	       assoc_info->assoc_uptime,
 	       assoc_info->num_tx_packet_success,
 	       assoc_info->num_tx_packet_failure, 
 	       assoc_info->num_rx_packet_success, 
@@ -489,6 +497,7 @@ static int iw_get_ap_address(struct net_device *dev,
 	memcpy(wrqu->ap_addr.sa_data, assoc_info->peer_mac,
 	       sizeof(assoc_info->peer_mac));
 	wrqu->ap_addr.sa_family = ARPHRD_ETHER;
+	kfree(assoc_list);
 	EXIT2(return 0);
 }
 
@@ -523,6 +532,7 @@ NDIS_STATUS set_auth_algo(struct wrap_ndis_device *wnd,
 	struct ndis_dot11_auth_algorithm_list auth_algos;
 	NDIS_STATUS res;
 
+	TRACE2("%d", algo_id);
 	memset(&auth_algos, 0, sizeof(auth_algos));
 	init_ndis_object_header(&auth_algos, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_AUTH_ALGORITHM_LIST_REVISION_1);
@@ -553,6 +563,7 @@ enum ndis_dot11_auth_algorithm get_auth_algo(struct wrap_ndis_device *wnd)
 		WARNING("getting authentication mode failed: %08X", res);
 		return DOT11_AUTH_ALGO_80211_OPEN;
 	}
+	TRACE2("%d", auth_algos.algo_ids[0]);
 	EXIT2(return auth_algos.algo_ids[0]);
 }
 
@@ -562,6 +573,7 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 	struct ndis_dot11_cipher_algorithm_list cipher_algos;
 	NDIS_STATUS res;
 
+	TRACE2("%d", algo_id);
 	memset(&cipher_algos, 0, sizeof(cipher_algos));
 	init_ndis_object_header(&cipher_algos, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_CIPHER_ALGORITHM_LIST_REVISION_1);
@@ -957,6 +969,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	while (i < bss->buffer_length) {
 		char *current_val;
 		TRACE2("0x%x, %u", ie->id, ie->length);
+		if (ie->length <= 0)
+			break;
 		switch (ie->id) {
 		case DOT11_IE_SSID:
 			memset(&iwe, 0, sizeof(iwe));
@@ -1002,6 +1016,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 			TRACE2("unknown element: 0x%x, %u", ie->id, ie->length);
 			break;
 		}
+		TRACE2("%lu, %d", i, ie->length);
 		i += ie->length;
 		ie = (void *)ie + ie->length;
 	}
@@ -1073,7 +1088,6 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	memcpy(byte_array, "USA", 3);
 	TRACE2("%d", sizeof(*byte_array));
 	res = mp_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
 				byte_array, len, &len, NULL);
@@ -1097,14 +1111,13 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		EXIT2(return -EOPNOTSUPP);
 	}
 	TRACE2("%d, %d", byte_array->num_bytes, byte_array->num_total_bytes);
-	i = 0;
-	while (i < byte_array->num_bytes) {
+//	dump_bytes(__FUNCTION__, byte_array->buffer, byte_array->num_bytes);
+	for (i = 0; i < byte_array->num_bytes;
+	     i += sizeof(*bss) - 1 + bss->buffer_length) {
 		bss = (typeof(bss))(&byte_array->buffer[i]);
-		TRACE2("%d, %p", i, bss);
+		TRACE2("%d", bss->buffer_length);
 		event = ndis_translate_scan(dev, event,
 					    extra + IW_SCAN_MAX_DATA, bss);
-		TRACE2("%d, %d", i, bss->buffer_length);
-		i += sizeof(*bss) + bss->buffer_length - 1;
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
