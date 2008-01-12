@@ -356,6 +356,9 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	tx_buffer_list = alloc_tx_buffer_list(wnd, skb);
 	if (!tx_buffer_list) {
 		WARNING("couldn't allocate packet");
+		netif_tx_lock(dev);
+		netif_stop_queue(dev);
+		netif_tx_unlock(dev);
 		return NETDEV_TX_BUSY;
 	}
 	TRACE3("%p, %p", tx_buffer_list, skb);
@@ -429,7 +432,7 @@ static int ndis_net_dev_open(struct net_device *net_dev)
 		WARNING("couldn't set packet filter");
 		return -ENODEV;
 	}
-	netif_wake_queue(net_dev);
+	netif_start_queue(net_dev);
 	netif_poll_enable(net_dev);
 	return 0;
 }
@@ -1390,6 +1393,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		net_dev->flags &= ~IFF_MULTICAST;
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	net_dev->poll_controller = ndis_poll_controller;
+#endif
+#ifdef NETIF_F_LLTX
+	net_dev->features |= NETIF_F_LLTX;
 #endif
 
 	buf = kmalloc(buf_len, GFP_KERNEL);
