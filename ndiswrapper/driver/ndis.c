@@ -842,14 +842,14 @@ wstdcall void WIN_FUNC(NdisAllocateSpinLock,1)
 	TRACE4("lock %p, %p", lock, &lock->klock);
 	KeInitializeSpinLock(&lock->klock);
 	lock->irql = PASSIVE_LEVEL;
-	EXIT4(return);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisFreeSpinLock,1)
 	(struct ndis_spinlock *lock)
 {
 	TRACE4("lock %p, %p", lock, &lock->klock);
-	EXIT4(return);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
@@ -858,7 +858,7 @@ wstdcall void WIN_FUNC(NdisAcquireSpinLock,1)
 	ENTER6("lock %p, %p", lock, &lock->klock);
 //	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	lock->irql = nt_spin_lock_irql(&lock->klock, DISPATCH_LEVEL);
-	EXIT6(return);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisReleaseSpinLock,1)
@@ -867,7 +867,7 @@ wstdcall void WIN_FUNC(NdisReleaseSpinLock,1)
 	ENTER6("lock %p, %p", lock, &lock->klock);
 //	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock_irql(&lock->klock, lock->irql);
-	EXIT6(return);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisDprAcquireSpinLock,1)
@@ -876,7 +876,7 @@ wstdcall void WIN_FUNC(NdisDprAcquireSpinLock,1)
 	ENTER6("lock %p", &lock->klock);
 //	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_lock(&lock->klock);
-	EXIT6(return);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisDprReleaseSpinLock,1)
@@ -885,7 +885,7 @@ wstdcall void WIN_FUNC(NdisDprReleaseSpinLock,1)
 	ENTER6("lock %p", &lock->klock);
 //	assert_irql(_irql_ == DISPATCH_LEVEL);
 	nt_spin_unlock(&lock->klock);
-	EXIT6(return);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisInitializeReadWriteLock,1)
@@ -894,7 +894,7 @@ wstdcall void WIN_FUNC(NdisInitializeReadWriteLock,1)
 	ENTER3("%p", rw_lock);
 	memset(rw_lock, 0, sizeof(*rw_lock));
 	KeInitializeSpinLock(&rw_lock->klock);
-	EXIT3(return);
+	return;
 }
 
 /* read/write locks are implemented in a rather simplisitic way - we
@@ -1881,7 +1881,7 @@ wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	struct wrap_ndis_device *wnd = ctx;
 	ndis_interrupt_handler irq_handler = arg1;
 
-	TRACE6("%p", irq_handler);
+	TRACE6("%p, %p, %p", wnd, irq_handler, arg2);
 	assert_irql(_irql_ == DISPATCH_LEVEL);
 	serialize_lock(wnd);
 	LIN2WIN1(irq_handler, arg2);
@@ -1962,8 +1962,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 				nmb->wnd);
 		wnd->irq_kdpc.arg1 = mp->handle_interrupt;
 		wnd->irq_kdpc.arg2 = nmb->mp_ctx;
-		TRACE2("%p, %p, %p, %p", wnd->irq_kdpc.arg1, wnd->irq_kdpc.arg2,
-		       nmb->wnd, nmb->mp_ctx);
+		TRACE2("%p, %p, %p", wnd->irq_kdpc.arg1, wnd->irq_kdpc.arg2,
+		       nmb->wnd);
 	}
 
 	if (IoConnectInterrupt(&mp_interrupt->kinterrupt,
