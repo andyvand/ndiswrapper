@@ -697,6 +697,12 @@ void WIN_FUNC(RtlUnwind,0)
 	TODO();
 }
 
+wstdcall void WIN_FUNC(RtlRaiseException,1)
+	(void *exception_record)
+{
+	TODO();
+}
+
 #include "rtl_exports.h"
 
 int rtl_init(void)
