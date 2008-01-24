@@ -362,7 +362,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		return NETDEV_TX_BUSY;
 	}
 	TRACE3("%p, %p", tx_buffer_list, skb);
-	nt_spin_lock(&wnd->tx_ring_lock);
+	spin_lock(&wnd->tx_ring_lock);
 	if (wnd->tx_buffer_list) {
 		struct net_buffer_list *last;
 		last = wnd->tx_buffer_list->ndis_reserved[0];
@@ -370,7 +370,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	} else
 		wnd->tx_buffer_list = tx_buffer_list;
 	wnd->tx_buffer_list->ndis_reserved[0] = tx_buffer_list;
-	nt_spin_unlock(&wnd->tx_ring_lock);
+	spin_unlock(&wnd->tx_ring_lock);
 	schedule_wrapndis_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
 }

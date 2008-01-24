@@ -1083,7 +1083,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisRetreatNetBufferDataStart,4)
 		return NDIS_STATUS_RESOURCES;
 	}
 	if (alloc_handler)
-		mdl = LIN2WIN2(alloc_handler, buf, length);
+		mdl = (typeof(mdl))LIN2WIN2(alloc_handler, buf, length);
 	else
 		mdl = allocate_init_mdl(buf, length);
 
@@ -1486,10 +1486,6 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterScatterGatherDma,3)
 	 struct ndis_sg_dma **sg_dma)
 {
 	ENTER2("%p", nmb);
-#ifdef CONFIG_X86_64
-	if (dma_size != NDIS_DMA_64BITS)
-		ERROR("DMA size is not 64-bits");
-#endif
 	*sg_dma = kzalloc(sizeof(**sg_dma), GFP_ATOMIC);
 	if (!*sg_dma) {
 		WARNING("couldn't allocate memory");
