@@ -524,6 +524,10 @@ static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	struct kinterrupt *interrupt = data;
 	BOOLEAN ret;
 
+#ifdef CONFIG_DEBUG_SHIRQ
+	if (!kinterrupt->enabled)
+		EXIT1(return IRQ_NONE);
+#endif
 	TRACE6("%p", interrupt);
 	nt_spin_lock(interrupt->actual_lock);
 	ret = LIN2WIN2(interrupt->isr, interrupt, interrupt->isr_ctx);
@@ -567,12 +571,18 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	}
 	*kinterrupt = interrupt;
+#ifdef CONFIG_DEBUG_SHIRQ
+	kinterrupt->enabled = 1;
+#endif
 	IOEXIT(return STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(IoDisconnectInterrupt,1)
 	(struct kinterrupt *interrupt)
 {
+#ifdef CONFIG_DEBUG_SHIRQ
+	kinterrupt->enabled = 0;
+#endif
 	free_irq(interrupt->vector, interrupt);
 	kfree(interrupt);
 }
