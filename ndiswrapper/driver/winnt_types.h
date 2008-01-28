@@ -1323,7 +1323,12 @@ struct kinterrupt {
 	NT_SPIN_LOCK *actual_lock;
 	BOOLEAN shared;
 	BOOLEAN save_fp;
-	CHAR processor_number;
+	union {
+		CHAR processor_number;
+#ifdef CONFIG_DEBUG_SHIRQ
+		CHAR enabled;
+#endif
+	};
 	PKSERVICE_ROUTINE isr;
 	void *isr_ctx;
 	struct nt_list list;

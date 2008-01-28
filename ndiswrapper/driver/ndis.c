@@ -1993,6 +1993,7 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	nmb->wnd->mp_interrupt = NULL;
 	if (dequeue_kdpc(&nmb->wnd->irq_kdpc))
 		TRACE2("interrupt kdpc was pending");
+	flush_workqueue(wrapndis_wq);
 	IoDisconnectInterrupt(mp_interrupt->kinterrupt);
 	EXIT1(return);
 }
