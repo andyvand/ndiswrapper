@@ -1328,7 +1328,7 @@ struct kinterrupt {
 #ifdef CONFIG_DEBUG_SHIRQ
 		CHAR enabled;
 #endif
-	};
+	} u;
 	PKSERVICE_ROUTINE isr;
 	void *isr_ctx;
 	struct nt_list list;
