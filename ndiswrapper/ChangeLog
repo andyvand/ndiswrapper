@@ -1,3 +1,8 @@
+Version 1.52 2008-02-02
+=======================	
+* Fixed kernel crash when CONFIG_DEBUG_SHIRQ is enabled
+* Compilation issues with current 2.6.25 kernel tree fixed
+
 Version 1.51 2007-12-17
 =======================	
 * Fixed an smp issue that may cause ndiswrapper to stop transmitting packets
