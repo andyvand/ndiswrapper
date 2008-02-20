@@ -803,7 +803,7 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 		USBTRACE("driver wants max_tx_size to %d",
 			 pipe->max_tx_size);
 
-		pipe->wMaxPacketSize = ep->wMaxPacketSize;
+		pipe->wMaxPacketSize = le16_to_cpu(ep->wMaxPacketSize);
 		pipe->bEndpointAddress = ep->bEndpointAddress;
 		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		if (pipe->type == UsbdPipeTypeInterrupt) {
@@ -1249,7 +1249,8 @@ WIN_FUNC(USBD_ParseConfigurationDescriptorEx,7)
 		 bInterfaceNumber, bAlternateSetting, bInterfaceClass,
 		 bInterfaceSubClass, bInterfaceProtocol);
 
-	for (pos = start; pos < ((void *)config + config->wTotalLength);
+	for (pos = start;
+	     pos < ((void *)config + le16_to_cpu(config->wTotalLength));
 	     pos += intf->bLength) {
 
 		intf = pos;
