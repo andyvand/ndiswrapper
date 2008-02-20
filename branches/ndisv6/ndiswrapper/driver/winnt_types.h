@@ -121,7 +121,7 @@
 #define wfastcall
 #define noregparm
 
-#define KI_USER_SHARED_DATA 0xfffff78000000000
+#define KI_USER_SHARED_DATA 0xfffff78000000000UL
 
 #else
 
