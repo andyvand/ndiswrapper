@@ -686,8 +686,8 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 		struct load_device load_device;
 
 		load_device.bus = WRAP_USB_BUS;
-		load_device.vendor = udev->descriptor.idVendor;
-		load_device.device = udev->descriptor.idProduct;
+		load_device.vendor = le16_to_cpu(udev->descriptor.idVendor);
+		load_device.device = le16_to_cpu(udev->descriptor.idProduct);
 		load_device.subvendor = 0;
 		load_device.subdevice = 0;
 		wd = load_wrap_device(&load_device);
