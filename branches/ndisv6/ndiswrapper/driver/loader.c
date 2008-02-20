@@ -48,12 +48,6 @@ static struct completion loader_complete;
 
 static struct nt_list wrap_devices;
 static struct nt_list wrap_drivers;
-static struct pci_device_id wrap_pci_device;
-static struct pci_driver wrap_pci_driver;
-#if defined(CONFIG_USB)
-static struct usb_device_id wrap_usb_device;
-static struct usb_driver wrap_usb_driver;
-#endif
 
 int wrap_device_type(int data1)
 {
@@ -616,24 +610,43 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	}
 }
 
+static struct pci_device_id wrap_pci_id_table[] = {
+	{PCI_ANY_ID, PCI_ANY_ID, PCI_ANY_ID, PCI_ANY_ID},
+};
+
+static struct pci_driver wrap_pci_driver = {
+	.name		= DRIVER_NAME,
+	.id_table	= wrap_pci_id_table,
+	.probe		= wrap_pnp_start_pci_device,
+	.remove		= __devexit_p(wrap_pnp_remove_pci_device),
+	.suspend	= wrap_pnp_suspend_pci_device,
+	.resume		= wrap_pnp_resume_pci_device,
+};
+
+#ifdef CONFIG_USB
+static struct usb_device_id wrap_usb_id_table[] = {
+	{
+		.driver_info = 1
+	},
+};
+
+static struct usb_driver wrap_usb_driver = {
+	.name = DRIVER_NAME,
+	.id_table = wrap_usb_id_table,
+	.probe = wrap_pnp_start_usb_device,
+	.disconnect = __devexit_p(wrap_pnp_remove_usb_device),
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	.suspend = wrap_pnp_suspend_usb_device,
+	.resume = wrap_pnp_resume_usb_device,
+#endif
+};
+#endif
+
 /* register drivers for pci and usb */
 static void register_devices(void)
 {
 	int res;
 
-	memset(&wrap_pci_device, 0, sizeof(wrap_pci_device));
-	wrap_pci_device.vendor = PCI_ANY_ID;
-	wrap_pci_device.device = PCI_ANY_ID;
-	wrap_pci_device.subvendor = PCI_ANY_ID;
-	wrap_pci_device.subdevice = PCI_ANY_ID;
-
-	memset(&wrap_pci_driver, 0, sizeof(wrap_pci_driver));
-	wrap_pci_driver.name = DRIVER_NAME;
-	wrap_pci_driver.id_table = &wrap_pci_device;
-	wrap_pci_driver.probe = wrap_pnp_start_pci_device;
-	wrap_pci_driver.remove = __devexit_p(wrap_pnp_remove_pci_device);
-	wrap_pci_driver.suspend = wrap_pnp_suspend_pci_device;
-	wrap_pci_driver.resume = wrap_pnp_resume_pci_device;
 	res = pci_register_driver(&wrap_pci_driver);
 	if (res < 0) {
 		ERROR("couldn't register pci driver: %d", res);
@@ -641,18 +654,6 @@ static void register_devices(void)
 	}
 
 #ifdef CONFIG_USB
-	memset(&wrap_usb_device, 0, sizeof(wrap_usb_device));
-	wrap_usb_device.driver_info = 1;
-
-	memset(&wrap_usb_driver, 0, sizeof(wrap_usb_driver));
-	wrap_usb_driver.name = DRIVER_NAME;
-	wrap_usb_driver.id_table = &wrap_usb_device;
-	wrap_usb_driver.probe = wrap_pnp_start_usb_device;
-	wrap_usb_driver.disconnect = __devexit_p(wrap_pnp_remove_usb_device);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	wrap_usb_driver.suspend = wrap_pnp_suspend_usb_device;
-	wrap_usb_driver.resume = wrap_pnp_resume_usb_device;
-#endif
 	res = usb_register(&wrap_usb_driver);
 	if (res < 0) {
 		ERROR("couldn't register usb driver: %d", res);
