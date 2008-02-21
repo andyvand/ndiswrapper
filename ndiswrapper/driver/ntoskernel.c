@@ -945,7 +945,7 @@ wstdcall void *WIN_FUNC(ExRegisterCallback,3)
 		nt_spin_unlock_irql(&object->lock, irql);
 		EXIT2(return NULL);
 	}
-	spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&object->lock, irql);
 	callback = kmalloc(sizeof(*callback), GFP_KERNEL);
 	if (!callback) {
 		ERROR("couldn't allocate memory");
@@ -956,7 +956,7 @@ wstdcall void *WIN_FUNC(ExRegisterCallback,3)
 	callback->object = object;
 	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	InsertTailList(&object->callback_funcs, &callback->list);
-	spin_unlock_bh(&object->lock);
+	nt_spin_unlock_irql(&object->lock, irql);
 	EXIT2(return callback);
 }
 
