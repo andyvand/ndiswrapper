@@ -1,3 +1,6 @@
+# Name of the module
+MODNAME = ndis6wrapper
+
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile crt.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
@@ -127,7 +130,7 @@ OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 
 # Disable USB support and use own workqueue code if GPL-only symbols
 # are not available
-ifneq (,$(shell grep -s -A1 'ndis6wrapper' $(KSRC)/kernel/module.c | \
+ifneq (,$(shell grep -s -A1 '$(MODNAME)' $(KSRC)/kernel/module.c | \
 			grep 'add_taint_module'))
 $(warning GPL-only symbols not available, disabling USB support)
 WRAP_WQ = 1
@@ -333,10 +336,10 @@ else
 EXTRA_CFLAGS += $(MOD_CFLAGS)
 endif
 
-MODULE := ndis6wrapper.ko
-obj-m := ndis6wrapper.o 
+MODULE := $(MODNAME).ko
+obj-m := $(MODNAME).o
 
-ndis6wrapper-objs := $(OBJS)
+$(MODNAME)-objs := $(OBJS)
 
 default:
 	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR)
