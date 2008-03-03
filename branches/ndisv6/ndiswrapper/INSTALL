@@ -7,9 +7,9 @@ http://ndiswrapper.sourceforge.net/wiki
 Prerequisites 
 =============
 
-You need a recent kernel, at least 2.6.6 or 2.4.26, with header files
-for the kernel. Make sure there is a link to the kernel source from
-the modules directory. The command
+You need a recent kernel, at least 2.6.16, with header files for the
+kernel. Make sure there is a link to the kernel source from the modules
+directory. The command
 
   ls /lib/modules/`uname -r`/build
 
