@@ -120,7 +120,7 @@
 #endif
 
 #ifndef CONFIG_WIRELESS_EXT
-#warning "wirelss devices are not supported by this kernel"
+#warning "wireless devices are not supported by this kernel"
 #endif
 
 #define prepare_wait_condition(task, var, value)	\
