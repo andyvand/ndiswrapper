@@ -125,6 +125,15 @@ all : prereq_check win2lin_stubs.h gen_exports compat.h default stack_check
 OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
 
+# Disable USB support and use own workqueue code if GPL-only symbols
+# are not available
+ifneq (,$(shell grep -s -A1 'ndis6wrapper' $(KSRC)/kernel/module.c | \
+			grep 'add_taint_module'))
+$(warning GPL-only symbols not available, disabling USB support)
+WRAP_WQ = 1
+DISABLE_USB = 1
+endif
+
 # by default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
 # add option "DISABLE_USB=1"
@@ -143,11 +152,6 @@ ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
 endif
 endif
-
-MOD_CFLAGS += $(shell if grep -s -A1 'ndiswrapper' $(KSRC)/kernel/module.c | \
-			grep -q 'add_taint_module' ; then \
-			echo -DUSE_OWN_WQ; \
-		  fi)
 
 ifdef WRAP_WQ
 MOD_CFLAGS += -DWRAP_WQ
