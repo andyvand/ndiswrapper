@@ -224,8 +224,8 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu);
 void wrap_destroy_wq(workqueue_struct_t *workq);
 int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
-		       int cpu) wfastcall;
-int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
+		       int cpu);
+int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work);
 void wrap_cancel_work(work_struct_t *work);
 void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu);
 void wrap_flush_wq(workqueue_struct_t *workq);
