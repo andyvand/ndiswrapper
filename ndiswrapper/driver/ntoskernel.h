@@ -157,7 +157,7 @@ do {							\
 	ret;							\
 })
 
-#ifdef USE_OWN_WQ
+#ifdef WRAP_WQ
 
 typedef struct {
 	spinlock_t lock;
@@ -197,13 +197,13 @@ typedef struct {
 
 workqueue_struct_t *wrap_create_wq(const char *name);
 void wrap_destroy_wq(workqueue_struct_t *workq);
-void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
+void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work);
 void wrap_cancel_work(work_struct_t *work);
 void wrap_flush_wq(workqueue_struct_t *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 
-#else // USE_OWN_WQ
+#else // WRAP_WQ
 
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
@@ -219,7 +219,7 @@ typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 #endif // INIT_WORK_NAR
 
-#endif // USE_OWN_WQ
+#endif // WRAP_WQ
 
 struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
 

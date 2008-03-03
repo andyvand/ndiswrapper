@@ -82,7 +82,7 @@ static int workq_thread(void *data)
 	return 0;
 }
 
-wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
+void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
 	unsigned long flags;
 
