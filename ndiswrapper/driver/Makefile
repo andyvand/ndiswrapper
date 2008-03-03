@@ -36,7 +36,6 @@ $(error Cannot find kernel version in $(KBUILD), is it configured?)
 endif
 
 KVERS := $(shell sed -ne 's/"//g;s/^\#define UTS_RELEASE //p' $(VERSION_H))
-KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
 # distros use different paths for kernel include files
 
@@ -341,7 +340,7 @@ default:
 
 
 stack_check:
-	@if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ] && \
+	@if [ "x$(CONFIG_X86_64)" = "x" ] && \
 	       grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
 	    echo; echo; \
 	    echo "*** WARNING: This kernel seems to use 4K stack size"\
