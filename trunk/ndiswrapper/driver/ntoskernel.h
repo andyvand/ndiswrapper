@@ -360,6 +360,10 @@ typedef u32 pm_message_t;
 #define ISR_PT_REGS_ARG , NULL
 #endif
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,16)
+#define for_each_possible_cpu(_cpu) for_each_cpu(_cpu)
+#endif
+
 #ifndef flush_icache_range
 #define flush_icache_range(start, end) do { } while (0)
 #endif
