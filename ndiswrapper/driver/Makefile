@@ -318,12 +318,11 @@ prereq_check:
 	fi
 
 clean:
-	rm -rf $(MODULE) ndis6wrapper.o $(OBJS) usb.o win2lin_stubs.o \
-	   divdi3.o workqueue.o .*.ko.cmd .*.o.cmd  compat.h \
-	   ndis6wrapper.mod.[oc] *~ .tmp_versions Modules.symvers Module.symvers
+	rm -f *.o *.ko .*.cmd *.mod.c compat.h *.symvers modules.order *~
+	rm -rf .tmp_versions
 
 distclean: clean
-	rm -f *_exports.h .\#* win2lin_stubs.h built-in.o
+	rm -f *_exports.h .\#* win2lin_stubs.h
 
 wflags := $(shell if grep -qw "EXTRA_CFLAGS" $(KSRC)/scripts/Makefile.build; \
 		             then echo "EXTRA_CFLAGS"; else echo "CFLAGS"; fi)
