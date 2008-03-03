@@ -6,7 +6,7 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
-		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S
+		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S ndisdot11.h
 
 # By default, we try to compile the modules for the currently running
 # kernel.  But it's the first approximation, as we will re-read the
