@@ -97,8 +97,8 @@ out:
 	return 0;
 }
 
-wfastcall int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
-				 int cpu)
+int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+		       int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 	unsigned long flags;
@@ -122,7 +122,7 @@ wfastcall int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
 	return ret;
 }
 
-wfastcall int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
+int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
 	if (NR_CPUS == 1 || workq->singlethread)
 		return wrap_queue_work_on(workq, work, 0);
