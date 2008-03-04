@@ -379,14 +379,6 @@ typedef u32 pm_message_t;
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
-#define thread_priority(thread) (thread)->nice
-#define set_thread_priority(thread, prio) (thread)->nice = (prio)
-#else
-#define thread_priority(thread) task_nice(thread)
-#define set_thread_priority(thread, prio) set_user_nice(thread, prio)
-#endif
-
 #ifndef DMA_24BIT_MASK
 #define DMA_24BIT_MASK 0x0000000000ffffffULL
 #endif
