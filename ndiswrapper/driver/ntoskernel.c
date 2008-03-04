@@ -1534,6 +1534,7 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 	InitializeListHead(&thread->irps);
 	initialize_object(&thread->dh, ThreadObject, 0);
 	thread->dh.size = sizeof(*thread);
+	thread->prio = LOW_PRIORITY;
 	return thread;
 }
 
@@ -1562,12 +1563,7 @@ wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 	if (!task)
 		EXIT2(return LOW_REALTIME_PRIORITY);
 
-	if (thread_priority(thread->task) <= 0)
-		prio = LOW_PRIORITY;
-	else if (thread_priority(thread->task) <= -5)
-		prio = LOW_REALTIME_PRIORITY;
-	else
-		prio = MAXIMUM_PRIORITY;
+	prio = thread->prio;
 
 	TRACE2("%d", prio);
 	return prio;
@@ -1588,21 +1584,10 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	if (!task)
 		EXIT2(return LOW_REALTIME_PRIORITY);
 
-	if (thread_priority(task) <= 0)
-		old_prio = LOW_PRIORITY;
-	else if (thread_priority(task) <= -5)
-		old_prio = LOW_REALTIME_PRIORITY;
-	else
-		old_prio = MAXIMUM_PRIORITY;
+	old_prio = thread->prio;
+	thread->prio = prio;
 
-	if (prio == LOW_PRIORITY)
-		set_thread_priority(task, 0);
-	else if (prio == LOW_REALTIME_PRIORITY)
-		set_thread_priority(task, -5);
-	else if (prio == HIGH_PRIORITY)
-		set_thread_priority(task, -10);
-
-	TRACE2("%d, %d", old_prio, (int)thread_priority(task));
+	TRACE2("%d, %d", old_prio, thread->prio);
 	return old_prio;
 }
 
