@@ -494,6 +494,7 @@ struct nt_thread {
 	struct task_struct *task;
 	struct nt_list irps;
 	spinlock_t lock;
+	KPRIORITY prio;
 };
 
 #define set_object_type(dh, type)	((dh)->type = (type))
