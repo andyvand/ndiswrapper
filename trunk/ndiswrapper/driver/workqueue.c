@@ -169,6 +169,7 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 	}
 	memset(workq, 0, sizeof(*workq) + n * sizeof(workq->threads[0]));
 	WORKTRACE("%p", workq);
+	workq->singlethread = singlethread;
 	init_completion(&started);
 	for_each_online_cpu(i) {
 		struct workq_thread_data thread_data;
