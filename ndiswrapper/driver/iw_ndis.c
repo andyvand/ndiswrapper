@@ -1037,7 +1037,7 @@ int set_scan(struct wrap_ndis_device *wnd)
 	scan_req = kzalloc(len, GFP_KERNEL);
 	if (!scan_req)
 		return -ENOMEM;
-	TRACE2("%d, %d, %d", sizeof(*scan_req), len,
+	TRACE2("%zd, %d, %zd", sizeof(*scan_req), len,
 		  sizeof(struct ndis_dot11_ssid));
 	scan_req->bss_type = ndis_dot11_bss_type_any;
 	memset(scan_req->bssid, 0xff, sizeof(scan_req->bssid));
@@ -1088,7 +1088,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	TRACE2("%d", sizeof(*byte_array));
+	TRACE2("%zd", sizeof(*byte_array));
 	res = mp_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
 				byte_array, len, &len, NULL);
 	TRACE2("%d", len);
