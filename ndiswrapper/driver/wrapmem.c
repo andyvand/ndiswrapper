@@ -377,15 +377,9 @@ void wrapmem_exit(void)
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 		WARNING("%p in %d of size %zu allocated at %s(%d) "
-#if ALLOC_DEBUG > 2
-			"with tag 0x%08X "
-#endif
-			"leaking; freeing it now", info + 1, info->type,
-			info->size, info->file, info->line
-#if ALLOC_DEBUG > 2
-			, info->tag
-#endif
-			);
+			"with tag 0x%08X leaking; freeing it now",
+			info + 1, info->type, info->size, info->file,
+			info->line, info->tag);
 		if (info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
 		    info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC)
 			kfree(info);
