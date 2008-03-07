@@ -41,9 +41,7 @@ struct alloc_info {
 	struct nt_list list;
 	const char *file;
 	int line;
-#if ALLOC_DEBUG > 2
 	ULONG tag;
-#endif
 #endif
 };
 
@@ -120,9 +118,6 @@ void *slack_kzalloc(size_t size)
 void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = kmalloc(size + sizeof(*info), flags);
 	if (!info)
@@ -136,13 +131,12 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
 #endif
+	TRACE4("%p", info + 1);
 	return (info + 1);
 }
 
@@ -157,10 +151,10 @@ void *wrap_kzalloc(size_t size, unsigned flags, const char *file, int line)
 void wrap_kfree(void *ptr)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
+	TRACE4("%p", ptr);
+	if (!ptr)
+		return;
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
@@ -177,9 +171,6 @@ void wrap_kfree(void *ptr)
 void *wrap_vmalloc(unsigned long size, const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = vmalloc(size + sizeof(*info));
 	if (!info)
@@ -190,9 +181,7 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -204,9 +193,6 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 		    const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = __vmalloc(size + sizeof(*info), gfp_mask, prot);
 	if (!info)
@@ -220,9 +206,7 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -233,9 +217,6 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 void wrap_vfree(void *ptr)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
@@ -254,9 +235,6 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 		       const char *file, int line)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	size += sizeof(*info);
 	info = (struct alloc_info *)__get_free_pages(flags, get_order(size));
@@ -268,9 +246,7 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -281,9 +257,6 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 void wrap_free_pages(unsigned long ptr, int order)
 {
 	struct alloc_info *info;
-#if ALLOC_DEBUG > 1
-	KIRQL irql;
-#endif
 
 	info = (void *)ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
@@ -312,9 +285,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	info = addr - sizeof(*info);
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = tag;
-#endif
 	EXIT4(return addr);
 }
 #endif
@@ -390,7 +361,6 @@ void wrapmem_exit(void)
 			free_pages((unsigned long)info, get_order(info->size));
 		else
 			WARNING("invalid type: %d; not freed", info->type);
-
 	}
 #endif
 #endif
