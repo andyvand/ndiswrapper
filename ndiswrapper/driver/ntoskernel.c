@@ -1736,7 +1736,7 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	unsigned int flags;
+	gfp_t flags;
 
 	ENTER2("%lu, 0x%lx, 0x%lx, 0x%lx, %d", size, (long)lowest,
 	       (long)highest, (long)boundary, cache_type);
