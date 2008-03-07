@@ -40,14 +40,14 @@ void slack_kfree(void *ptr);
 void wrapmem_info(void);
 
 #ifdef ALLOC_DEBUG
-void *wrap_kmalloc(size_t size, unsigned int flags, const char *file, int line);
-void *wrap_kzalloc(size_t size, unsigned int flags, const char *file, int line);
+void *wrap_kmalloc(size_t size, gfp_t flags, const char *file, int line);
+void *wrap_kzalloc(size_t size, gfp_t flags, const char *file, int line);
 void wrap_kfree(void *ptr);
 void *wrap_vmalloc(unsigned long size, const char *file, int line);
-void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
+void *wrap__vmalloc(unsigned long size, gfp_t flags, pgprot_t prot,
 		    const char *file, int line);
 void wrap_vfree(void *ptr);
-void *wrap_alloc_pages(unsigned flags, unsigned int size,
+void *wrap_alloc_pages(gfp_t flags, unsigned int size,
 		       const char *file, int line);
 void wrap_free_pages(unsigned long ptr, int order);
 int alloc_size(enum alloc_type type);
