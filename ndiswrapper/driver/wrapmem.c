@@ -67,7 +67,7 @@ void wrapmem_info(void)
 void *slack_kmalloc(size_t size)
 {
 	struct slack_alloc_info *info;
-	unsigned int flags;
+	gfp_t flags;
 
 	ENTER4("size = %lu", (unsigned long)size);
 
@@ -107,7 +107,7 @@ void slack_kfree(void *ptr)
 }
 
 #if defined(ALLOC_DEBUG)
-void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
+void *wrap_kmalloc(size_t size, gfp_t flags, const char *file, int line)
 {
 	struct alloc_info *info;
 
@@ -132,7 +132,7 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 	return (info + 1);
 }
 
-void *wrap_kzalloc(size_t size, unsigned flags, const char *file, int line)
+void *wrap_kzalloc(size_t size, gfp_t flags, const char *file, int line)
 {
 	void *ptr = wrap_kmalloc(size, flags, file, line);
 	if (ptr)
@@ -181,7 +181,7 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 	return (info + 1);
 }
 
-void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
+void *wrap__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot,
 		    const char *file, int line)
 {
 	struct alloc_info *info;
@@ -223,7 +223,7 @@ void wrap_vfree(void *ptr)
 	vfree(info);
 }
 
-void *wrap_alloc_pages(unsigned flags, unsigned int size,
+void *wrap_alloc_pages(gfp_t flags, unsigned int size,
 		       const char *file, int line)
 {
 	struct alloc_info *info;
