@@ -41,9 +41,7 @@ struct alloc_info {
 	struct nt_list list;
 	const char *file;
 	int line;
-#if ALLOC_DEBUG > 2
 	ULONG tag;
-#endif
 #endif
 };
 
@@ -125,9 +123,7 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -177,9 +173,7 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -204,9 +198,7 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -246,9 +238,7 @@ void *wrap_alloc_pages(unsigned flags, unsigned int size,
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = 0;
-#endif
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
@@ -287,9 +277,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	info = addr - sizeof(*info);
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 2
 	info->tag = tag;
-#endif
 	EXIT4(return addr);
 }
 #endif
