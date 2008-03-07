@@ -637,7 +637,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
 		       sizeof(wnd->general_attrs));
 		break;
 	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES:
-		TRACE2("%d, %d", header->size,
+		TRACE2("%d, %zd", header->size,
 			  sizeof(wnd->native_802_11_attrs));
 		memcpy(&wnd->native_802_11_attrs, mp_adapter_attrs,
 		       sizeof(wnd->native_802_11_attrs));
@@ -1932,12 +1932,12 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_START:
 		assoc_start = status->buf;
-		TRACE2("0x%x, 0x%x, " MACSTRSEP, assoc_start->header.size,
+		TRACE2("0x%x, 0x%zx, " MACSTRSEP, assoc_start->header.size,
 		       sizeof(*assoc_start), MAC2STR(assoc_start->mac));
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION:
 		assoc_comp = status->buf;
-		TRACE2("0x%x, 0x%x, 0x%x", assoc_comp->header.size,
+		TRACE2("0x%x, 0x%zx, 0x%x", assoc_comp->header.size,
 		       sizeof(*assoc_comp), status->buf_len);
 		TRACE2("ap: " MACSTRSEP ", 0x%x, 0x%x, 0x%x",
 		       MAC2STR(assoc_comp->mac), assoc_comp->status,
@@ -1950,12 +1950,12 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_CONNECTION_START:
 		conn_start = status->buf;
-		TRACE2("0x%x, 0x%x, 0x%x", conn_start->header.size,
+		TRACE2("0x%x, 0x%zx, 0x%x", conn_start->header.size,
 		       sizeof(*conn_start), conn_start->bss_type);
 		break;
 	case NDIS_STATUS_DOT11_CONNECTION_COMPLETION:
 		conn_comp = status->buf;
-		TRACE2("0x%x, 0x%x, 0x%x", conn_comp->header.size,
+		TRACE2("0x%x, 0x%zx, 0x%x", conn_comp->header.size,
 		       sizeof(*conn_comp), conn_comp->status);
 		if (conn_comp->status == DOT11_ASSOC_STATUS_SUCCESS) {
 			netif_carrier_on(wnd->net_dev);
