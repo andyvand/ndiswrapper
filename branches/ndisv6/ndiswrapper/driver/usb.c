@@ -98,7 +98,7 @@ static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 #define URB_STATUS(wrap_urb) (wrap_urb->urb_status)
 
 static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
-			      unsigned mem_flags, dma_addr_t *dma)
+			      gfp_t mem_flags, dma_addr_t *dma)
 {
 	*dma = 0;
 	return kmalloc(size, mem_flags);
@@ -281,7 +281,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 				  void *buf, unsigned int buf_len)
 {
 	struct urb *urb;
-	unsigned int alloc_flags;
+	gfp_t alloc_flags;
 	struct wrap_urb *wrap_urb;
 	struct wrap_device *wd;
 
