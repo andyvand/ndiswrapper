@@ -22,7 +22,8 @@ extern struct semaphore loader_mutex;
 
 static NTSTATUS start_pdo(struct device_object *pdo)
 {
-	int i, ret, count, resources_size;
+	int i, ret, resources_size;
+	size_t count;
 	struct wrap_device *wd;
 	struct pci_dev *pdev;
 	struct cm_partial_resource_descriptor *entry;
@@ -75,7 +76,7 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 	 * cm_partial_resource_list */
 	resources_size = sizeof(struct cm_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) * count;
-	TRACE2("resources: %d, %d", count, resources_size);
+	TRACE2("resources: %zd, %d", count, resources_size);
 	wd->resource_list = kmalloc(resources_size, GFP_KERNEL);
 	if (!wd->resource_list) {
 		WARNING("couldn't allocate memory");
@@ -95,7 +96,7 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 
 	for (i = count = 0; pci_resource_start(pdev, i); i++) {
 		entry = &partial_resource_list->partial_descriptors[count];
-		TRACE2("%d", count);
+		TRACE2("%zd", count);
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
 			entry->type = CmResourceTypeMemory;
 			entry->flags = CM_RESOURCE_MEMORY_READ_WRITE;
@@ -154,7 +155,7 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 
 	TRACE2("resource list count %d, irq: %d",
 	       partial_resource_list->count, pdev->irq);
-	wd->pci.rom = pci_map_rom(pdev, (size_t *)&count);
+	wd->pci.rom = pci_map_rom(pdev, &count);
 	pci_set_drvdata(pdev, wd);
 	EXIT1(return STATUS_SUCCESS);
 err_regions:
