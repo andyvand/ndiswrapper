@@ -130,7 +130,7 @@ OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 
 # Disable USB support and use own workqueue code if GPL-only symbols
 # are not available
-ifneq (,$(shell grep -s -A1 '$(MODNAME)' $(KSRC)/kernel/module.c | \
+ifneq (,$(shell grep -s -A1 '"$(MODNAME)"' $(KSRC)/kernel/module.c | \
 			grep 'add_taint_module'))
 $(warning GPL-only symbols not available, disabling USB support)
 WRAP_WQ = 1
