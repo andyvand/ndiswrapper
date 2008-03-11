@@ -22,13 +22,13 @@
 int wrapndis_init(void);
 void wrapndis_exit(void);
 
-NDIS_STATUS mp_reset(struct wrap_ndis_device *wnd);
+NDIS_STATUS mp_reset(struct ndis_device *wnd);
 
 NDIS_STATUS mp_request(enum ndis_request_type request,
-		       struct wrap_ndis_device *wnd, ndis_oid oid,
+		       struct ndis_device *wnd, ndis_oid oid,
 		       void *buf, ULONG buflen, ULONG *written, ULONG *needed);
 
-static inline NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd,
+static inline NDIS_STATUS mp_query_info(struct ndis_device *wnd,
 					ndis_oid oid, void *buf, ULONG buflen,
 					ULONG *written, ULONG *needed)
 {
@@ -36,7 +36,7 @@ static inline NDIS_STATUS mp_query_info(struct wrap_ndis_device *wnd,
 			  buf, buflen, written, needed);
 }
 
-static inline NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd,
+static inline NDIS_STATUS mp_set_info(struct ndis_device *wnd,
 				      ndis_oid oid, void *buf, ULONG buflen,
 				      ULONG *written, ULONG *needed)
 {
@@ -44,41 +44,41 @@ static inline NDIS_STATUS mp_set_info(struct wrap_ndis_device *wnd,
 			  buf, buflen, written, needed);
 }
 
-static inline NDIS_STATUS mp_query(struct wrap_ndis_device *wnd, ndis_oid oid,
+static inline NDIS_STATUS mp_query(struct ndis_device *wnd, ndis_oid oid,
 				   void *buf, ULONG buflen)
 {
 	return mp_request(NdisRequestQueryInformation, wnd, oid,
 			  buf, buflen, NULL, NULL);
 }
 
-static inline NDIS_STATUS mp_query_int(struct wrap_ndis_device *wnd,
+static inline NDIS_STATUS mp_query_int(struct ndis_device *wnd,
 				       ndis_oid oid, ULONG *data)
 {
 	return mp_request(NdisRequestQueryInformation, wnd, oid,
 			  data, sizeof(ULONG), NULL, NULL);
 }
 
-static inline NDIS_STATUS mp_set(struct wrap_ndis_device *wnd, ndis_oid oid,
+static inline NDIS_STATUS mp_set(struct ndis_device *wnd, ndis_oid oid,
 				 void *buf, ULONG buflen)
 {
 	return mp_request(NdisRequestSetInformation, wnd, oid,
 			  buf, buflen, NULL, NULL);
 }
 
-static inline NDIS_STATUS mp_set_int(struct wrap_ndis_device *wnd,
+static inline NDIS_STATUS mp_set_int(struct ndis_device *wnd,
 				     ndis_oid oid, ULONG data)
 {
 	return mp_request(NdisRequestSetInformation, wnd, oid,
 			  &data, sizeof(ULONG), NULL, NULL);
 }
 
-void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
+void free_tx_packet(struct ndis_device *wnd, struct ndis_packet *packet,
 		    NDIS_STATUS status);
 int init_ndis_driver(struct driver_object *drv_obj);
-NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);
+NDIS_STATUS ndis_reinit(struct ndis_device *wnd);
 
-void hangcheck_add(struct wrap_ndis_device *wnd);
-void hangcheck_del(struct wrap_ndis_device *wnd);
+void hangcheck_add(struct ndis_device *wnd);
+void hangcheck_del(struct ndis_device *wnd);
 
 driver_dispatch_t winNdisDispatchPnp;
 driver_dispatch_t winNdisDispatchPower;

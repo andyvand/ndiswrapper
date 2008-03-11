@@ -549,7 +549,7 @@ struct ndis_configuration_parameter {
 	} data;
 };
 
-struct wrap_ndis_driver {
+struct ndis_driver {
 	struct miniport mp;
 };
 
@@ -834,10 +834,10 @@ struct ndis_mp_block {
 	void *wan_rx;
 	void *wan_rx_complete;
 	/* ndiswrapper specific */
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 };
 
-struct wrap_ndis_device {
+struct ndis_device {
 	struct ndis_mp_block *nmb;
 	struct wrap_device *wd;
 	struct net_device *net_dev;
@@ -887,8 +887,8 @@ struct wrap_ndis_device {
 	mac_address mac;
 	struct proc_dir_entry *procfs_iface;
 
-	work_struct_t wrap_ndis_work;
-	unsigned long wrap_ndis_pending_work;
+	work_struct_t ndis_work;
+	unsigned long ndis_pending_work;
 	UINT attributes;
 	int iw_auth_wpa_version;
 	int iw_auth_cipher_pairwise;
@@ -912,11 +912,11 @@ BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx) wstdcall;
 
 int ndis_init(void);
 void ndis_exit(void);
-int ndis_init_device(struct wrap_ndis_device *wnd);
-void ndis_exit_device(struct wrap_ndis_device *wnd);
+int ndis_init_device(struct ndis_device *wnd);
+void ndis_exit_device(struct ndis_device *wnd);
 
-int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd);
-void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
+int wrap_procfs_add_ndis_device(struct ndis_device *wnd);
+void wrap_procfs_remove_ndis_device(struct ndis_device *wnd);
 
 void NdisAllocatePacketPoolEx(NDIS_STATUS *status,
 			      struct ndis_packet_pool **pool_handle,
@@ -1267,17 +1267,17 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 
 #define deserialized_driver(wnd) (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
 
-static inline void serialize_lock(struct wrap_ndis_device *wnd)
+static inline void serialize_lock(struct ndis_device *wnd)
 {
 	nt_spin_lock(&wnd->nmb->lock);
 }
 
-static inline void serialize_unlock(struct wrap_ndis_device *wnd)
+static inline void serialize_unlock(struct ndis_device *wnd)
 {
 	nt_spin_unlock(&wnd->nmb->lock);
 }
 
-static inline KIRQL serialize_lock_irql(struct wrap_ndis_device *wnd)
+static inline KIRQL serialize_lock_irql(struct ndis_device *wnd)
 {
 	if (deserialized_driver(wnd))
 		return raise_irql(DISPATCH_LEVEL);
@@ -1285,7 +1285,7 @@ static inline KIRQL serialize_lock_irql(struct wrap_ndis_device *wnd)
 		return nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 }
 
-static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
+static inline void serialize_unlock_irql(struct ndis_device *wnd,
 					 KIRQL irql)
 {
 	if (deserialized_driver(wnd))
@@ -1294,13 +1294,13 @@ static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
 		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 }
 
-static inline void if_serialize_lock(struct wrap_ndis_device *wnd)
+static inline void if_serialize_lock(struct ndis_device *wnd)
 {
 	if (!deserialized_driver(wnd))
 		nt_spin_lock(&wnd->nmb->lock);
 }
 
-static inline void if_serialize_unlock(struct wrap_ndis_device *wnd)
+static inline void if_serialize_unlock(struct ndis_device *wnd)
 {
 	if (!deserialized_driver(wnd))
 		nt_spin_unlock(&wnd->nmb->lock);
