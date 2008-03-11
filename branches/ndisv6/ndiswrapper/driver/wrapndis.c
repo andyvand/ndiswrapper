@@ -1368,9 +1368,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev->do_ioctl = NULL;
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan ||
 	    wnd->physical_medium == NdisPhysicalMediumNative802_11) {
-#if WIRELESS_EXT < 19
-		net_dev->get_wireless_stats = get_wireless_stats;
-#endif
 		net_dev->wireless_handlers = &ndis_handler_def;
 	}
 	net_dev->set_multicast_list = ndis_set_multicast_list;
