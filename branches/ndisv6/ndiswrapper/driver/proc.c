@@ -176,7 +176,7 @@ static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
 	struct ndis_device *wnd = (struct ndis_device *)data;
 	char setting[MAX_PROC_STR_LEN], *p;
 	unsigned int i;
-	NTSTATUS res;
+	NDIS_STATUS res;
 
 	if (count > MAX_PROC_STR_LEN)
 		return -EINVAL;
