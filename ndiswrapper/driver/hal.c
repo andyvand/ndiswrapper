@@ -76,25 +76,25 @@ wstdcall void WIN_FUNC(READ_PORT_BUFFER_ULONG,3)
 }
 
 wstdcall USHORT WIN_FUNC(READ_REGISTER_USHORT,1)
-	(void *reg)
+	(void __iomem *reg)
 {
 	return readw(reg);
 }
 
 wstdcall void WIN_FUNC(WRITE_REGISTER_ULONG,2)
-	(void *reg, UINT val)
+	(void __iomem *reg, UINT val)
 {
 	writel(val, reg);
 }
 
 wstdcall void WIN_FUNC(WRITE_REGISTER_USHORT,2)
-	(void *reg, USHORT val)
+	(void __iomem *reg, USHORT val)
 {
 	writew(val, reg);
 }
 
 wstdcall void WIN_FUNC(WRITE_REGISTER_UCHAR,2)
-	(void *reg, UCHAR val)
+	(void __iomem *reg, UCHAR val)
 {
 	writeb(val, reg);
 }
