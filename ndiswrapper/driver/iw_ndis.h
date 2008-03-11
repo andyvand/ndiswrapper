@@ -37,6 +37,7 @@ enum ndis_dot11_auth_algorithm get_auth_mode(struct ndis_device *wnd);
 enum ndis_dot11_cipher_algorithm get_cipher_mode(struct ndis_device *wnd);
 int set_priv_filter(struct ndis_device *wnd, int flags);
 int set_scan(struct ndis_device *wnd);
+extern const struct iw_handler_def ndis_handler_def;
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
