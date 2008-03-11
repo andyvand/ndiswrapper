@@ -760,14 +760,14 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_device load_device;
 	struct load_driver_file load_bin_file;
 	int ret;
+	void __user *addr = (void __user *)arg;
 
 	ENTER1("cmd: %u", cmd);
 
 	ret = 0;
 	switch (cmd) {
 	case WRAP_IOCTL_LOAD_DEVICE:
-		if (copy_from_user(&load_device, (void *)arg,
-				   sizeof(load_device))) {
+		if (copy_from_user(&load_device, addr, sizeof(load_device))) {
 			ret = -EFAULT;
 			break;
 		}
@@ -800,22 +800,20 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			ret = -EINVAL;
 		break;
 	case WRAP_IOCTL_LOAD_DRIVER:
-		TRACE1("loading driver at %p", (void *)arg);
+		TRACE1("loading driver at %p", addr);
 		load_driver = vmalloc(sizeof(*load_driver));
 		if (!load_driver) {
 			ret = -ENOMEM;
 			break;
 		}
-		if (copy_from_user(load_driver, (void *)arg,
-				   sizeof(*load_driver)))
+		if (copy_from_user(load_driver, addr, sizeof(*load_driver)))
 			ret = -EFAULT;
 		else
 			ret = load_user_space_driver(load_driver);
 		vfree(load_driver);
 		break;
 	case WRAP_IOCTL_LOAD_BIN_FILE:
-		if (copy_from_user(&load_bin_file, (void *)arg,
-				   sizeof(load_bin_file)))
+		if (copy_from_user(&load_bin_file, addr, sizeof(load_bin_file)))
 			ret = -EFAULT;
 		else
 			ret = add_bin_file(&load_bin_file);
