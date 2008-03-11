@@ -170,7 +170,7 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_write_ndis_settings(struct file *file, const char *buf,
+static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
 				      unsigned long count, void *data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
@@ -403,7 +403,7 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_write_debug(struct file *file, const char *buf,
+static int procfs_write_debug(struct file *file, const char __user *buf,
 			      unsigned long count, void *data)
 {
 	int i;
