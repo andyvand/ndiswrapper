@@ -26,7 +26,6 @@
 
 extern char *if_name;
 extern int hangcheck_interval;
-extern struct iw_handler_def ndis_handler_def;
 extern spinlock_t ntoskernel_lock;
 
 workqueue_struct_t *wrapndis_wq;
