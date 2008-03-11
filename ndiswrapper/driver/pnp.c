@@ -337,11 +337,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 			TRACE2("resuming %p", wd);
 			if (wrap_is_pci_bus(wd->dev_bus)) {
 				pdev = wd->pci.pdev;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_restore_state(pdev);
-#else
-				pci_restore_state(pdev, wd->pci.pci_state);
-#endif
 				if (wd->pci.wake_state == PowerDeviceD3) {
 					pci_enable_wake(wd->pci.pdev,
 							PCI_D3hot, 0);
@@ -358,11 +354,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 			TRACE2("suspending device %p", wd);
 			if (wrap_is_pci_bus(wd->dev_bus)) {
 				pdev = wd->pci.pdev;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_save_state(pdev);
-#else
-				pci_save_state(pdev, wd->pci.pci_state);
-#endif
 				TRACE2("%d", wd->pci.wake_state);
 				if (wd->pci.wake_state == PowerDeviceD3) {
 					pci_enable_wake(wd->pci.pdev,
@@ -660,22 +652,12 @@ int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
 }
 
 #ifdef CONFIG_USB
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 int wrap_pnp_start_usb_device(struct usb_interface *intf,
 			      const struct usb_device_id *usb_id)
-#else
-void *wrap_pnp_start_usb_device(struct usb_device *udev,
-				unsigned int ifnum,
-				const struct usb_device_id *usb_id)
-#endif
 {
 	struct wrap_device *wd;
 	int ret;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	struct usb_device *udev = interface_to_usbdev(intf);
-#else
-	struct usb_interface *intf = usb_ifnum_to_if(udev, ifnum);
-#endif
 	ENTER1("%04x, %04x, %04x", udev->descriptor.idVendor,
 	       udev->descriptor.idProduct, udev->descriptor.bDeviceClass);
 
@@ -712,20 +694,12 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	}
 
 	TRACE2("ret: %d", ret);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret)
 		EXIT1(return ret);
 	else
 		return 0;
-#else
-	if (ret)
-		return NULL;
-	else
-		return wd;
-#endif
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 void __devexit wrap_pnp_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrap_device *wd;
@@ -764,20 +738,5 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 		return -1;
 	return 0;
 }
-
-#else
-
-void __devexit wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
-{
-	struct wrap_device *wd = ptr;
-	struct usb_interface *intf;
-
-	ENTER1("%p, %p", udev, wd);
-	if (wd == NULL)
-		EXIT1(return);
-	intf = wd->usb.intf;
-	pnp_remove_device(wd);
-}
-#endif
 
 #endif // USB

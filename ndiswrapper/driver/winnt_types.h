@@ -1064,9 +1064,6 @@ struct wrap_urb {
 #ifdef USB_DEBUG
 	unsigned int id;
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	typeof(((struct urb *)0)->status) urb_status;
-#endif
 };
 
 struct irp {
