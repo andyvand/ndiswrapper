@@ -77,12 +77,11 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 	resources_size = sizeof(struct cm_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) * count;
 	TRACE2("resources: %zd, %d", count, resources_size);
-	wd->resource_list = kmalloc(resources_size, GFP_KERNEL);
+	wd->resource_list = kzalloc(resources_size, GFP_KERNEL);
 	if (!wd->resource_list) {
 		WARNING("couldn't allocate memory");
 		goto err_regions;
 	}
-	memset(wd->resource_list, 0, resources_size);
 	wd->resource_list->count = 1;
 	wd->resource_list->list[0].interface_type = PCIBus;
 	/* bus_number is not used by WDM drivers */
