@@ -24,14 +24,14 @@ extern spinlock_t irp_cancel_lock;
 extern struct nt_list object_list;
 
 wstdcall void WIN_FUNC(IoAcquireCancelSpinLock,1)
-	(KIRQL *irql)
+	(KIRQL *irql) __acquires(irql)
 {
 	spin_lock_bh(&irp_cancel_lock);
 	*irql = 0;
 }
 
 wstdcall void WIN_FUNC(IoReleaseCancelSpinLock,1)
-	(KIRQL irql)
+	(KIRQL irql) __releases(irql)
 {
 	spin_unlock_bh(&irp_cancel_lock);
 }
@@ -121,6 +121,7 @@ wstdcall BOOLEAN WIN_FUNC(IoCancelIrp,1)
 		irp_sl = IoGetCurrentIrpStackLocation(irp);
 		IOTRACE("%p, %p", irp_sl, irp_sl->dev_obj);
 		/* cancel_routine will release the spin lock */
+		__release(irp->cancel_irql);
 		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
 		/* in usb's cancel, irp->cancel is set to indicate
 		 * status of cancel */
