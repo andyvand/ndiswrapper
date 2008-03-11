@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2006-2007 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -257,6 +257,12 @@ noregparm void *WIN_FUNC(_win_memset,3)
 	(void *s, char c, SIZE_T count)
 {
 	return memset(s, c, count);
+}
+
+noregparm int WIN_FUNC(_win_memcmp,3)
+	(void *s1, void *s2, SIZE_T n)
+{
+	return memcmp(s1, s2, n);
 }
 
 noregparm void WIN_FUNC(_win_srand,1)
