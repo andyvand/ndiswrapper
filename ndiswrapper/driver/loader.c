@@ -49,7 +49,7 @@ static struct completion loader_complete;
 static struct nt_list wrap_devices;
 static struct nt_list wrap_drivers;
 
-int wrap_device_type(int data1)
+static int wrap_device_type(int data1)
 {
 	int i;
 	for (i = 0; i < sizeof(class_guids) / sizeof(class_guids[0]); i++)

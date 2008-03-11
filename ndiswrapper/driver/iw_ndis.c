@@ -1497,7 +1497,7 @@ NDIS_STATUS disassociate(struct ndis_device *wnd, int reset_ssid)
 	return res;
 }
 
-ULONG ndis_priv_mode(struct ndis_device *wnd)
+static ULONG ndis_priv_mode(struct ndis_device *wnd)
 {
 	if (wnd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA2 ||
 	    wnd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA)
