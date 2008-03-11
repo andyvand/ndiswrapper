@@ -491,7 +491,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 }
 
 /* called from BH context */
-struct iw_statistics *get_wireless_stats(struct net_device *dev)
+struct iw_statistics *get_iw_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	return &wnd->wireless_stats;
