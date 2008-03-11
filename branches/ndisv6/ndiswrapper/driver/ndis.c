@@ -50,7 +50,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 	 void **driver_handle)
 {
 	struct wrap_driver *wrap_driver;
-	struct wrap_ndis_driver *ndis_driver;
+	struct ndis_driver *ndis_driver;
 
 	ENTER2("%p, %p, 0x%x, 0x%x", drv_obj, mp_driver_ctx,
 		    mp_driver->major_version, mp_driver->minor_version);
@@ -407,7 +407,7 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 	(NDIS_STATUS *status, struct ndis_mp_block *nmb,
 	 struct unicode_string *key, struct ndis_configuration_parameter *param)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	struct ansi_string ansi;
 	char *keyname;
 	struct wrap_device_setting *setting;
@@ -611,7 +611,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
 	(struct ndis_mp_block *nmb,
 	 union mp_adapter_attrs *mp_adapter_attrs)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	struct ndis_object_header *header = &mp_adapter_attrs->reg_attrs.header;
 
 	ENTER3("%p, %p", wnd, mp_adapter_attrs);
@@ -1423,7 +1423,7 @@ wstdcall void WIN_FUNC(NdisMFreeSharedMemory,5)
 
 wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 {
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 	struct alloc_shared_mem *alloc_shared_mem;
 	struct ndis_sg_dma *sg_dma;
 	void *virt;
@@ -1500,7 +1500,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterScatterGatherDma,3)
 wstdcall NDIS_STATUS WIN_FUNC(NdisMDeregisterScatterGatherDma,3)
 	(struct ndis_sg_dma *sg_dma)
 {
-	struct wrap_ndis_device *wnd = sg_dma->wnd;
+	struct ndis_device *wnd = sg_dma->wnd;
 	ENTER3("%p, %p", sg_dma, wnd);
 	wnd->sg_dma_size = 0;
 	kfree(sg_dma);
@@ -1515,7 +1515,7 @@ wstdcall ULONG WIN_FUNC(NdisMGetDmaAlignment,1)
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
-	(struct wrap_ndis_device *wnd, struct net_buffer *buffer,
+	(struct ndis_device *wnd, struct net_buffer *buffer,
 	 void *ctx, ULONG flags, struct ndis_sg_list *sg_list, ULONG size)
 {
 	int i, n, dir;
@@ -1563,7 +1563,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
 }
 
 wstdcall void WIN_FUNC(NdisMFreeNetBufferSGList,6)
-	(struct wrap_ndis_device *wnd, struct ndis_sg_list *sg_list,
+	(struct ndis_device *wnd, struct ndis_sg_list *sg_list,
 	 struct net_buffer *buffer)
 {
 	int i, dir;
@@ -1639,7 +1639,7 @@ wstdcall void WIN_FUNC(NdisMOidRequestComplete,3)
 	(struct ndis_mp_block *nmb, struct ndis_oid_request *oid_request,
 	 NDIS_STATUS status)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	ENTER2("wnd: %p, %08X", wnd, status);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
@@ -1751,7 +1751,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	(NDIS_STATUS *status, void **addr, UINT *len,
 	 struct ndis_mp_block *nmb)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	struct ndis_configuration_parameter *param;
 	struct unicode_string key;
 	struct ansi_string ansi;
@@ -1825,7 +1825,7 @@ WIN_FUNC_DECL(ndis_irq_handler,4)
 
 wstdcall BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx)
 {
-	struct wrap_ndis_device *wnd = ctx;
+	struct ndis_device *wnd = ctx;
 	BOOLEAN recognized, queue_handler;
 	ULONG proc = 0;
 
@@ -1847,7 +1847,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterruptEx,4)
 	 struct mp_interrupt_characteristics *mp_interrupt_chars,
 	 void **handle)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	ENTER1("%p, %p", wnd, isr_ctx);
 	memcpy(&wnd->interrupt_chars, mp_interrupt_chars,
 	       sizeof(wnd->interrupt_chars));
@@ -1890,7 +1890,7 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,3)
 wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 	(struct ndis_mp_block *nmb, struct ndis_status_indication *status)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	struct ndis_link_state *link_state;
 	struct ndis_dot11_association_start_parameters *assoc_start;
 	struct ndis_dot11_association_completion_parameters *assoc_comp;
@@ -1914,14 +1914,14 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		    MediaConnectStateConnected) {
 			netif_carrier_on(wnd->net_dev);
 			set_bit(LINK_STATUS_CHANGED,
-				&wnd->wrap_ndis_pending_work);
-			schedule_wrapndis_work(&wnd->wrap_ndis_work);
+				&wnd->ndis_pending_work);
+			schedule_wrapndis_work(&wnd->ndis_work);
 		} else if (link_state->media_connect_state ==
 			   MediaConnectStateDisconnected) {
 			netif_carrier_off(wnd->net_dev);
 			set_bit(LINK_STATUS_CHANGED,
-				&wnd->wrap_ndis_pending_work);
-			schedule_wrapndis_work(&wnd->wrap_ndis_work);
+				&wnd->ndis_pending_work);
+			schedule_wrapndis_work(&wnd->ndis_work);
 		}
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_START:
@@ -1939,8 +1939,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_DISASSOCIATION:
 		netif_carrier_off(wnd->net_dev);
-		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_wrapndis_work(&wnd->wrap_ndis_work);
+		set_bit(LINK_STATUS_CHANGED, &wnd->ndis_pending_work);
+		schedule_wrapndis_work(&wnd->ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_CONNECTION_START:
 		conn_start = status->buf;
@@ -1954,8 +1954,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		if (conn_comp->status == DOT11_ASSOC_STATUS_SUCCESS) {
 			netif_carrier_on(wnd->net_dev);
 			set_bit(LINK_STATUS_CHANGED,
-				&wnd->wrap_ndis_pending_work);
-			schedule_wrapndis_work(&wnd->wrap_ndis_work);
+				&wnd->ndis_pending_work);
+			schedule_wrapndis_work(&wnd->ndis_work);
 		}
 		break;
 	case NDIS_STATUS_DOT11_SCAN_CONFIRM:
@@ -1967,8 +1967,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		phy_state = status->buf;
 		TRACE2("%d, %d, %d", phy_state->phy_id, phy_state->hw_state,
 		       phy_state->sw_state);
-		set_bit(PHY_STATE_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_wrapndis_work(&wnd->wrap_ndis_work);
+		set_bit(PHY_STATE_CHANGED, &wnd->ndis_pending_work);
+		schedule_wrapndis_work(&wnd->ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_LINK_QUALITY:
 		link_quality = status->buf;
@@ -1989,9 +1989,9 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 
 wstdcall void return_net_buffer_lists(void *arg1, void *arg2)
 {
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 	struct net_buffer_list *buffer_list;
-	struct wrap_ndis_driver *ndis_driver;
+	struct ndis_driver *ndis_driver;
 
 	wnd = arg1;
 	buffer_list = arg2;
@@ -2007,7 +2007,7 @@ wstdcall void WIN_FUNC(NdisMIndicateReceiveNetBufferLists,5)
 	(struct ndis_mp_block *nmb, struct net_buffer_list *buffer_list,
 	NDIS_PORT_NUMBER port, ULONG num_lists, ULONG rx_flags)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_device *wnd = nmb->wnd;
 	struct net_buffer_list *blist;
 	struct net_buffer *buffer;
 	struct mdl *mdl;
@@ -2273,7 +2273,7 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 #include "ndis_exports.h"
 
 /* ndis_init_device is called for each device */
-int ndis_init_device(struct wrap_ndis_device *wnd)
+int ndis_init_device(struct ndis_device *wnd)
 {
 	struct ndis_mp_block *nmb = wnd->nmb;
 
@@ -2282,7 +2282,7 @@ int ndis_init_device(struct wrap_ndis_device *wnd)
 }
 
 /* ndis_exit_device is called for each handle */
-void ndis_exit_device(struct wrap_ndis_device *wnd)
+void ndis_exit_device(struct ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
 	TRACE2("%p", wnd);

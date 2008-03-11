@@ -32,7 +32,7 @@
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
-NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
+NDIS_STATUS set_essid(struct ndis_device *wnd,
 		      const char *ssid, int ssid_len)
 {
 	struct ndis_dot11_ssid_list ssid_list;
@@ -66,7 +66,7 @@ NDIS_STATUS set_essid(struct wrap_ndis_device *wnd,
 	EXIT2(return res);
 }
 
-static int set_assoc_params(struct wrap_ndis_device *wnd)
+static int set_assoc_params(struct ndis_device *wnd)
 {
 	return 0;
 }
@@ -74,7 +74,7 @@ static int set_assoc_params(struct wrap_ndis_device *wnd)
 static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	int res, length;
 
 	if (wrqu->essid.flags) {
@@ -104,7 +104,7 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct ndis_dot11_ssid_list ssid_list;
 	NDIS_STATUS res;
 
@@ -133,7 +133,7 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	EXIT2(return res);
 }
 
-NDIS_STATUS set_infra_mode(struct wrap_ndis_device *wnd,
+NDIS_STATUS set_infra_mode(struct ndis_device *wnd,
 			   enum ndis_dot11_bss_type type)
 {
 	NDIS_STATUS res;
@@ -149,7 +149,7 @@ static int iw_set_infra_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	enum ndis_dot11_bss_type bss_type;
 
 	ENTER2("%d", wrqu->mode);
@@ -173,7 +173,7 @@ static int iw_get_infra_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	enum ndis_dot11_bss_type bss_type;
 
@@ -224,7 +224,7 @@ static int iw_get_network_type(struct net_device *dev,
 			       struct iw_request_info *info,
 			       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	int n;
 
@@ -246,7 +246,7 @@ static int iw_get_network_type(struct net_device *dev,
 static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG ndis_freq;
 
@@ -269,7 +269,7 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG ndis_freq;
 
@@ -298,7 +298,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct ndis_dot11_supported_power_levels power_levels;
 	NDIS_STATUS res;
 	ULONG n;
@@ -325,7 +325,7 @@ static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct ndis_dot11_supported_power_levels power_levels;
 	NDIS_STATUS res;
 	ULONG i, n;
@@ -369,7 +369,7 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	ULONG ndis_rate;
 	int res;
 
@@ -401,7 +401,7 @@ static int iw_get_rts_threshold(struct net_device *dev,
 				struct iw_request_info *info,
 				union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 
 	res = mp_query_int(wnd, OID_DOT11_RTS_THRESHOLD, &wrqu->rts.value);
@@ -416,7 +416,7 @@ static int iw_set_rts_threshold(struct net_device *dev,
 				struct iw_request_info *info,
 				union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 
 	res = mp_set_int(wnd, OID_DOT11_RTS_THRESHOLD, wrqu->rts.value);
@@ -431,7 +431,7 @@ static int iw_get_frag_threshold(struct net_device *dev,
 				 struct iw_request_info *info,
 				 union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 
 	res = mp_query_int(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD,
@@ -447,7 +447,7 @@ static int iw_set_frag_threshold(struct net_device *dev,
 				 struct iw_request_info *info,
 				 union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 
 	res = mp_set_int(wnd, OID_DOT11_FRAGMENTATION_THRESHOLD,
@@ -463,7 +463,7 @@ static int iw_get_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct ndis_dot11_association_info_list *assoc_list;
 	struct ndis_dot11_association_info_ex *assoc_info;
 	NDIS_STATUS res;
@@ -505,7 +505,7 @@ static int iw_set_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct ndis_dot11_bssid_list bssid_list;
 	NDIS_STATUS res;
 
@@ -526,7 +526,7 @@ static int iw_set_ap_address(struct net_device *dev,
 	EXIT2(return 0);
 }
 
-NDIS_STATUS set_auth_algo(struct wrap_ndis_device *wnd,
+NDIS_STATUS set_auth_algo(struct ndis_device *wnd,
 			  enum ndis_dot11_auth_algorithm algo_id)
 {
 	struct ndis_dot11_auth_algorithm_list auth_algos;
@@ -547,7 +547,7 @@ NDIS_STATUS set_auth_algo(struct wrap_ndis_device *wnd,
 	EXIT2(return res);
 }
 
-enum ndis_dot11_auth_algorithm get_auth_algo(struct wrap_ndis_device *wnd)
+enum ndis_dot11_auth_algorithm get_auth_algo(struct ndis_device *wnd)
 {
 	struct ndis_dot11_auth_algorithm_list auth_algos;
 	NDIS_STATUS res;
@@ -567,7 +567,7 @@ enum ndis_dot11_auth_algorithm get_auth_algo(struct wrap_ndis_device *wnd)
 	EXIT2(return auth_algos.algo_ids[0]);
 }
 
-NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
+NDIS_STATUS set_cipher_algo(struct ndis_device *wnd,
 			    enum ndis_dot11_cipher_algorithm algo_id)
 {
 	struct ndis_dot11_cipher_algorithm_list cipher_algos;
@@ -604,7 +604,7 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 	EXIT2(return res);
 }
 
-enum ndis_dot11_cipher_algorithm get_cipher_algo(struct wrap_ndis_device *wnd)
+enum ndis_dot11_cipher_algorithm get_cipher_algo(struct ndis_device *wnd)
 {
 	struct ndis_dot11_cipher_algorithm_list cipher_algos;
 	NDIS_STATUS res;
@@ -638,7 +638,7 @@ enum ndis_dot11_cipher_algorithm get_cipher_algo(struct wrap_ndis_device *wnd)
 static int iw_get_cipher(struct net_device *dev, struct iw_request_info *info,
 			 union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	int index, mode;
 	struct cipher_info *cipher_info = &wnd->cipher_info;
 
@@ -698,7 +698,7 @@ static int iw_get_cipher(struct net_device *dev, struct iw_request_info *info,
 }
 
 /* index must be 0 - N, as per NDIS  */
-int add_cipher_key(struct wrap_ndis_device *wnd, char *key, int key_len,
+int add_cipher_key(struct ndis_device *wnd, char *key, int key_len,
 		   int index, enum ndis_dot11_cipher_algorithm algo,
 		   mac_address mac)
 {
@@ -753,7 +753,7 @@ int add_cipher_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 	EXIT2(return 0);
 }
 
-static int delete_cipher_key(struct wrap_ndis_device *wnd, int index,
+static int delete_cipher_key(struct ndis_device *wnd, int index,
 			     mac_address mac)
 {
 	struct ndis_dot11_cipher_default_key_value *ndis_key;
@@ -792,7 +792,7 @@ static int delete_cipher_key(struct wrap_ndis_device *wnd, int index,
 static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 		      union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	unsigned int index, key_len;
 	struct cipher_info *cipher_info = &wnd->cipher_info;
@@ -884,7 +884,7 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_nick(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 
 	if (wrqu->data.length > IW_ESSID_MAX_SIZE || wrqu->data.length <= 0)
 		return -EINVAL;
@@ -896,7 +896,7 @@ static int iw_set_nick(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_nick(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 
 	wrqu->data.length = strlen(wnd->nick);
 	memcpy(extra, wnd->nick, wrqu->data.length);
@@ -906,7 +906,7 @@ static int iw_get_nick(struct net_device *dev, struct iw_request_info *info,
 static char *ndis_translate_scan(struct net_device *dev, char *event,
 				 char *end_buf, void *item)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct iw_event iwe;
 	struct ndis_dot11_bss_entry *bss;
 	struct ndis_dot11_info_element *ie;
@@ -1024,7 +1024,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	EXIT2(return event);
 }
 
-int set_scan(struct wrap_ndis_device *wnd)
+int set_scan(struct ndis_device *wnd)
 {
 	struct ndis_dot11_scan_request_v2 *scan_req;
 	int len;
@@ -1060,7 +1060,7 @@ int set_scan(struct wrap_ndis_device *wnd)
 static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-//	struct wrap_ndis_device *wnd = netdev_priv(dev);
+//	struct ndis_device *wnd = netdev_priv(dev);
 //	return set_scan(wnd);
 	return 0;
 }
@@ -1068,7 +1068,7 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	unsigned int i, len;
 	NDIS_STATUS res;
 	char *event = extra;
@@ -1129,7 +1129,7 @@ static int iw_set_power_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG power_mode;
 	BOOLEAN hw_state;
@@ -1159,7 +1159,7 @@ static int iw_get_power_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG power_mode;
 	BOOLEAN hw_state;
@@ -1214,7 +1214,7 @@ static int iw_get_ndis_stats(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct iw_statistics *stats = &wnd->wireless_stats;
 	memcpy(&wrqu->qual, &stats->qual, sizeof(stats->qual));
 	return 0;
@@ -1225,7 +1225,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 {
 	struct iw_range *range = (struct iw_range *)extra;
 	struct iw_point *data = &wrqu->data;
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	unsigned int i;
 	struct ndis_dot11_supported_data_rates_value_v2 *data_rates;
 	struct ndis_dot11_supported_power_levels *power_levels;
@@ -1329,7 +1329,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
+int set_priv_filter(struct ndis_device *wnd, int flags)
 {
 	EXIT2(return 0);
 }
@@ -1356,7 +1356,7 @@ static int iw_set_genie(struct net_device *dev,
 static int iw_get_auth(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 
 	ENTER2("");
 
@@ -1381,7 +1381,7 @@ static int iw_get_auth(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_auth(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	int res;
 
 	if (wrqu->data.flags & IW_ENCODE_DISABLED) {
@@ -1466,7 +1466,7 @@ static const iw_handler	ndis_handler[] = {
 static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 		      union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	struct ndis_dot11_reset_request reset_req;
 	int res;
 
@@ -1499,7 +1499,7 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 static int priv_set_phy_id(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	ULONG id;
 	int res;
 
@@ -1539,7 +1539,7 @@ static int priv_set_nic_power(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	BOOLEAN state;
 	NDIS_STATUS res;
 
@@ -1562,7 +1562,7 @@ static int priv_set_nic_power(struct net_device *dev,
 static int priv_connect(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 
 	if (wrqu->param.value) {
@@ -1586,7 +1586,7 @@ static int priv_connect(struct net_device *dev, struct iw_request_info *info,
 static int priv_scan(struct net_device *dev, struct iw_request_info *info,
 		     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_device *wnd = netdev_priv(dev);
 
 	if (set_scan(wnd))
 		return -EFAULT;

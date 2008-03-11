@@ -100,10 +100,10 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
-struct wrap_ndis_device;
+struct ndis_device;
 
 struct ndis_sg_dma {
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 	void (*sg_list_handler)(struct device_object *, void *,
 				struct ndis_sg_list *, void *) wstdcall;
 	void (*shmem_alloc_complete)(void *, void *, NDIS_PHYSICAL_ADDRESS *,
@@ -598,7 +598,7 @@ struct mp_interrupt_characteristics {
 
 struct ndis_interrupt {
 	NT_SPIN_LOCK lock;
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 	int vector;
 };
 
@@ -856,7 +856,7 @@ union mp_adapter_attrs {
 struct nw_interrupt {
 	unsigned int vector;
 	NT_SPIN_LOCK lock;
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 };
 
 struct ndis_link_state {
@@ -1254,7 +1254,7 @@ struct mp_driver_characteristics {
 	void (*cancel_oid)(void *, void *) wstdcall;
 };
 
-struct wrap_ndis_driver {
+struct ndis_driver {
 	struct wrap_driver *wrap_driver;
 	UCHAR major_version;
 	UCHAR minor_version;
@@ -1263,7 +1263,7 @@ struct wrap_ndis_driver {
 	void *mp_driver_ctx;
 };
 
-struct wrap_ndis_device {
+struct ndis_device {
 	struct ndis_mp_block *nmb;
 	void *add_dev_ctx;
 	void *shutdown_ctx;
@@ -1331,8 +1331,8 @@ struct wrap_ndis_device {
 	struct proc_dir_entry *procfs_iface;
 
 	struct net_device_stats net_stats;
-	work_struct_t wrap_ndis_work;
-	unsigned long wrap_ndis_pending_work;
+	work_struct_t ndis_work;
+	unsigned long ndis_pending_work;
 	int iw_auth_set;
 	int iw_auth_wpa_version;
 	int iw_auth_cipher_pairwise;
@@ -1447,7 +1447,7 @@ struct ndis_mp_block {
 	void *wan_rcv;
 	void *wan_rcv_complete;
 	/* ndiswrapper extension */
-	struct wrap_ndis_device *wnd;
+	struct ndis_device *wnd;
 };
 
 struct ndis_pmkid_candidate {
@@ -1464,14 +1464,14 @@ struct ndis_pmkid_candidate_list {
 BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx) wstdcall;
 
 int ndis_init(void);
-int ndis_init_device(struct wrap_ndis_device *wnd);
-void ndis_exit_device(struct wrap_ndis_device *wnd);
+int ndis_init_device(struct ndis_device *wnd);
+void ndis_exit_device(struct ndis_device *wnd);
 void ndis_exit(void);
 void insert_ndis_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
-int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd);
-void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
+int wrap_procfs_add_ndis_device(struct ndis_device *wnd);
+void wrap_procfs_remove_ndis_device(struct ndis_device *wnd);
 
 struct net_buffer_list_pool *
 NdisAllocateNetBufferListPool(struct ndis_mp_block *nmb,
