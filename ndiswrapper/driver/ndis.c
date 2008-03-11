@@ -32,8 +32,6 @@ static spinlock_t ndis_work_list_lock;
 workqueue_struct_t *ndis_wq;
 static struct nt_thread *ndis_worker_thread;
 
-extern struct semaphore loader_mutex;
-
 static void *ndis_get_routine_address(char *name);
 
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
