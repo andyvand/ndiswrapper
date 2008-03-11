@@ -162,10 +162,6 @@ MOD_CFLAGS += -DWRAP_WQ
 OBJS += workqueue.o
 endif
 
-ifdef NTOS_WQ
-MOD_CFLAGS += -DNTOS_WQ
-endif
-
 ntoskernel.h: lin2win.h
 
 ndis.h: ntoskernel.h
