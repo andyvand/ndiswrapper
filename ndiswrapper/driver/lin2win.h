@@ -32,15 +32,15 @@
 
 /* args for Windows function must be in clobber / output list */
 
-#define outputs()						\
-	"=a" (ret), "=c" (dummy), "=d" (dummy),			\
+#define outputs()							\
+	"=a" (_ret), "=c" (_dummy), "=d" (_dummy),			\
 		"=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)
 
 #define clobbers() "cc"
 
 #define LIN2WIN0(func)							\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8");					\
 	register u64 r9 __asm__("r9");					\
 	register u64 r10 __asm__("r10");				\
@@ -52,12 +52,12 @@
 		: outputs()						\
 		: [fptr] "r" (func)					\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #define LIN2WIN1(func, arg1)						\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8");					\
 	register u64 r9 __asm__("r9");					\
 	register u64 r10 __asm__("r10");				\
@@ -69,12 +69,12 @@
 		: outputs()						\
 		: "c" (arg1), [fptr] "r" (func)				\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #define LIN2WIN2(func, arg1, arg2)					\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8");					\
 	register u64 r9 __asm__("r9");					\
 	register u64 r10 __asm__("r10");				\
@@ -86,12 +86,12 @@
 		: outputs()						\
 		: "c" (arg1), "d" (arg2), [fptr] "r" (func)		\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9");					\
 	register u64 r10 __asm__("r10");				\
@@ -104,12 +104,12 @@
 		: "c" (arg1), "d" (arg2), "r" (r8),			\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9") = (u64)arg4;			\
 	register u64 r10 __asm__("r10");				\
@@ -122,12 +122,12 @@
 		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9") = (u64)arg4;			\
 	register u64 r10 __asm__("r10");				\
@@ -142,12 +142,12 @@
 		  [rarg5] "ri" ((u64)arg5),				\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
-	u64 ret, dummy;							\
+	u64 _ret, _dummy;						\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9") = (u64)arg4;			\
 	register u64 r10 __asm__("r10");				\
@@ -163,7 +163,7 @@
 		  [rarg5] "ri" ((u64)arg5), [rarg6] "ri" ((u64)arg6),	\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
-	ret;								\
+	_ret;								\
 })
 
 #else // CONFIG_X86_64

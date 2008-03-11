@@ -1165,19 +1165,19 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 #define IoCallDriver(dev, irp) IofCallDriver(dev, irp)
 
 #if defined(IO_DEBUG)
-#define DUMP_IRP(irp)							\
+#define DUMP_IRP(_irp)							\
 do {									\
-	struct io_stack_location *irp_sl;				\
-	irp_sl = IoGetCurrentIrpStackLocation(irp);			\
+	struct io_stack_location *_irp_sl;				\
+	_irp_sl = IoGetCurrentIrpStackLocation(_irp);			\
 	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
 		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
-		irp, irp->stack_count, (irp)->current_location,		\
-		irp_sl, irp_sl->dev_obj, irp_sl->major_fn,		\
-		irp_sl->minor_fn, IRP_URB(irp),				\
-		(irp)->user_event);					\
+		_irp, _irp->stack_count, (_irp)->current_location,	\
+		_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,		\
+		_irp_sl->minor_fn, IRP_URB(_irp),			\
+		(_irp)->user_event);					\
 } while (0)
 #else
-#define DUMP_IRP(irp) do { } while (0)
+#define DUMP_IRP(_irp) do { } while (0)
 #endif
 
 #endif // _NTOSKERNEL_H_
