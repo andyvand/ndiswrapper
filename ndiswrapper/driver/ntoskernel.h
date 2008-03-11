@@ -465,7 +465,7 @@ struct wrap_driver {
 	struct nt_list wrap_devices;
 	struct nt_list settings;
 	int dev_type;
-	struct wrap_ndis_driver *ndis_driver;
+	struct ndis_driver *ndis_driver;
 };
 
 enum hw_status {
@@ -504,7 +504,7 @@ struct wrap_device {
 		} usb;
 	};
 	union {
-		struct wrap_ndis_device *wnd;
+		struct ndis_device *wnd;
 	};
 };
 

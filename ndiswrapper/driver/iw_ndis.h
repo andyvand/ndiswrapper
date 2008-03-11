@@ -22,21 +22,21 @@
 #define	WL_SIGMAX	-32	/* typical maximum signal level in dBm */
 
 
-int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
+int add_wep_key(struct ndis_device *wnd, char *key, int key_len,
 		int index);
-NDIS_STATUS set_essid(struct wrap_ndis_device *wnd, const char *ssid,
+NDIS_STATUS set_essid(struct ndis_device *wnd, const char *ssid,
 		      int ssid_len);
-NDIS_STATUS set_infra_mode(struct wrap_ndis_device *wnd,
+NDIS_STATUS set_infra_mode(struct ndis_device *wnd,
 			   enum ndis_dot11_bss_type mode);
-int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
-NDIS_STATUS set_auth_algo(struct wrap_ndis_device *wnd,
+int get_ap_address(struct ndis_device *wnd, mac_address mac);
+NDIS_STATUS set_auth_algo(struct ndis_device *wnd,
 			  enum ndis_dot11_auth_algorithm algo_id);
-NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
+NDIS_STATUS set_cipher_algo(struct ndis_device *wnd,
 			    enum ndis_dot11_cipher_algorithm algo_id);
-enum ndis_dot11_auth_algorithm get_auth_mode(struct wrap_ndis_device *wnd);
-enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd);
-int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
-int set_scan(struct wrap_ndis_device *wnd);
+enum ndis_dot11_auth_algorithm get_auth_mode(struct ndis_device *wnd);
+enum ndis_dot11_cipher_algorithm get_cipher_mode(struct ndis_device *wnd);
+int set_priv_filter(struct ndis_device *wnd, int flags);
+int set_scan(struct ndis_device *wnd);
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
