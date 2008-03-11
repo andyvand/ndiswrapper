@@ -757,7 +757,7 @@ wstdcall void WIN_FUNC(NdisImmediateWritePortUchar,3)
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
-	(void **virt, struct ndis_miniport_block *nmb,
+	(void __iomem **virt, struct ndis_miniport_block *nmb,
 	 NDIS_PHY_ADDRESS phy_addr, UINT len)
 {
 	ENTER2("%Lx, %d", phy_addr, len);
@@ -773,7 +773,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
 }
 
 wstdcall void WIN_FUNC(NdisMUnmapIoSpace,3)
-	(struct ndis_miniport_block *nmb, void *virt, UINT len)
+	(struct ndis_miniport_block *nmb, void __iomem *virt, UINT len)
 {
 	ENTER2("%p, %d", virt, len);
 	MmUnmapIoSpace(virt, len);
