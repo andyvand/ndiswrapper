@@ -467,14 +467,14 @@ struct ndis_timer {
 	struct kdpc kdpc;
 };
 
-struct ndis_miniport_block;
+struct ndis_mp_block;
 
 struct ndis_miniport_timer {
 	struct nt_timer nt_timer;
 	struct kdpc kdpc;
 	DPC func;
 	void *ctx;
-	struct ndis_miniport_block *nmb;
+	struct ndis_mp_block *nmb;
 	struct ndis_miniport_timer *next;
 };
 
@@ -1264,7 +1264,7 @@ struct wrap_ndis_driver {
 };
 
 struct wrap_ndis_device {
-	struct ndis_miniport_block *nmb;
+	struct ndis_mp_block *nmb;
 	void *add_dev_ctx;
 	void *shutdown_ctx;
 	void *isr_ctx;
@@ -1362,10 +1362,10 @@ struct filterdbs {
 	void *xxxdb;
 };
 
-struct ndis_miniport_block {
+struct ndis_mp_block {
 	struct ndis_object_header header;
-	struct ndis_miniport_block *next;
-	struct ndis_miniport_block *base_miniport;
+	struct ndis_mp_block *next;
+	struct ndis_mp_block *base_miniport;
 	void *adapter_ctx;
 	struct unicode_string reserved4;
 	void *reserved10;
@@ -1386,7 +1386,7 @@ struct ndis_miniport_block {
 	struct ndis_packet *return_packets_queue;
 	ULONG request_buffer;
 	void *set_mcast_buffer;
-	struct ndis_miniport_block *primary_miniport;
+	struct ndis_mp_block *primary_miniport;
 	void *reserved11;
 	void *bus_data_context;
 	ULONG reserved3;
@@ -1474,7 +1474,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd);
 void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 struct net_buffer_list_pool *
-NdisAllocateNetBufferListPool(struct ndis_miniport_block *nmb,
+NdisAllocateNetBufferListPool(struct ndis_mp_block *nmb,
 			      struct net_buffer_list_pool_params *params) wstdcall;
 void NdisFreeNetBufferListPool(struct net_buffer_list_pool *pool) wstdcall;
 void NdisFreeNetBufferList(struct net_buffer_list *buffer_list) wstdcall;
@@ -1483,7 +1483,7 @@ NdisAllocateNetBufferList(struct net_buffer_list_pool *pool, USHORT ctx_size,
 			  USHORT backfill) wstdcall;
 
 struct net_buffer_pool *
-NdisAllocateNetBufferPool(struct ndis_miniport_block *nmb,
+NdisAllocateNetBufferPool(struct ndis_mp_block *nmb,
 			  struct net_buffer_pool_params *params) wstdcall;
 void NdisFreeNetBufferPool(struct net_buffer_pool *pool) wstdcall;
 
@@ -1491,17 +1491,17 @@ struct net_buffer *
 NdisAllocateNetBuffer(struct net_buffer_pool *pool, struct mdl *mdl,
 		      ULONG data_offset, SIZE_T data_length) wstdcall;
 void NdisFreeNetBuffer(struct net_buffer *buffer) wstdcall;
-void NdisMResetComplete(struct ndis_miniport_block *nmb,
+void NdisMResetComplete(struct ndis_mp_block *nmb,
 			NDIS_STATUS status, BOOLEAN address_reset) wstdcall;
 ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer) wstdcall;
 BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout) wstdcall;
 void NdisSetEvent(struct ndis_event *event) wstdcall;
-void NdisWriteConfiguration(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
+void NdisWriteConfiguration(NDIS_STATUS *status, struct ndis_mp_block *nmb,
 			    struct unicode_string *key,
 			    struct ndis_configuration_parameter *param) wstdcall;
 void NdisReadConfiguration(NDIS_STATUS *status,
 			   struct ndis_configuration_parameter **param,
-			   struct ndis_miniport_block *nmb,
+			   struct ndis_mp_block *nmb,
 			   struct unicode_string *key,
 			   enum ndis_parameter_type type) wstdcall;
 
