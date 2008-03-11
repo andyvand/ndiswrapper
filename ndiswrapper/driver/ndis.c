@@ -2062,7 +2062,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 					group_error = 1;
 					TRACE2("group_error");
 				}
-#if WIRELESS_EXT > 17
 				if (pairwise_error || group_error) {
 					union iwreq_data wrqu;
 					struct iw_michaelmicfailure micfailure;
@@ -2082,7 +2081,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 							    IWEVMICHAELMICFAILURE,
 							    &wrqu, (u8 *)&micfailure);
 				}
-#endif
 				len -= auth_req->length;
 				buf = (char *)buf + auth_req->length;
 			}
@@ -2105,10 +2103,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			TRACE2("PMKID ver %d num_cand %d",
 			       cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
-#if WIRELESS_EXT > 17
 				struct iw_pmkid_cand pcand;
 				union iwreq_data wrqu;
-#endif
 				struct ndis_pmkid_candidate *c =
 					&cand->candidates[i];
 				if ((u8 *)(c + 1) > end) {
@@ -2117,7 +2113,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				}
 				TRACE2("%ld: " MACSTRSEP " 0x%x",
 				       i, MAC2STR(c->bssid), c->flags);
-#if WIRELESS_EXT > 17
 				memset(&pcand, 0, sizeof(pcand));
 				if (c->flags & 0x01)
 					pcand.flags |= IW_PMKID_CAND_PREAUTH;
@@ -2128,7 +2123,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				wrqu.data.length = sizeof(pcand);
 				wireless_send_event(wnd->net_dev, IWEVPMKIDCAND,
 						    &wrqu, (u8 *)&pcand);
-#endif
 			}
 			break;
 		}
