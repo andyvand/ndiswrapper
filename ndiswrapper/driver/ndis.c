@@ -1217,9 +1217,9 @@ wstdcall void WIN_FUNC(NdisFreeNetBufferList,1)
 		ctx = buffer_list->context;
 		TRACE3("%p", ctx);
 		while (ctx) {
-			struct net_buffer_list_context *next = ctx->next;
+			struct net_buffer_list_context *new_ctx = ctx->next;
 			kfree(ctx);
-			ctx = next;
+			ctx = new_ctx;
 		}
 		if (pool->list_pool.count < MAX_ALLOCATED_NDIS_BUFFERS) {
 			buffer_list->header.link.next =
