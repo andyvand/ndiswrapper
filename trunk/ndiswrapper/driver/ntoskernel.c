@@ -1604,16 +1604,6 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	thread_tramp.ctx = ctx;
 	init_completion(&thread_tramp.started);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	thread_tramp.thread->pid = kernel_thread(ntdriver_thread, &thread_tramp,
-						 CLONE_SIGHAND);
-	TRACE2("pid = %d", thread_tramp.thread->pid);
-	if (thread_tramp.thread->pid < 0) {
-		free_object(thread_tramp.thread);
-		EXIT2(return STATUS_FAILURE);
-	}
-	TRACE2("created task: %d", thread_tramp.thread->pid);
-#else
 	thread_tramp.thread->task = kthread_run(ntdriver_thread,
 						&thread_tramp, "ntdriver");
 	if (IS_ERR(thread_tramp.thread->task)) {
@@ -1621,7 +1611,6 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 		EXIT2(return STATUS_FAILURE);
 	}
 	TRACE2("created task: %p", thread_tramp.thread->task);
-#endif
 
 	wait_for_completion(&thread_tramp.started);
 	*handle = OBJECT_TO_HEADER(thread_tramp.thread);

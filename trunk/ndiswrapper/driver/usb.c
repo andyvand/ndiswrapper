@@ -55,11 +55,7 @@ static unsigned int urb_id = 0;
 
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,5)
 #define CUR_ALT_SETTING(intf) (intf)->cur_altsetting
-#else
-#define CUR_ALT_SETTING(intf) (intf)->altsetting[(intf)->act_altsetting]
-#endif
 
 #ifndef USB_CTRL_SET_TIMEOUT
 #define USB_CTRL_SET_TIMEOUT 5000
@@ -93,38 +89,7 @@ static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 	}
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#define URB_STATUS(wrap_urb) (wrap_urb->urb_status)
-
-static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
-			      gfp_t mem_flags, dma_addr_t *dma)
-{
-	*dma = 0;
-	return kmalloc(size, mem_flags);
-}
-
-static void usb_buffer_free(struct usb_device *udev, size_t size, void *addr,
-			    dma_addr_t dma)
-{
-	kfree(addr);
-}
-
-static void usb_init_urb(struct urb *urb)
-{
-	memset(urb, 0, sizeof(*urb));
-}
-
-static void usb_kill_urb(struct urb *urb)
-{
-	usb_unlink_urb(urb);
-}
-
-#else
-
 #define URB_STATUS(wrap_urb) (wrap_urb->urb->status)
-
-#endif
 
 static struct nt_list wrap_urb_complete_list;
 static spinlock_t wrap_urb_complete_list_lock;
@@ -305,11 +270,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			WARNING("couldn't allocate memory");
 			return NULL;
 		}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		urb = usb_alloc_urb(0, alloc_flags);
-#else
-		urb = usb_alloc_urb(0);
-#endif
 		if (!urb) {
 			WARNING("couldn't allocate urb");
 			kfree(wrap_urb);
@@ -389,11 +350,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
 	USBTRACE("%p", urb);
 	IRP_WRAP_URB(irp)->state = URB_SUBMITTED;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, irql_gfp());
-#else
-	ret = usb_submit_urb(urb);
-#endif
 	if (ret) {
 		USBTRACE("ret: %d", ret);
 		wrap_free_urb(urb);
@@ -405,26 +362,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 		USBEXIT(return USBD_STATUS_PENDING);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-static void int_urb_unlink_complete(struct urb *urb)
-{
-	struct wrap_urb *wrap_urb;
-
-	wrap_urb = urb->context;
-	USBTRACE("%p, %d, %d", urb, urb->status, wrap_urb->state);
-	if (xchg(&wrap_urb->state, URB_INT_UNLINKED) != URB_COMPLETED)
-		return;
-	urb->status = URB_STATUS(wrap_urb);
-	spin_lock(&wrap_urb_complete_list_lock);
-	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
-	spin_unlock(&wrap_urb_complete_list_lock);
-	schedule_ntos_work(&wrap_urb_complete_work);
-}
-
-static void wrap_urb_complete(struct urb *urb)
-#else
 static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
-#endif
 {
 	struct irp *irp;
 	struct wrap_urb *wrap_urb;
@@ -442,17 +380,6 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 	}
 #endif
 	wrap_urb->state = URB_COMPLETED;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	URB_STATUS(wrap_urb) = urb->status;
-	/* prevent 2.4 kernels from resubmitting interrupt urbs;
-	 * completion function for unlink will process urb */
-	if (usb_pipeint(urb->pipe)) {
-		USBTRACE("%p, %d", urb, urb->status);
-		urb->complete = int_urb_unlink_complete;
-		usb_unlink_urb(urb);
-		return;
-	}
-#endif
 	spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	spin_unlock(&wrap_urb_complete_list_lock);
@@ -863,13 +790,8 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 	struct usb_endpoint_descriptor *ep;
 	struct usbd_pipe_information *pipe;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints; i++) {
 		ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
-#else
-	for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints; i++) {
-		ep = &((CUR_ALT_SETTING(usb_intf)).endpoint[i]);
-#endif
 		if (i >= intf->bNumEndpoints) {
 			ERROR("intf %p has only %d endpoints, "
 			      "ignoring endpoints above %d",
@@ -949,11 +871,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	USBTRACE("%p", config);
 	if (config == NULL) {
 		kill_all_urbs(wd, 1);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		ret = usb_reset_configuration(udev);
-#else
-		ret = 0;
-#endif
 		return wrap_urb_status(ret);
 	}
 
@@ -1169,22 +1087,18 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 
 	wd = IRP_WRAP_DEVICE(irp);
 	USBENTER("%p, %p", wd, wd->usb.udev);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 	lock = usb_lock_device_for_reset(wd->usb.udev, wd->usb.intf);
 	if (lock < 0) {
 		WARNING("locking failed: %d", lock);
 //		return wrap_urb_status(lock);
 		return USBD_STATUS_SUCCESS;
 	}
-#endif
 	ret = usb_reset_device(wd->usb.udev);
 	if (ret < 0)
 		USBTRACE("reset failed: %d", ret);
 	/* TODO: should reconfigure? */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 	if (lock)
 		usb_unlock_device(wd->usb.udev);
-#endif
 //	return wrap_urb_status(ret);
 	return USBD_STATUS_SUCCESS;
 }
@@ -1193,26 +1107,19 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 {
 	struct wrap_device *wd;
 	ULONG *status;
+	enum usb_device_state state;
 
 	wd = IRP_WRAP_DEVICE(irp);
 	USBENTER("%p, %p", wd, wd->usb.udev);
 	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	{
-		enum usb_device_state state;
-		state = wd->usb.udev->state;
-		if (state != USB_STATE_NOTATTACHED &&
-		    state != USB_STATE_SUSPENDED) {
-			*status |= USBD_PORT_CONNECTED;
-			if (state == USB_STATE_CONFIGURED)
-				*status |= USBD_PORT_ENABLED;
-		}
-		USBTRACE("state: %d, *status: %08X", state, *status);
+	state = wd->usb.udev->state;
+	if (state != USB_STATE_NOTATTACHED &&
+	    state != USB_STATE_SUSPENDED) {
+		*status |= USBD_PORT_CONNECTED;
+		if (state == USB_STATE_CONFIGURED)
+			*status |= USBD_PORT_ENABLED;
 	}
-#else
-	/* TODO: how to get current status? */
-	*status = USBD_PORT_CONNECTED | USBD_PORT_ENABLED;
-#endif
+	USBTRACE("state: %d, *status: %08X", state, *status);
 	return USBD_STATUS_SUCCESS;
 }
 

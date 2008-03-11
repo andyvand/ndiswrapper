@@ -33,18 +33,12 @@ int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state);
 int wrap_pnp_resume_pci_device(struct pci_dev *pdev);
 
 #ifdef CONFIG_USB
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 int wrap_pnp_start_usb_device(struct usb_interface *intf,
 			      const struct usb_device_id *usb_id);
 void wrap_pnp_remove_usb_device(struct usb_interface *intf);
 int wrap_pnp_suspend_usb_device(struct usb_interface *intf,
 				pm_message_t state);
 int wrap_pnp_resume_usb_device(struct usb_interface *intf);
-#else
-void *wrap_pnp_start_usb_device(struct usb_device *udev, unsigned int ifnum,
-				const struct usb_device_id *usb_id);
-void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr);
-#endif
 #endif
 
 #endif
