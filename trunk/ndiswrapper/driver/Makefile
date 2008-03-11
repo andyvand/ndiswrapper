@@ -162,48 +162,6 @@ MOD_CFLAGS += -DWRAP_WQ
 OBJS += workqueue.o
 endif
 
-ntoskernel.h: lin2win.h
-
-ndis.h: ntoskernel.h
-
-iw_ndis.h: ntoskernel.h
-
-pnp.h: ntoskernel.h ndis.h
-
-wrapndis.h: ndis.h pnp.h
-
-usb.h: ntoskernel.h
-
-divdi3.o: divdi3.c longlong.h
-
-hal.o: hal.c ntoskernel.h
-
-iw_ndis.o: iw_ndis.c iw_ndis.h wrapndis.h
-
-loader.o: loader.c loader.h ndis.h wrapndis.h
-
-crt.o: crt.c ndis.h
-
-ndis.o: ndis.c ndis.h iw_ndis.h wrapndis.h
-
-wrapndis.o: wrapndis.c wrapndis.h
-
-ntoskernel.o: ntoskernel.c ndis.h usb.h
-
-ntoskernel_io.o: ntoskernel_io.c ndis.h usb.h
-
-pe_linker.o: pe_linker.c
-
-pnp.o: pnp.c
-
-proc.o: proc.c ndis.h iw_ndis.h wrapndis.h
-
-rtl.o: rtl.c ndis.h
-
-usb.o: usb.c usb.h ndis.h
-
-wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
-
 ifeq ($(CONFIG_X86_64),y)
 OBJS += win2lin_stubs.o
 win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
