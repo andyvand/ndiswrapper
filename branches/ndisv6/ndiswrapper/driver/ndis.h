@@ -469,13 +469,13 @@ struct ndis_timer {
 
 struct ndis_mp_block;
 
-struct ndis_miniport_timer {
+struct ndis_mp_timer {
 	struct nt_timer nt_timer;
 	struct kdpc kdpc;
 	DPC func;
 	void *ctx;
 	struct ndis_mp_block *nmb;
-	struct ndis_miniport_timer *next;
+	struct ndis_mp_timer *next;
 };
 
 typedef struct cm_partial_resource_list ndis_resource_list_t;
