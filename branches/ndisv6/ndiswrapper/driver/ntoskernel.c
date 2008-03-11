@@ -430,7 +430,7 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct ndis_miniport_block *nmb)
+		     struct ndis_mp_block *nmb)
 {
 	struct wrap_timer *wrap_timer;
 

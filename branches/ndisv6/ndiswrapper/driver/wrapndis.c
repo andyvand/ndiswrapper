@@ -1539,7 +1539,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	struct device_object *fdo;
 	NTSTATUS status;
 	struct wrap_ndis_device *wnd;
-	struct ndis_miniport_block *nmb;
+	struct ndis_mp_block *nmb;
 	struct net_device *net_dev;
 	struct wrap_device *wd;
 	unsigned long i;
@@ -1555,7 +1555,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		return STATUS_RESOURCES;
 	}
 	wnd = netdev_priv(net_dev);
-	nmb = (struct ndis_miniport_block *)(wnd + 1);
+	nmb = (struct ndis_mp_block *)(wnd + 1);
 	TRACE1("wnd: %p", wnd);
 	status = IoCreateDevice(drv_obj, 0, NULL,
 				FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
