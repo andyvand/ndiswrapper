@@ -20,19 +20,23 @@
  */
 
 #define alloc_win_stack_frame(argc)		\
-	"subq $" #argc "*8, %%rsp\n\t"
+	"sub $(" #argc "+1)*8, %%rsp\n\t"
 #define free_win_stack_frame(argc)		\
-	"addq $" #argc "*8, %%rsp\n\t"
+	"add $(" #argc "+1)*8, %%rsp\n\t"
 
-/* m is index of Windows arg required, n is total number of args to
- * function Windows arg 1 should be at 0(%rsp), arg 2 at 8(%rsp) and
- * so on, after stack frame is allocated, which starts at -n*8(%rsp)
- * when stack frame is allocated. 4 > m >= n.
+/* m is index of Windows arg required; Windows arg 1 should be at
+ * 0(%rsp), arg 2 at 8(%rsp) and so on after the frame is allocated.
 */
 
-#define lin2win_win_arg(m,n) "(" #m "-1-" #n ")*8(%%rsp)"
+#define lin2win_win_arg(m) "(" #m "-1)*8(%%rsp)"
 
-/* volatile args for Windows function must be in clobber / output list */
+/* args for Windows function must be in clobber / output list */
+
+#define outputs()						\
+	"=a" (ret), "=c" (dummy), "=d" (dummy),			\
+		"=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)
+
+#define clobbers() "cc"
 
 #define LIN2WIN0(func)							\
 ({									\
@@ -43,11 +47,11 @@
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%[fptr]\n\t"					\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: [fptr] "r" (func));					\
+		: outputs()						\
+		: [fptr] "r" (func)					\
+		: clobbers());						\
 	ret;								\
 })
 
@@ -60,12 +64,11 @@
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%[fptr]\n\t"					\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1),						\
-		  [fptr] "r" (func));					\
+		: outputs()						\
+		: "c" (arg1), [fptr] "r" (func)				\
+		: clobbers());						\
 	ret;								\
 })
 
@@ -78,12 +81,11 @@
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%[fptr]\n\t"					\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1), "d" (arg2),				\
-		  [fptr] "r" (func));					\
+		: outputs()						\
+		: "c" (arg1), "d" (arg2), [fptr] "r" (func)		\
+		: clobbers());						\
 	ret;								\
 })
 
@@ -96,12 +98,12 @@
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%[fptr]\n\t"					\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: outputs()						\
 		: "c" (arg1), "d" (arg2), "r" (r8),			\
-		  [fptr] "r" (func));					\
+		  [fptr] "r" (func)					\
+		: clobbers());						\
 	ret;								\
 })
 
@@ -114,12 +116,12 @@
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%[fptr]\n\t"					\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: outputs()						\
 		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
-		  [fptr] "r" (func));					\
+		  [fptr] "r" (func)					\
+		: clobbers());						\
 	ret;								\
 })
 
@@ -131,15 +133,15 @@
 	register u64 r10 __asm__("r10");				\
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
-		"movq %[rarg5], " lin2win_win_arg(5,5) "\n\t"		\
 		alloc_win_stack_frame(5)				\
-		"call *%[fptr]\n\t"					\
+		"movq %[rarg5], " lin2win_win_arg(5) "\n\t"		\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(5)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: outputs()						\
 		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
-		  [rarg5] "r" ((u64)arg5),				\
-		  [fptr] "r" (func));					\
+		  [rarg5] "ri" ((u64)arg5),				\
+		  [fptr] "r" (func)					\
+		: clobbers());						\
 	ret;								\
 })
 
@@ -151,16 +153,16 @@
 	register u64 r10 __asm__("r10");				\
 	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
-		"movq %[rarg5], " lin2win_win_arg(5,6) "\n\t"		\
-		"movq %[rarg6], " lin2win_win_arg(6,6) "\n\t"		\
 		alloc_win_stack_frame(6)				\
-		"call *%[fptr]\n\t"					\
+		"movq %[rarg5], " lin2win_win_arg(5) "\n\t"		\
+		"movq %[rarg6], " lin2win_win_arg(6) "\n\t"		\
+		"callq *%[fptr]\n\t"					\
 		free_win_stack_frame(6)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: outputs()						\
 		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
-		  [rarg5] "r" ((u64)arg5), [rarg6] "r" ((u64)arg6),	\
-		  [fptr] "r" (func));					\
+		  [rarg5] "ri" ((u64)arg5), [rarg6] "ri" ((u64)arg6),	\
+		  [fptr] "r" (func)					\
+		: clobbers());						\
 	ret;								\
 })
 
