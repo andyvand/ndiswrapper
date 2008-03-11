@@ -849,7 +849,7 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 		pipe->handle = ep;
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
 			 "type: %d, handle %p", i, ep->bEndpointAddress,
-			 ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval,
+			 ep->bmAttributes, pipe->wMaxPacketSize, ep->bInterval,
 			 pipe->bInterval, pipe->type, pipe->handle);
 	}
 }
