@@ -44,7 +44,6 @@
 #include <linux/version.h>
 #include <linux/etherdevice.h>
 #include <net/iw_handler.h>
-#include <linux/netdevice.h>
 #include <linux/ethtool.h>
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
@@ -372,7 +371,39 @@ typedef u32 pm_message_t;
 #include "lin2win.h"
 #include "loader.h"
 
-#include "compat.h"
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+static inline void netif_tx_lock(struct net_device *dev)
+{
+	spin_lock(&dev->xmit_lock);
+}
+static inline void netif_tx_unlock(struct net_device *dev)
+{
+	spin_unlock(&dev->xmit_lock);
+}
+static inline void netif_tx_lock_bh(struct net_device *dev)
+{
+	spin_lock_bh(&dev->xmit_lock);
+}
+static inline void netif_tx_unlock_bh(struct net_device *dev)
+{
+	spin_unlock_bh(&dev->xmit_lock);
+}
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+static inline void netif_poll_enable(struct net_device *dev)
+{
+}
+static inline void netif_poll_disable(struct net_device *dev)
+{
+}
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+#define proc_net_root init_net.proc_net
+#else
+#define proc_net_root proc_net
+#endif
 
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
