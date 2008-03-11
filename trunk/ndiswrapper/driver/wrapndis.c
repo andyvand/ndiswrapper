@@ -993,7 +993,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 	TRACE2("%u, 0x%x, %u, 0x%x, %u", ndis_assoc_info->length,
 	       ndis_assoc_info->req_ies, ndis_assoc_info->req_ie_length,
 	       ndis_assoc_info->resp_ies, ndis_assoc_info->resp_ie_length);
-#if WIRELESS_EXT > 17
 	if (ndis_assoc_info->req_ie_length > 0) {
 		wrqu.data.length = ndis_assoc_info->req_ie_length;
 		wireless_send_event(wnd->net_dev, IWEVASSOCREQIE, &wrqu,
@@ -1006,7 +1005,6 @@ static void link_status_on(struct wrap_ndis_device *wnd)
 				    ((char *)ndis_assoc_info) +
 				    ndis_assoc_info->offset_resp_ies);
 	}
-#endif
 	kfree(ndis_assoc_info);
 
 send_assoc_event:
@@ -1749,9 +1747,6 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev->change_mtu = ndis_change_mtu;
 	net_dev->do_ioctl = NULL;
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
-#if WIRELESS_EXT < 19
-		net_dev->get_wireless_stats = get_iw_stats;
-#endif
 		net_dev->wireless_handlers = &ndis_handler_def;
 	}
 	net_dev->set_multicast_list = ndis_set_multicast_list;

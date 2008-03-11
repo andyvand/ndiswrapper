@@ -65,7 +65,6 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 
 static int set_assoc_params(struct wrap_ndis_device *wnd)
 {
-#if WIRELESS_EXT > 17
 	TRACE2("wpa_version=0x%x auth_alg=0x%x key_mgmt=0x%x "
 	       "cipher_pairwise=0x%x cipher_group=0x%x",
 	       wnd->iw_auth_wpa_version, wnd->iw_auth_80211_alg,
@@ -74,7 +73,6 @@ static int set_assoc_params(struct wrap_ndis_device *wnd)
 	set_auth_mode(wnd);
 	set_priv_filter(wnd);
 	set_encr_mode(wnd);
-#endif
 	return 0;
 }
 
@@ -1151,7 +1149,6 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iep += ielen;
 				continue;
 			}
-#if WIRELESS_EXT > 17
 			if ((iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
 			     memcmp(iep + 2, "\x00\x50\xf2\x01", 4) == 0) ||
 			    iep[0] == RSN_INFO_ELEM) {
@@ -1161,40 +1158,6 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				event = iwe_stream_add_point(event, end_buf,
 							     &iwe, iep);
 			}
-#else
-
-			if (iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
-			    memcmp(iep + 2, "\x00\x50\xf2\x01", 4) == 0) {
-				unsigned char *p = buf;
-
-				p += sprintf(p, "wpa_ie=");
-				for (i = 0; i < ielen; i++)
-					p += sprintf(p, "%02x", iep[i]);
-
-				TRACE2("adding wpa_ie :%lu",
-				       (unsigned long)strlen(buf));
-
-				memset(&iwe, 0, sizeof(iwe));
-				iwe.cmd = IWEVCUSTOM;
-				iwe.u.data.length = strlen(buf);
-				event = iwe_stream_add_point(event, end_buf,
-							     &iwe, buf);
-			} else if (iep[0] == RSN_INFO_ELEM) {
-				unsigned char *p = buf;
-
-				p += sprintf(p, "rsn_ie=");
-				for (i = 0; i < ielen; i++)
-					p += sprintf(p, "%02x", iep[i]);
-
-				TRACE2("adding rsn_ie :%lu",
-				       (unsigned long)strlen(buf));
-				memset(&iwe, 0, sizeof(iwe));
-				iwe.cmd = IWEVCUSTOM;
-				iwe.u.data.length = strlen(buf);
-				event = iwe_stream_add_point(event, end_buf,
-							     &iwe, buf);
-			}
-#endif
 			iep += ielen;
 		}
 	}
@@ -1467,7 +1430,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->min_frag = 256;
 	range->max_frag = 2346;
 
-#if WIRELESS_EXT > 16
 	/* Event capability (kernel + driver) */
 	range->event_capa[0] = (IW_EVENT_CAPA_K_0 |
 				IW_EVENT_CAPA_MASK(SIOCGIWTHRSPY) |
@@ -1478,9 +1440,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 				IW_EVENT_CAPA_MASK(IWEVCUSTOM) |
 				IW_EVENT_CAPA_MASK(IWEVREGISTERED) |
 				IW_EVENT_CAPA_MASK(IWEVEXPIRED));
-#endif /* WIRELESS_EXT > 16 */
 
-#if WIRELESS_EXT > 17
 	range->enc_capa = 0;
 
 	if (test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr))
@@ -1494,8 +1454,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	if (test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ||
 	    test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth))
 		range->enc_capa |= IW_ENC_CAPA_WPA2;
-
-#endif /* WIRELESS_EXT > 17 */
 
 	return 0;
 }
@@ -1562,7 +1520,6 @@ int set_priv_filter(struct wrap_ndis_device *wnd)
 	EXIT2(return 0);
 }
 
-#if WIRELESS_EXT > 17
 static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
@@ -1809,7 +1766,6 @@ static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 
 	return 0;
 }
-#endif /* WIRELESS_EXT > 17 */
 
 #define WEXT(id) [id - SIOCIWFIRST]
 
@@ -1844,7 +1800,6 @@ static const iw_handler	ndis_handler[] = {
 	WEXT(SIOCGIWNICKN)	 = iw_get_nick,
 	WEXT(SIOCSIWNICKN)	 = iw_set_nick,
 	WEXT(SIOCSIWCOMMIT)	 = iw_set_dummy,
-#if WIRELESS_EXT > 17
 	WEXT(SIOCSIWMLME)	 = iw_set_mlme,
 	WEXT(SIOCSIWGENIE)	 = iw_set_genie,
 	WEXT(SIOCSIWAUTH)	 = iw_set_auth,
@@ -1852,7 +1807,6 @@ static const iw_handler	ndis_handler[] = {
 	WEXT(SIOCSIWENCODEEXT)	 = iw_set_encodeext,
 	WEXT(SIOCGIWENCODEEXT)	 = iw_get_encodeext,
 	WEXT(SIOCSIWPMKSA)	 = iw_set_pmksa,
-#endif /* WIRELESS_EXT > 17 */
 };
 
 /* private ioctl's */
@@ -2006,7 +1960,5 @@ const struct iw_handler_def ndis_handler_def = {
 	.standard	= (iw_handler *)ndis_handler,
 	.private	= (iw_handler *)priv_handler,
 	.private_args	= (struct iw_priv_args *)priv_args,
-#if WIRELESS_EXT >= 19
 	.get_wireless_stats = get_iw_stats,
-#endif
 };
