@@ -1037,9 +1037,9 @@ void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 
 void ExFreePool(void *p) wstdcall;
 ULONG MmSizeOfMdl(void *base, ULONG length) wstdcall;
-void *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
+void __iomem *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 		   enum memory_caching_type cache) wstdcall;
-void MmUnmapIoSpace(void *addr, SIZE_T size) wstdcall;
+void MmUnmapIoSpace(void __iomem *addr, SIZE_T size) wstdcall;
 void MmProbeAndLockPages(struct mdl *mdl, KPROCESSOR_MODE access_mode,
 			 enum lock_operation operation) wstdcall;
 void MmUnlockPages(struct mdl *mdl) wstdcall;

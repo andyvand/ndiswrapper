@@ -811,7 +811,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMPciAssignResources,3)
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
-	(void **virt, struct ndis_mp_block *nmb,
+	(void __iomem **virt, struct ndis_mp_block *nmb,
 	 NDIS_PHY_ADDRESS phy_addr, UINT len)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
@@ -829,7 +829,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
 }
 
 wstdcall void WIN_FUNC(NdisMUnmapIoSpace,3)
-	(struct ndis_mp_block *nmb, void *virt, UINT len)
+	(struct ndis_mp_block *nmb, void __iomem *virt, UINT len)
 {
 	ENTER2("%p, %d", virt, len);
 	MmUnmapIoSpace(virt, len);

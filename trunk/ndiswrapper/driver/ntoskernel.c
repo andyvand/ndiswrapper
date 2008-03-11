@@ -1738,11 +1738,11 @@ wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
  * probably get this device to work if we create a buffer with the
  * strings as required by the driver and return virtual address for
  * that address instead */
-wstdcall void *WIN_FUNC(MmMapIoSpace,3)
+wstdcall void __iomem *WIN_FUNC(MmMapIoSpace,3)
 	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 	 enum memory_caching_type cache)
 {
-	void *virt;
+	void __iomem *virt;
 	ENTER1("cache type: %d", cache);
 	if (cache == MmCached)
 		virt = ioremap(phys_addr, size);
@@ -1753,7 +1753,7 @@ wstdcall void *WIN_FUNC(MmMapIoSpace,3)
 }
 
 wstdcall void WIN_FUNC(MmUnmapIoSpace,2)
-	(void *addr, SIZE_T size)
+	(void __iomem *addr, SIZE_T size)
 {
 	ENTER1("%p, %lu", addr, size);
 	iounmap(addr);
