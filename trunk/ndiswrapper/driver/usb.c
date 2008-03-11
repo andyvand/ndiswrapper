@@ -840,10 +840,10 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 			else if (wd->usb.udev->speed == USB_SPEED_FULL)
 				pipe->bInterval = ep->bInterval;
 			else {
-				int i, j;
-				for (i = j = 1; j < ep->bInterval; i++)
+				int j, k;
+				for (j = k = 1; j < ep->bInterval; k++)
 					j *= 2;
-				pipe->bInterval = i;
+				pipe->bInterval = k;
 			}
 		}
 		pipe->handle = ep;
