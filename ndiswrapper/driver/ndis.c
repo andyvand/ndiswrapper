@@ -2638,11 +2638,7 @@ wstdcall ULONG WIN_FUNC(NdisMGetDmaAlignment,1)
 	(struct ndis_mp_block *nmb)
 {
 	ENTER3("");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	return dma_get_cache_alignment();
-#else
-	return L1_CACHE_BYTES;
-#endif
 }
 
 wstdcall CHAR WIN_FUNC(NdisSystemProcessorCount,0)
@@ -2655,14 +2651,9 @@ wstdcall void WIN_FUNC(NdisGetCurrentProcessorCounts,3)
 	(ULONG *idle, ULONG *kernel_user, ULONG *index)
 {
 	int cpu = smp_processor_id();
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,10)
 	*idle = kstat_cpu(cpu).cpustat.idle;
 	*kernel_user = kstat_cpu(cpu).cpustat.system +
 		kstat_cpu(cpu).cpustat.user;
-#else
-	*idle = 0;
-	*kernel_user = 0;
-#endif
 	*index = cpu;
 }
 

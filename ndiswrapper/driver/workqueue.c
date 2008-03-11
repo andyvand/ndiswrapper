@@ -32,15 +32,8 @@ static int workq_thread(void *data)
 	WORKTRACE("%p, %d, %p", workq, thread_data->index, thread);
 	strncpy(thread->name, current->comm, sizeof(thread->name));
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	daemonize();
-	reparent_to_init();
-	current->nice -= 5;
-	sigfillset(&current->blocked);
-#else
 	daemonize(thread->name);
 	set_user_nice(current, -5);
-#endif
 
 	if (thread->task != current) {
 		WARNING("invalid task: %p, %p", thread->task, current);
@@ -180,19 +173,9 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 		thread_data.workq = workq;
 		thread_data.index = i;
 		WORKTRACE("%p, %d, %p", workq, i, &workq->threads[i]);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-		workq->threads[i].pid =
-			kernel_thread(workq_thread, &thread_data, CLONE_SIGHAND);
-		if (workq->threads[i].pid < 0)
-			workq->threads[i].task = (void *)-ENOMEM;
-		else
-			workq->threads[i].task =
-				find_task_by_pid(workq->threads[i].pid);
-#else
 		workq->threads[i].task =
 			kthread_create(workq_thread, &thread_data,
 				       "%s/%d", name, i);
-#endif
 		if (IS_ERR(workq->threads[i].task)) {
 			int j;
 			for (j = 0; j < i; j++)

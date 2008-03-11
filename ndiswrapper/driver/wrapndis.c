@@ -1536,7 +1536,6 @@ static void get_supported_oids(struct wrap_ndis_device *wnd)
 	EXIT1(return);
 }
 
-#if defined(HAVE_ETHTOOL)
 static void ndis_get_drvinfo(struct net_device *dev,
 			     struct ethtool_drvinfo *info)
 {
@@ -1633,11 +1632,7 @@ static int ndis_set_tx_csum(struct net_device *dev, u32 data)
 		return -EOPNOTSUPP;
 
 	if (wnd->tx_csum.ip_csum) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,12)
 		ethtool_op_set_tx_hw_csum(dev, data);
-#else
-		dev->features |= NETIF_F_HW_CSUM;
-#endif
 	} else
 		ethtool_op_set_tx_csum(dev, data);
 	return 0;
@@ -1684,7 +1679,6 @@ static struct ethtool_ops ndis_ethtool_ops = {
 	.get_sg		= ndis_get_sg,
 	.set_sg		= ndis_set_sg,
 };
-#endif
 
 static int notifier_event(struct notifier_block *notifier, unsigned long event,
 			  void *ptr)
@@ -1762,9 +1756,7 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	net_dev->set_multicast_list = ndis_set_multicast_list;
 	net_dev->set_mac_address = ndis_set_mac_address;
-#if defined(HAVE_ETHTOOL)
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
-#endif
 	if (wnd->mp_interrupt)
 		net_dev->irq = wnd->mp_interrupt->irq;
 	net_dev->mem_start = wnd->mem_start;
@@ -1979,12 +1971,10 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		return STATUS_RESOURCES;
 	}
 	wd = pdo->reserved;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (wrap_is_pci_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
 	if (wrap_is_usb_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
-#endif
 	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN, 0,
 				FALSE, &fdo);
 	if (status != STATUS_SUCCESS) {

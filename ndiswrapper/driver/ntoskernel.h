@@ -44,16 +44,13 @@
 #include <linux/rtnetlink.h>
 #include <linux/highmem.h>
 #include <linux/percpu.h>
+#include <linux/kthread.h>
+#include <linux/workqueue.h>
 
 #if !defined(CONFIG_X86) && !defined(CONFIG_X86_64)
 #error "this module is for x86 or x86_64 architectures only"
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
-#include <linux/kthread.h>
-#else
-#include <linux/config.h>
-#endif
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
 #ifndef IRQ_HANDLED
@@ -62,9 +59,6 @@
 #define irqreturn_t void
 #endif
 
-/* Workqueue / task queue backwards compatibility stuff */
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
-#include <linux/workqueue.h>
 /* pci functions in 2.6 kernels have problems allocating dma buffers,
  * but seem to work fine with dma functions
  */
@@ -85,35 +79,6 @@
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 #define PCI_DMA_MAP_ERROR(dma_addr) dma_mapping_error(dma_addr)
 
-#else // linux version <= 2.5.41
-
-#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle)	\
-	pci_alloc_consistent(dev,size,dma_handle)
-#define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle)	\
-	pci_free_consistent(dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(dev,addr,size,direction)	\
-	pci_map_single(dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction)	\
-	pci_unmap_single(dev,dma_handle,size,direction)
-#define MAP_SG(dev, sglist, nents, direction)		\
-	pci_map_sg(dev, sglist, nents, direction)
-#define UNMAP_SG(dev, sglist, nents, direction)		\
-	pci_unmap_sg(dev, sglist, nents, direction)
-#define PCI_DMA_MAP_ERROR(dma_addr) pci_dma_mapping_error(dma_addr)
-
-#include <linux/smp_lock.h>
-
-/* RedHat kernels define irqs_disabled this way */
-#ifndef irqs_disabled
-#define irqs_disabled()                \
-({                                     \
-	unsigned long flags;	       \
-       __save_flags(flags);            \
-       !(flags & (1<<9));              \
-})
-#endif
-
-#endif // LINUX_VERSION_CODE
 
 #if defined(CONFIG_NET_RADIO) && !defined(CONFIG_WIRELESS_EXT)
 #define CONFIG_WIRELESS_EXT
@@ -206,13 +171,7 @@ typedef struct {
 #undef create_singlethread_workqueue
 #define create_singlethread_workqueue(name) wrap_create_wq(name, 1, 0)
 #undef create_workqueue
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 #define create_workqueue(name) wrap_create_wq(name, 0, 0)
-#else
-#define create_workqueue(name) wrap_create_wq(name, 1, 0)
-#define for_each_online_cpu(cpu) while ((cpu = 0) || 1)
-#define kthread_bind(thread, cpu) do { } while (0)
-#endif
 #undef destroy_workqueue
 #define destroy_workqueue wrap_destroy_wq
 #undef queue_work
@@ -284,34 +243,8 @@ struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
 #define CHECKSUM_HW CHECKSUM_PARTIAL
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#ifndef container_of
-#define container_of(ptr, type, member)					\
-({									\
-	const typeof( ((type *)0)->member ) *__mptr = (ptr);		\
-	(type *)( (char *)__mptr - offsetof(type,member) );		\
-})
-#endif
-
-#ifndef virt_addr_valid
-#define virt_addr_valid(addr) VALID_PAGE(virt_to_page(addr))
-#endif
-
-#ifndef SET_NETDEV_DEV
-#define SET_NETDEV_DEV(net,pdev) do { } while (0)
-#endif
-
-#define usb_set_intfdata(intf, data) do { } while (0)
-
-#endif // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
 #ifndef offset_in_page
 #define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
-#define HAVE_ETHTOOL 1
 #endif
 
 #ifndef PMSG_SUSPEND
@@ -342,10 +275,6 @@ typedef u32 pm_message_t;
 
 #ifndef PM_EVENT_SUSPEND
 #define PM_EVENT_SUSPEND 2
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
-#define pci_choose_state(dev, state) (state)
 #endif
 
 #if !defined(HAVE_NETDEV_PRIV)
@@ -605,9 +534,6 @@ struct wrap_device {
 		struct {
 			struct pci_dev *pdev;
 			enum device_power_state wake_state;
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
-			u32 pci_state[16];
-#endif
 		} pci;
 		struct {
 			struct usb_device *udev;
