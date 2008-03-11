@@ -43,7 +43,6 @@ static struct guid class_guids[] = {
 	{0xf12d3cf8, 0xb11d, 0x457e, },
 };
 
-struct semaphore loader_mutex;
 static struct completion loader_complete;
 
 static struct nt_list wrap_devices;
