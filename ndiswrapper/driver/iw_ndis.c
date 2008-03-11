@@ -1301,7 +1301,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->min_frag = 256;
 	range->max_frag = 2346;
 
-#if WIRELESS_EXT > 16
 	/* Event capability (kernel + driver) */
 	range->event_capa[0] = (IW_EVENT_CAPA_K_0 |
 				IW_EVENT_CAPA_MASK(SIOCGIWTHRSPY) |
@@ -1312,9 +1311,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 				IW_EVENT_CAPA_MASK(IWEVCUSTOM) |
 				IW_EVENT_CAPA_MASK(IWEVREGISTERED) |
 				IW_EVENT_CAPA_MASK(IWEVEXPIRED));
-#endif /* WIRELESS_EXT > 16 */
 
-#if WIRELESS_EXT > 17
 	range->enc_capa = 0;
 
 	if (test_bit(DOT11_CIPHER_ALGO_TKIP, &wnd->capa.encr))
@@ -1328,8 +1325,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	if (test_bit(DOT11_AUTH_ALGO_RSNA, &wnd->capa.auth) ||
 	    test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth))
 		range->enc_capa |= IW_ENC_CAPA_WPA2;
-
-#endif /* WIRELESS_EXT > 17 */
 
 	return 0;
 }
@@ -1628,7 +1623,5 @@ const struct iw_handler_def ndis_handler_def = {
 	.standard	= (iw_handler *)ndis_handler,
 	.private	= (iw_handler *)priv_handler,
 	.private_args	= (struct iw_priv_args *)priv_args,
-#if WIRELESS_EXT >= 19
 	.get_wireless_stats = get_wireless_stats,
-#endif
 };
