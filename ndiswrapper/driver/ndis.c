@@ -1671,7 +1671,7 @@ wstdcall void WIN_FUNC(NdisFreeMdl,1)
 wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 {
 	struct ndis_mp_block *nmb;
-	struct ndis_miniport_timer *timer;
+	struct ndis_mp_timer *timer;
 
 	timer = ctx;
 	ENTER3("timer: %p, func: %p, ctx: %p, nmb: %p",
@@ -1684,7 +1684,7 @@ wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 WIN_FUNC_DECL(mp_timer_dpc,4)
 
 wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
-	(struct ndis_miniport_timer *timer, struct ndis_mp_block *nmb,
+	(struct ndis_mp_timer *timer, struct ndis_mp_block *nmb,
 	 DPC func, void *ctx)
 {
 	ENTER3("timer: %p, func: %p, ctx: %p, nmb: %p",
@@ -1699,7 +1699,7 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 }
 
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
-	(struct ndis_miniport_timer *timer, UINT period_ms)
+	(struct ndis_mp_timer *timer, UINT period_ms)
 {
 	unsigned long expires = MSEC_TO_HZ(period_ms);
 
@@ -1709,7 +1709,7 @@ wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 }
 
 wstdcall void WIN_FUNC(NdisMCancelTimer,2)
-	(struct ndis_miniport_timer *timer, BOOLEAN *canceled)
+	(struct ndis_mp_timer *timer, BOOLEAN *canceled)
 {
 	ENTER4("%p", timer);
 	*canceled = KeCancelTimer(&timer->nt_timer);
@@ -1726,7 +1726,7 @@ wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 }
 
 /* NdisMSetTimer is a macro that calls NdisSetTimer with
- * ndis_miniport_timer typecast to ndis_timer */
+ * ndis_mp_timer typecast to ndis_timer */
 
 wstdcall void WIN_FUNC(NdisSetTimer,2)
 	(struct ndis_timer *timer, UINT duetime_ms)
