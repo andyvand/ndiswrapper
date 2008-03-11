@@ -128,6 +128,7 @@ all : prereq_check win2lin_stubs.h gen_exports default stack_check
 OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
 
+
 # Disable USB support and use own workqueue code if GPL-only symbols
 # are not available
 ifneq (,$(shell grep -s -A1 '"$(MODNAME)"' $(KSRC)/kernel/module.c | \
