@@ -29,8 +29,6 @@ static struct nt_list ndis_worker_list;
 static spinlock_t ndis_work_list_lock;
 static struct nt_thread *ndis_worker_thread;
 
-extern struct semaphore loader_mutex;
-
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
 	(void **driver_handle, struct driver_object *driver,
 	 struct unicode_string *reg_path, void *unused)

@@ -18,8 +18,6 @@
 #include "wrapndis.h"
 #include "loader.h"
 
-extern struct semaphore loader_mutex;
-
 static NTSTATUS start_pdo(struct device_object *pdo)
 {
 	int i, ret, resources_size;
