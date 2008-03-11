@@ -1623,5 +1623,5 @@ const struct iw_handler_def ndis_handler_def = {
 	.standard	= (iw_handler *)ndis_handler,
 	.private	= (iw_handler *)priv_handler,
 	.private_args	= (struct iw_priv_args *)priv_args,
-	.get_wireless_stats = get_wireless_stats,
+	.get_wireless_stats = get_iw_stats,
 };
