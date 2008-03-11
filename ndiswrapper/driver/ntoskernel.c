@@ -85,9 +85,7 @@ WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
-#ifdef NTOS_WQ
 workqueue_struct_t *ntos_wq;
-#endif
 
 #ifdef WRAP_PREEMPT
 DEFINE_PER_CPU(irql_info_t, irql_info);
@@ -2531,16 +2529,12 @@ int ntoskernel_init(void)
 	} while (0);
 #endif
 
-#ifdef NTOS_WQ
 	ntos_wq = create_singlethread_workqueue("ntos_wq");
 	if (!ntos_wq) {
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;
 	}
 	ntos_worker_thread = wrap_worker_init(ntos_wq);
-#else
-	ntos_worker_thread = wrap_worker_init(NULL);
-#endif
 	TRACE1("%p", ntos_worker_thread);
 
 	if (add_bus_driver("PCI")
@@ -2662,10 +2656,8 @@ void ntoskernel_exit(void)
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
-#ifdef NTOS_WQ
 	if (ntos_wq)
 		destroy_workqueue(ntos_wq);
-#endif
 	TRACE1("%p", ntos_worker_thread);
 	if (ntos_worker_thread)
 		ObDereferenceObject(ntos_worker_thread);
