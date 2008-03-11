@@ -23,16 +23,8 @@ static int workq_thread(void *data)
 	work_struct_t *work;
 	unsigned long flags;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	strncpy(current->comm, workq->name, sizeof(current->comm));
-	current->comm[sizeof(current->comm) - 1] = 0;
-	daemonize();
-	reparent_to_init();
-	current->nice -= 5;
-#else
 	daemonize(workq->name);
 	set_user_nice(current, -5);
-#endif
 
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;

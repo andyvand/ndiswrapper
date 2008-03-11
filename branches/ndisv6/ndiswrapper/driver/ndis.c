@@ -1513,11 +1513,7 @@ wstdcall ULONG WIN_FUNC(NdisMGetDmaAlignment,1)
 	(struct ndis_miniport_block *nmb)
 {
 	ENTER3("");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	return dma_get_cache_alignment();
-#else
-	return L1_CACHE_BYTES;
-#endif
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)

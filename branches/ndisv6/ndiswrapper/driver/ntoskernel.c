@@ -1642,22 +1642,12 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	thread_info.ctx = ctx;
 	init_completion(&thread_info.started);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	pid = kernel_thread(thread_trampoline, &thread_info, CLONE_SIGHAND);
-	TRACE2("pid = %d", pid);
-	if (pid < 0) {
-		free_object(thread_info.thread);
-		EXIT2(return STATUS_FAILURE);
-	}
-	TRACE2("created task: %d", pid);
-#else
 	task = kthread_run(thread_trampoline, &thread_info, "windisdrvr");
 	if (IS_ERR(task)) {
 		free_object(thread_info.thread);
 		EXIT2(return STATUS_FAILURE);
 	}
 	TRACE2("created task: %p (%d)", task, task->pid);
-#endif
 
 	wait_for_completion(&thread_info.started);
 	*phandle = OBJECT_TO_HEADER(thread_info.thread);

@@ -497,7 +497,6 @@ struct iw_statistics *get_wireless_stats(struct net_device *dev)
 	return &wnd->wireless_stats;
 }
 
-#if defined(HAVE_ETHTOOL)
 static void ndis_get_drvinfo(struct net_device *dev,
 			     struct ethtool_drvinfo *info)
 {
@@ -531,7 +530,6 @@ static struct ethtool_ops ndis_ethtool_ops = {
 	.get_drvinfo	= ndis_get_drvinfo,
 	.get_link	= ndis_get_link,
 };
-#endif
 
 static int notifier_event(struct notifier_block *notifier, unsigned long event,
 			  void *ptr)
@@ -1377,9 +1375,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	net_dev->set_multicast_list = ndis_set_multicast_list;
 //	net_dev->set_mac_address = ndis_set_mac_address;
-#if defined(HAVE_ETHTOOL)
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
-#endif
 	net_dev->irq = wnd->wd->pci.pdev->irq;
 	net_dev->mem_start = wnd->mem_start;
 	net_dev->mem_end = wnd->mem_end;
@@ -1616,12 +1612,10 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 //	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
 //		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (wrap_is_pci_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
 	if (wrap_is_usb_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
-#endif
 
 	if (ndis_init_device(wnd)) {
 		kfree(wnd->nmb);

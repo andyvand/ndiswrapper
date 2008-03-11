@@ -100,11 +100,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			EXIT1(return NULL);
 		}
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-					  , 1
-#endif
-			);
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env, 1);
 		if (ret) {
 			up(&loader_mutex);
 			ERROR("couldn't load driver %s; check system log "
@@ -266,11 +262,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			EXIT1(return NULL);
 		}
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-					  , 1
-#endif
-			);
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env, 1);
 		if (ret) {
 			up(&loader_mutex);
 			ERROR("couldn't load file %s/%s; check system log "
@@ -601,11 +593,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	} else {
 		printk(KERN_INFO "%s: driver %s (%s) loaded\n",
 		       DRIVER_NAME, wrap_driver->name, wrap_driver->version);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 		add_taint(TAINT_PROPRIETARY_MODULE);
-		/* older kernels don't seem to have a way to set
-		 * tainted information */
-#endif
 		EXIT1(return 0);
 	}
 }
@@ -635,10 +623,8 @@ static struct usb_driver wrap_usb_driver = {
 	.id_table = wrap_usb_id_table,
 	.probe = wrap_pnp_start_usb_device,
 	.disconnect = __devexit_p(wrap_pnp_remove_usb_device),
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	.suspend = wrap_pnp_suspend_usb_device,
 	.resume = wrap_pnp_resume_usb_device,
-#endif
 };
 #endif
 
@@ -715,11 +701,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			EXIT1(return NULL);
 		}
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-					  , 1
-#endif
-			);
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env, 1);
 		if (ret) {
 			up(&loader_mutex);
 			TRACE1("couldn't load device %04x:%04x; check system "
