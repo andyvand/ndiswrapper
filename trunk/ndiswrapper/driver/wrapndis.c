@@ -192,7 +192,8 @@ static NDIS_STATUS mp_pnp_event(struct ndis_device *wnd,
 static NDIS_STATUS mp_init(struct ndis_device *wnd)
 {
 	NDIS_STATUS error_status, status;
-	UINT medium_index, medium_array[] = {NdisMedium802_3};
+	UINT medium_index;
+	enum ndis_medium medium_array[] = {NdisMedium802_3};
 	struct miniport *mp;
 
 	ENTER1("irql: %d", current_irql());
