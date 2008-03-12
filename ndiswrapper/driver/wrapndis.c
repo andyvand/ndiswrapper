@@ -1549,7 +1549,7 @@ static void ndis_get_drvinfo(struct net_device *dev,
 	if (wrap_is_pci_bus(wnd->wd->dev_bus))
 		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
 			sizeof(info->bus_info) - 1);
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	else
 		usb_make_path(wnd->wd->usb.udev, info->bus_info,
 			      sizeof(info->bus_info) - 1);

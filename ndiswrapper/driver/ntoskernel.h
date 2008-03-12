@@ -377,15 +377,6 @@ static inline void netif_poll_disable(struct net_device *dev)
 #define proc_net_root proc_net
 #endif
 
-#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
-#define CONFIG_USB 1
-#endif
-
-#if defined(DISABLE_USB)
-#undef CONFIG_USB
-#undef CONFIG_USB_MODULE
-#endif
-
 /* TICK is 100ns */
 #define TICKSPERSEC		10000000
 #define TICKSPERMSEC		10000
@@ -550,7 +541,7 @@ struct wrap_device {
 #define wrap_is_pci_bus(dev_bus)			\
 	(WRAP_BUS(dev_bus) == WRAP_PCI_BUS ||		\
 	 WRAP_BUS(dev_bus) == WRAP_PCMCIA_BUS)
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 /* earlier versions of ndiswrapper used 0 as USB_BUS */
 #define wrap_is_usb_bus(dev_bus)			\
 	(WRAP_BUS(dev_bus) == WRAP_USB_BUS ||		\
