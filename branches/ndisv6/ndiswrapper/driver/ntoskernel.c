@@ -2559,7 +2559,7 @@ int ntoskernel_init(void)
 	TRACE1("%p", ntos_worker_thread);
 
 	if (add_bus_driver("PCI")
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	    || add_bus_driver("USB")
 #endif
 		) {

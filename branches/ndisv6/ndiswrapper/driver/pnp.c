@@ -32,7 +32,7 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 	if (ntoskernel_init_device(wd))
 		EXIT1(return STATUS_FAILURE);
 	if (wrap_is_usb_bus(wd->dev_bus)) {
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 		if (usb_init_device(wd)) {
 			ntoskernel_exit_device(wd);
 			EXIT1(return STATUS_FAILURE);
@@ -178,7 +178,7 @@ static void remove_pdo(struct device_object *pdo)
 		wd->pci.pdev = NULL;
 		pci_set_drvdata(pdev, NULL);
 	} else if (wrap_is_usb_bus(wd->dev_bus)) {
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 		usb_exit_device(wd);
 #endif
 	}
@@ -225,7 +225,7 @@ wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 
 	DUMP_IRP(irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	status = wrap_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
 	if (status != STATUS_PENDING)
@@ -243,7 +243,7 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
 	NTSTATUS status;
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
 
@@ -264,7 +264,7 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 		if (!wrap_is_usb_bus(wd->dev_bus)) {
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
@@ -343,7 +343,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 				}
 				pci_set_power_state(pdev, PCI_D0);
 			} else { // usb device
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 				wrap_resume_urbs(wd);
 #endif
 			}
@@ -361,7 +361,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 				}
 				pci_set_power_state(pdev, PCI_D3hot);
 			} else { // usb device
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 				wrap_suspend_urbs(wd);
 #endif
 			}
@@ -648,7 +648,7 @@ int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
 	return pnp_set_device_power_state(wd, PowerDeviceD0);
 }
 
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 int wrap_pnp_start_usb_device(struct usb_interface *intf,
 			      const struct usb_device_id *usb_id)
 {
