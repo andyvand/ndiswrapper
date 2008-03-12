@@ -34,7 +34,9 @@ noregparm INT WIN_FUNC(swprintf,12)
 	EXIT2(return 0);
 }
 
-noregparm INT WIN_FUNC(_win_vsprintf,3)
+/* FIXME: Windows va_list cannot be passed to Linux as is */
+#if 0
+noregparm INT WIN_FUNC_BROKEN(_win_vsprintf,3)
 	(char *str, const char *format, va_list ap)
 {
 	INT i;
@@ -42,6 +44,7 @@ noregparm INT WIN_FUNC(_win_vsprintf,3)
 	TRACE2("str: %p: %s", str, str);
 	EXIT2(return i);
 }
+#endif
 
 noregparm INT WIN_FUNC(_win_snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
@@ -69,7 +72,9 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	return res;
 }
 
-noregparm INT WIN_FUNC(_win_vsnprintf,4)
+/* FIXME: Windows va_list cannot be passed to Linux as is */
+#if 0
+noregparm INT WIN_FUNC_BROKEN(_win_vsnprintf,4)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
@@ -78,7 +83,7 @@ noregparm INT WIN_FUNC(_win_vsnprintf,4)
 	EXIT2(return i);
 }
 
-noregparm INT WIN_FUNC(_win__vsnprintf,4)
+noregparm INT WIN_FUNC_BROKEN(_win__vsnprintf,4)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
@@ -86,6 +91,7 @@ noregparm INT WIN_FUNC(_win__vsnprintf,4)
 	TRACE2("str: %p: %s", str, str);
 	EXIT2(return i);
 }
+#endif
 
 noregparm char *WIN_FUNC(_win_strncpy,3)
 	(char *dst, char *src, SIZE_T n)
