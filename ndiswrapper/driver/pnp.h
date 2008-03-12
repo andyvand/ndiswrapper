@@ -32,7 +32,7 @@ void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev);
 int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state);
 int wrap_pnp_resume_pci_device(struct pci_dev *pdev);
 
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 int wrap_pnp_start_usb_device(struct usb_interface *intf,
 			      const struct usb_device_id *usb_id);
 void wrap_pnp_remove_usb_device(struct usb_interface *intf);

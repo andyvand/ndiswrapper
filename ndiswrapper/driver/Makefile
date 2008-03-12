@@ -152,8 +152,7 @@ MOD_CFLAGS += $(shell if grep -q 'struct module \*owner;' \
 		   $(KSRC)/include/linux/usb.h ; then \
 			echo -DUSB_DRIVER_OWNER; \
 		  fi)
-else
-MOD_CFLAGS += -DDISABLE_USB
+MOD_CFLAGS += -DENABLE_USB
 endif
 
 ifdef WRAP_WQ

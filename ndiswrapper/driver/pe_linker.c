@@ -72,7 +72,7 @@ static const char *image_directory_name[] = {
 #ifndef TEST_LOADER
 extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
 	ndis_exports[], crt_exports[], hal_exports[], rtl_exports[];
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 extern struct wrap_export usb_exports[];
 #endif
 
@@ -104,7 +104,7 @@ static char *get_export(char *name)
 		if (strcmp(rtl_exports[i].name, name) == 0)
 			return (char *)rtl_exports[i].func;
 
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	for (i = 0 ; usb_exports[i].name != NULL; i++)
 		if (strcmp(usb_exports[i].name, name) == 0)
 			return (char *)usb_exports[i].func;
