@@ -65,7 +65,7 @@ MODULE_LICENSE("GPL");
 static void module_cleanup(void)
 {
 	loader_exit();
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	usb_exit();
 #endif
 
@@ -99,7 +99,7 @@ static int __init wrapper_init(void)
 
 	if (wrapmem_init() || ntoskernel_init() || crt_init() ||
 	    rtl_init() || ndis_init() || wrapndis_init() ||
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	    usb_init() ||
 #endif
 	    wrap_procfs_init() || loader_init()) {

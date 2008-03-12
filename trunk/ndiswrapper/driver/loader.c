@@ -608,7 +608,7 @@ static struct pci_driver wrap_pci_driver = {
 	.resume		= wrap_pnp_resume_pci_device,
 };
 
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 static struct usb_device_id wrap_usb_id_table[] = {
 	{
 		.driver_info = 1
@@ -636,7 +636,7 @@ static void register_devices(void)
 		wrap_pci_driver.name = NULL;
 	}
 
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	res = usb_register(&wrap_usb_driver);
 	if (res < 0) {
 		ERROR("couldn't register usb driver: %d", res);
@@ -661,7 +661,7 @@ static void unregister_devices(void)
 
 	if (wrap_pci_driver.name)
 		pci_unregister_driver(&wrap_pci_driver);
-#ifdef CONFIG_USB
+#ifdef ENABLE_USB
 	if (wrap_usb_driver.name)
 		usb_deregister(&wrap_usb_driver);
 #endif
