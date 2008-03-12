@@ -157,7 +157,7 @@ OBJS += workqueue.o
 endif
 
 
-all: prereq_check modules stack_check
+all: config_check modules
 
 # generate exports symbol table from C files
 quiet_cmd_mkexport = MKEXPORT $@
@@ -187,29 +187,36 @@ obj-m := $(MODNAME).o
 $(MODNAME)-objs := $(OBJS)
 
 
-prereq_check:
+config_check:
 	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
-		echo "Can't find kernel build files in $(KBUILD);"; \
-		echo "  give the path to kernel build directory with " ; \
-		echo "  KBUILD=<path> argument to make";\
-		exit 1;\
+		echo; echo; \
+		echo "Cannot find kernel build files in $(KBUILD)"; \
+		echo "Please give the path to kernel build directory with" ; \
+		echo "the KBUILD=<path> argument to make";\
+		echo; echo; \
+		exit 1; \
 	fi
 	@if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
-		echo "Can't find kernel build files in $(KSRC);"; \
-		echo "  give the path to kernel build directory with " ; \
-		echo "  KSRC=<path> argument to make";\
-		exit 1;\
+		echo; echo; \
+		echo "Cannot find kernel source files in $(KSRC)"; \
+		echo "Please give the path to kernel source directory with"; \
+		echo "the KSRC=<path> argument to make"; \
+		echo; echo; \
+		exit 1; \
 	fi
-
-stack_check:
-	@if [ "x$(CONFIG_X86_64)" = "x" ] && \
-	       grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
-	    echo; echo; \
-	    echo "*** WARNING: This kernel seems to use 4K stack size"\
-		 "option (CONFIG_4KSTACKS); many Windows drivers will"\
-		 "not work with this option enabled. Disable"\
-		 "CONFIG_4KSTACKS option, recompile and install kernel";\
-	    echo; echo; \
+	@if [ -z "$(CONFIG_WIRELESS_EXT)$(CONFIG_NET_RADIO)" ]; then \
+		echo; echo; \
+		echo "*** WARNING: This kernel lacks wireless extensions."; \
+		echo "Wireless drivers will not work properly."; \
+		echo; echo; \
+	fi
+	@if [ -z "$(CONFIG_X86_64)" ] && [ -n "$(CONFIG_4KSTACKS)" ]; then \
+		echo; echo; \
+		echo "*** WARNING: This kernel uses 4K stack size option"; \
+		echo "(CONFIG_4KSTACKS); many Windows drivers will not work"; \
+		echo "with this option enabled. Disable CONFIG_4KSTACKS"; \
+		echo "in kernel's .config file, recompile and install kernel"; \
+		echo; echo; \
 	fi
 
 modules:
@@ -220,7 +227,7 @@ clean:
 	rm -f *_exports.h win2lin_stubs.h
 	rm -rf .tmp_versions
 
-install: prereq_check modules stack_check
+install: config_check modules
 	echo $(INST_DIR)
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
@@ -233,4 +240,4 @@ dist:
 		cp $$file $(distdir)/$$file; \
 	done
 
-.PHONY: all modules clean install prereq_check stack_check dist
+.PHONY: all modules clean install config_check dist

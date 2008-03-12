@@ -16,11 +16,6 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#ifndef CONFIG_WIRELESS_EXT
-#warning "wireless devices are not supported by this kernel "\
-	"as CONFIG_WIRELESS_EXT is not enabled"
-#endif
-
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
