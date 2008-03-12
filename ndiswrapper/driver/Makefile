@@ -66,51 +66,51 @@ $(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
 endif
 include $(KBUILD)/.config
 
-MOD_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
+EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
 		  -include $(KSRC)/include/linux/modversions.h)
 
 # returns of structs and unions in registers when possible, like Windows 
-MOD_CFLAGS += -freg-struct-return
+EXTRA_CFLAGS += -freg-struct-return
 
 # to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
-MOD_CFLAGS += -DDEBUG=$(DEBUG) -g
+EXTRA_CFLAGS += -DDEBUG=$(DEBUG) -g
 endif
 
 # to debug timers, add option "TIMER_DEBUG=1 DEBUG=<n>"
 ifdef TIMER_DEBUG
-MOD_CFLAGS += -DTIMER_DEBUG
+EXTRA_CFLAGS += -DTIMER_DEBUG
 endif
 
 # to debug event layer, add option "EVENT_DEBUG=1 DEBUG=<n>"
 ifdef EVENT_DEBUG
-MOD_CFLAGS += -DEVENT_DEBUG
+EXTRA_CFLAGS += -DEVENT_DEBUG
 endif
 
 # to debug USB layer, add option "USB_DEBUG=1 DEBUG=<n>"
 ifdef USB_DEBUG
-MOD_CFLAGS += -DUSB_DEBUG
+EXTRA_CFLAGS += -DUSB_DEBUG
 endif
 
 # to debug I/O layer, add option "IO_DEBUG=1 DEBUG=<n>"
 ifdef IO_DEBUG
-MOD_CFLAGS += -DIO_DEBUG
+EXTRA_CFLAGS += -DIO_DEBUG
 endif
 
 # to debug worker threads
 ifdef WORK_DEBUG
-MOD_CFLAGS += -DWORK_DEBUG
+EXTRA_CFLAGS += -DWORK_DEBUG
 endif
 
 # to debug memory allocation issues
 ifdef ALLOC_DEBUG
-MOD_CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
+EXTRA_CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
 # emulate (pseudo) preemption
 ifdef WRAP_PREEMPT
-MOD_CFLAGS += -DWRAP_PREEMPT
+EXTRA_CFLAGS += -DWRAP_PREEMPT
 endif
 
 OBJS = crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
@@ -148,11 +148,11 @@ ifdef ENABLE_USB
 EXPORTS += usb_exports.h
 STUB_SRCS += usb.c
 OBJS += usb.o
-MOD_CFLAGS += -DENABLE_USB
+EXTRA_CFLAGS += -DENABLE_USB
 endif
 
 ifdef WRAP_WQ
-MOD_CFLAGS += -DWRAP_WQ
+EXTRA_CFLAGS += -DWRAP_WQ
 OBJS += workqueue.o
 endif
 
@@ -179,15 +179,6 @@ extra-y += win2lin_stubs.h
 OBJS += win2lin_stubs.o
 else
 OBJS += divdi3.o
-endif
-
-wflags := $(shell if grep -qw "EXTRA_CFLAGS" $(KSRC)/scripts/Makefile.build; \
-		             then echo "EXTRA_CFLAGS"; else echo "CFLAGS"; fi)
-
-ifeq ($(wflags), CFLAGS)
-CFLAGS += $(MOD_CFLAGS)
-else
-EXTRA_CFLAGS += $(MOD_CFLAGS)
 endif
 
 MODULE := $(MODNAME).ko
