@@ -1,12 +1,13 @@
 # Name of the module
 MODNAME = ndis6wrapper
 
-DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
+DISTFILES = divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile crt.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
-		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S ndisdot11.h
+		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S ndisdot11.h \
+		mkexport.sh mkstubs.sh
 
 # By default, we try to compile the modules for the currently running
 # kernel.  But it's the first approximation, as we will re-read the
@@ -59,8 +60,6 @@ INST_DIR ?= $(shell echo $(DESTDIR)/lib/modules/$(KVERS)/misc | sed 's^//^/^g')
 
 SRC_DIR=$(shell pwd)
 
-KREV := $(shell echo $(KVERS) | sed -e 's/[^\.]*\.[^\.]*\.\([0-9]*\).*/\1/')
-
 KCONFIG := $(KBUILD)/.config
 ifeq (,$(wildcard $(KCONFIG)))
 $(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
@@ -70,13 +69,6 @@ include $(KBUILD)/.config
 MOD_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
 		  -include $(KSRC)/include/linux/modversions.h)
-
-ifndef DISABLE_USB
-MOD_CFLAGS += $(shell if grep -q 'struct module \*owner;' \
-		   $(KSRC)/include/linux/usb.h ; then \
-			echo -DUSB_DRIVER_OWNER; \
-		  fi)
-endif
 
 # returns of structs and unions in registers when possible, like Windows 
 MOD_CFLAGS += -freg-struct-return
@@ -121,12 +113,14 @@ ifdef WRAP_PREEMPT
 MOD_CFLAGS += -DWRAP_PREEMPT
 endif
 
-.PHONY: prereq_check gen_exports clean dist_clean install stack_check
-
-all : prereq_check win2lin_stubs.h gen_exports default stack_check
-
-OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
+OBJS = crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
+
+EXPORTS = crt_exports.h hal_exports.h ndis_exports.h ntoskernel_exports.h \
+	ntoskernel_io_exports.h rtl_exports.h
+
+STUB_SRCS = crt.c hal.c ndis.c ntoskernel.c ntoskernel_io.c \
+	pnp.c rtl.c wrapndis.c
 
 
 # Disable USB support and use own workqueue code if GPL-only symbols
@@ -138,23 +132,28 @@ WRAP_WQ = 1
 DISABLE_USB = 1
 endif
 
-# by default, USB layer is compiled in if USB support is in kernel;
+# By default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
 # add option "DISABLE_USB=1"
-
-ifdef DISABLE_USB
-usb_exports.h:
-
-MOD_CFLAGS += -DDISABLE_USB
-else
-usb_exports.h: usb.c
-
+ifndef DISABLE_USB
 ifeq ($(CONFIG_USB),y)
-OBJS += usb.o
+ENABLE_USB = 1
 endif
 ifeq ($(CONFIG_USB),m)
-OBJS += usb.o
+ENABLE_USB = 1
 endif
+endif
+
+ifdef ENABLE_USB
+EXPORTS += usb_exports.h
+STUB_SRCS += usb.c
+OBJS += usb.o
+MOD_CFLAGS += $(shell if grep -q 'struct module \*owner;' \
+		   $(KSRC)/include/linux/usb.h ; then \
+			echo -DUSB_DRIVER_OWNER; \
+		  fi)
+else
+MOD_CFLAGS += -DDISABLE_USB
 endif
 
 ifdef WRAP_WQ
@@ -162,81 +161,30 @@ MOD_CFLAGS += -DWRAP_WQ
 OBJS += workqueue.o
 endif
 
-ifeq ($(CONFIG_X86_64),y)
-OBJS += win2lin_stubs.o
-win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
 
-ifdef DISABLE_USB
-win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
-	pnp.c rtl.c wrapndis.c
-else
-win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
-	pnp.c rtl.c usb.c wrapndis.c
-endif
-	@for file in $^; do \
-		echo; \
-		echo "# automatically generated from $$file"; \
-		sed -n \
-			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   win2lin(\1, \2)/p'   \
-			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   win2lin(\1, \2)/p'   \
-		   $$file | sed -e 's/[ \t	]\+//' | sort -u; \
-	done > $@
-else
-win2lin_stubs.h:
-
-OBJS += divdi3.o
-endif
+all: prereq_check modules stack_check
 
 # generate exports symbol table from C files
-%_exports.h: %.c
-	@if :; then \
-		echo "/* automatically generated from $< */"; \
-		echo "#ifdef CONFIG_X86_64"; \
-		sed -n \
-			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   WIN_FUNC_DECL(\1, \2)/p' \
-			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   WIN_FUNC_DECL(\1, \2)/p' \
-		   $< | sed -e 's/[ \t	]\+//' | sort -u; \
-		echo "#endif"; \
-		echo "struct wrap_export $(basename $<)_exports[] = {";\
-		sed -n \
-			-e 's/.*WIN_FUNC(_win_\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-				WIN_WIN_SYMBOL(\1,\2),/p' \
-			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-				WIN_SYMBOL(\1,\2),/p' \
-			-e 's/.*WIN_SYMBOL_MAP(\("[^"]\+"\)[ ,\n]\+\([^)]\+\)).*/\
-				{\1,(generic_func)\2},/p'  \
-			   $< | sed -e 's/[ \t	]*/   /' | sort -u; \
-		echo "   {NULL, NULL}"; \
-		echo "};"; \
-	fi > $@
+quiet_cmd_mkexport = MKEXPORT $@
+cmd_mkexport = $(SHELL) $(obj)/mkexport.sh $< $@
 
-gen_exports: crt_exports.h ndis_exports.h hal_exports.h ntoskernel_exports.h \
-			 ntoskernel_io_exports.h rtl_exports.h usb_exports.h
+%_exports.h: %.c $(obj)/mkexport.sh FORCE
+	$(call if_changed,mkexport)
 
-prereq_check:
-	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
-		echo "Can't find kernel build files in $(KBUILD);"; \
-		echo "  give the path to kernel build directory with " ; \
-		echo "  KBUILD=<path> argument to make";\
-		exit 1;\
-	fi
-	@if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
-		echo "Can't find kernel build files in $(KSRC);"; \
-		echo "  give the path to kernel build directory with " ; \
-		echo "  KSRC=<path> argument to make";\
-		exit 1;\
-	fi
+extra-y := $(EXPORTS)
 
-clean:
-	rm -f *.o *.ko .*.cmd *.mod.c *.symvers modules.order *~
-	rm -rf .tmp_versions
+ifeq ($(CONFIG_X86_64),y)
+quiet_cmd_mkstubs = MKSTUBS $@
+cmd_mkstubs = $(SHELL) $(obj)/mkstubs.sh $(addprefix $(src)/,$(STUB_SRCS)) >$@
 
-distclean: clean
-	rm -f *_exports.h .\#* win2lin_stubs.h
+$(obj)/win2lin_stubs.h: $(addprefix $(src)/,$(STUB_SRCS)) FORCE
+	$(call if_changed,mkstubs)
+
+extra-y += win2lin_stubs.h
+OBJS += win2lin_stubs.o
+else
+OBJS += divdi3.o
+endif
 
 wflags := $(shell if grep -qw "EXTRA_CFLAGS" $(KSRC)/scripts/Makefile.build; \
 		             then echo "EXTRA_CFLAGS"; else echo "CFLAGS"; fi)
@@ -252,9 +200,20 @@ obj-m := $(MODNAME).o
 
 $(MODNAME)-objs := $(OBJS)
 
-default:
-	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR)
 
+prereq_check:
+	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
+		echo "Can't find kernel build files in $(KBUILD);"; \
+		echo "  give the path to kernel build directory with " ; \
+		echo "  KBUILD=<path> argument to make";\
+		exit 1;\
+	fi
+	@if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
+		echo "Can't find kernel build files in $(KSRC);"; \
+		echo "  give the path to kernel build directory with " ; \
+		echo "  KSRC=<path> argument to make";\
+		exit 1;\
+	fi
 
 stack_check:
 	@if [ "x$(CONFIG_X86_64)" = "x" ] && \
@@ -267,17 +226,25 @@ stack_check:
 	    echo; echo; \
 	fi
 
-install: prereq_check win2lin_stubs.h gen_exports default stack_check
+modules:
+	$(MAKE) -C $(KBUILD) M=$(SRC_DIR)
+
+clean:
+	rm -f *.o *.ko .*.cmd *.mod.c *.symvers modules.order *~ .\#*
+	rm -f *_exports.h win2lin_stubs.h
+	rm -rf .tmp_versions
+
+install: prereq_check modules stack_check
 	echo $(INST_DIR)
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
-	-@/bin/rm -rf $(SRC_DIR)/.tmp_versions
 ifndef DIST_DESTDIR
 	-/sbin/depmod -a $(KVERS) -b $(DESTDIR)
 endif
 
 dist:
 	@for file in $(DISTFILES); do \
-	  cp  $$file $(distdir)/$$file; \
+		cp $$file $(distdir)/$$file; \
 	done
 
+.PHONY: all modules clean install prereq_check stack_check dist
