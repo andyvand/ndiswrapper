@@ -19,11 +19,6 @@ KVERS ?= $(shell uname -r)
 # a separate directory.
 KBUILD ?= $(shell readlink -f /lib/modules/$(KVERS)/build)
 
-# Some old kernels only install the "source" link
-ifeq (,$(KBUILD))
-KBUILD := $(shell readlink -f /lib/modules/$(KVERS)/source)
-endif
-
 ifeq (,$(KBUILD))
 $(error Kernel tree not found - please set KBUILD to configured kernel)
 endif
@@ -41,15 +36,6 @@ endif
 
 KVERS := $(shell sed -ne 's/"//g;s/^\#define UTS_RELEASE //p' $(VERSION_H))
 
-# distros use different paths for kernel include files
-
-KSRC ?= $(shell if \
-	[ -f /lib/modules/$(KVERS)/source/include/linux/kernel.h ]; then \
-		echo /lib/modules/$(KVERS)/source ; \
-	else \
-		echo $(KBUILD); \
-	fi)
-
 ifdef DIST_DESTDIR
 DESTDIR = $(DIST_DESTDIR)
 else
@@ -65,10 +51,6 @@ ifeq (,$(wildcard $(KCONFIG)))
 $(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
 endif
 include $(KBUILD)/.config
-
-EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
-		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
-		  -include $(KSRC)/include/linux/modversions.h)
 
 # returns of structs and unions in registers when possible, like Windows 
 EXTRA_CFLAGS += -freg-struct-return
@@ -122,15 +104,6 @@ EXPORTS = crt_exports.h hal_exports.h ndis_exports.h ntoskernel_exports.h \
 STUB_SRCS = crt.c hal.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c rtl.c wrapndis.c
 
-
-# Disable USB support and use own workqueue code if GPL-only symbols
-# are not available
-ifneq (,$(shell grep -s -A1 '"$(MODNAME)"' $(KSRC)/kernel/module.c | \
-			grep 'add_taint_module'))
-$(warning GPL-only symbols not available, disabling USB support)
-WRAP_WQ = 1
-DISABLE_USB = 1
-endif
 
 # By default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
@@ -193,14 +166,6 @@ config_check:
 		echo "Cannot find kernel build files in $(KBUILD)"; \
 		echo "Please give the path to kernel build directory with" ; \
 		echo "the KBUILD=<path> argument to make";\
-		echo; echo; \
-		exit 1; \
-	fi
-	@if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
-		echo; echo; \
-		echo "Cannot find kernel source files in $(KSRC)"; \
-		echo "Please give the path to kernel source directory with"; \
-		echo "the KSRC=<path> argument to make"; \
 		echo; echo; \
 		exit 1; \
 	fi
