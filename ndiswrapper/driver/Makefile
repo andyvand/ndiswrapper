@@ -148,10 +148,6 @@ ifdef ENABLE_USB
 EXPORTS += usb_exports.h
 STUB_SRCS += usb.c
 OBJS += usb.o
-MOD_CFLAGS += $(shell if grep -q 'struct module \*owner;' \
-		   $(KSRC)/include/linux/usb.h ; then \
-			echo -DUSB_DRIVER_OWNER; \
-		  fi)
 MOD_CFLAGS += -DENABLE_USB
 endif
 
