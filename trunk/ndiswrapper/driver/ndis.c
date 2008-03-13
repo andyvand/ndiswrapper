@@ -2009,8 +2009,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 {
 	struct ndis_device *wnd = nmb->wnd;
 	struct ndis_status_indication *si;
-	struct ndis_auth_req *auth_req;
-	struct ndis_radio_status_indication *radio_status;
 
 	ENTER2("status=0x%x len=%d", status, len);
 	switch (status) {
@@ -2048,7 +2046,8 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			len -= sizeof(*si);
 			while (len > 0) {
 				int pairwise_error = 0, group_error = 0;
-				auth_req = (struct ndis_auth_req *)buf;
+				struct ndis_auth_req *auth_req =
+					(struct ndis_auth_req *)buf;
 				TRACE1(MACSTRSEP, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
 					TRACE2("reauth request");
@@ -2127,7 +2126,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		}
 		case Ndis802_11StatusType_RadioState:
-			radio_status = buf;
+			struct ndis_radio_status_indication *radio_status = buf;
 			if (radio_status->radio_state ==
 			    Ndis802_11RadioStatusOn)
 				INFO("radio is turned on");
