@@ -958,11 +958,13 @@ static void set_multicast_list(struct ndis_device *wnd)
 
 static void link_status_off(struct ndis_device *wnd)
 {
+#ifdef CONFIG_WIRELESS_EXT
 	union iwreq_data wrqu;
 
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
+#endif
 	EXIT2(return);
 }
 
