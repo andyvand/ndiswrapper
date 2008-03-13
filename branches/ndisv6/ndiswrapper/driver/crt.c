@@ -14,6 +14,7 @@
  */
 
 #include "ntoskernel.h"
+#include "vsnprintf.h"
 
 noregparm INT WIN_FUNC(_win_sprintf,12)
 	(char *buf, const char *format, ...)
@@ -34,17 +35,15 @@ noregparm INT WIN_FUNC(swprintf,12)
 	EXIT2(return 0);
 }
 
-/* FIXME: Windows va_list cannot be passed to Linux as is */
-#if 0
-noregparm INT WIN_FUNC_BROKEN(_win_vsprintf,3)
-	(char *str, const char *format, va_list ap)
+noregparm INT WIN_FUNC(_win_vsprintf,3)
+	(char *str, const char *format, VA_LIST ap)
 {
 	INT i;
-	i = vsprintf(str, format, ap);
+	const int max_str_len = 0x10000;
+	i = wrap_vsnprintf(str, max_str_len, format, ap);
 	TRACE2("str: %p: %s", str, str);
 	EXIT2(return i);
 }
-#endif
 
 noregparm INT WIN_FUNC(_win_snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
@@ -72,26 +71,23 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	return res;
 }
 
-/* FIXME: Windows va_list cannot be passed to Linux as is */
-#if 0
-noregparm INT WIN_FUNC_BROKEN(_win_vsnprintf,4)
-	(char *str, SIZE_T size, const char *format, va_list ap)
+noregparm INT WIN_FUNC(_win_vsnprintf,4)
+	(char *str, SIZE_T size, const char *format, VA_LIST ap)
 {
 	INT i;
-	i = vsnprintf(str, size, format, ap);
+	i = wrap_vsnprintf(str, size, format, ap);
 	TRACE2("str: %p: %s", str, str);
 	EXIT2(return i);
 }
 
-noregparm INT WIN_FUNC_BROKEN(_win__vsnprintf,4)
-	(char *str, SIZE_T size, const char *format, va_list ap)
+noregparm INT WIN_FUNC(_win__vsnprintf,4)
+	(char *str, SIZE_T size, const char *format, VA_LIST ap)
 {
 	INT i;
-	i = vsnprintf(str, size, format, ap);
+	i = wrap_vsnprintf(str, size, format, ap);
 	TRACE2("str: %p: %s", str, str);
 	EXIT2(return i);
 }
-#endif
 
 noregparm char *WIN_FUNC(_win_strncpy,3)
 	(char *dst, char *src, SIZE_T n)

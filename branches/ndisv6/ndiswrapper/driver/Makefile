@@ -1,13 +1,13 @@
 # Name of the module
 MODNAME = ndis6wrapper
 
-DISTFILES = divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
-		longlong.h Makefile crt.c ndis.c ndis.h \
-		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
-		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
-		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
-		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S ndisdot11.h \
-		mkexport.sh mkstubs.sh
+DISTFILES = \
+	Makefile crt.c divdi3.c hal.c iw_ndis.c iw_ndis.h lin2win.h loader.c \
+	loader.h longlong.h mkexport.sh mkstubs.sh ndis.c ndis.h ndisdot11.h \
+	ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c pe_linker.c \
+	pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h vsnprintf.c \
+	vsnprintf.h win2lin_stubs.S winnt_types.h workqueue.c wrapmem.h \
+	wrapmem.c wrapper.c wrapndis.h wrapndis.c
 
 # By default, we try to compile the modules for the currently running
 # kernel.  But it's the first approximation, as we will re-read the
@@ -149,7 +149,7 @@ $(obj)/win2lin_stubs.h: $(addprefix $(src)/,$(STUB_SRCS)) FORCE
 	$(call if_changed,mkstubs)
 
 extra-y += win2lin_stubs.h
-OBJS += win2lin_stubs.o
+OBJS += win2lin_stubs.o vsnprintf.o
 else
 OBJS += divdi3.o
 endif
