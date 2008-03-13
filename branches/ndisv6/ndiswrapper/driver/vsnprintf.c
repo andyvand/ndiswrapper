@@ -134,7 +134,7 @@ static noinline char* put_dec(char *buf, unsigned long long num)
 #define SPACE	8		/* space if plus */
 #define LEFT	16		/* left justified */
 #define SMALL	32		/* Must be 32 == 0x20 */
-#define SPECIAL	64		/* 0x */
+#define BASE	64		/* 0x */
 
 static char *number(char *buf, char *end, unsigned long long num, int base, int size, int precision, int type)
 {
@@ -144,7 +144,7 @@ static char *number(char *buf, char *end, unsigned long long num, int base, int 
 	char tmp[66];
 	char sign;
 	char locase;
-	int need_pfx = ((type & SPECIAL) && base != 10);
+	int need_pfx = ((type & BASE) && base != 10);
 	int i;
 
 	/* locase = 0 or 0x20. ORing digits or letters with 'locase'
@@ -323,7 +323,7 @@ int wrap_vsnprintf(char *buf, size_t size, const char *fmt, VA_LIST args)
 				case '-': flags |= LEFT; goto repeat;
 				case '+': flags |= PLUS; goto repeat;
 				case ' ': flags |= SPACE; goto repeat;
-				case '#': flags |= SPECIAL; goto repeat;
+				case '#': flags |= BASE; goto repeat;
 				case '0': flags |= ZEROPAD; goto repeat;
 			}
 
