@@ -2126,6 +2126,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		}
 		case Ndis802_11StatusType_RadioState:
+		{
 			struct ndis_radio_status_indication *radio_status = buf;
 			if (radio_status->radio_state ==
 			    Ndis802_11RadioStatusOn)
@@ -2137,6 +2138,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				 Ndis802_11RadioStatusSoftwareOff)
 				INFO("radio is turned off by software");
 			break;
+		}
 #endif
 		default:
 			/* is this RSSI indication? */
