@@ -36,11 +36,10 @@ noregparm INT WIN_FUNC(swprintf,12)
 }
 
 noregparm INT WIN_FUNC(_win_vsprintf,3)
-	(char *str, const char *format, VA_LIST ap)
+	(char *str, const char *format, va_list ap)
 {
 	INT i;
-	const int max_str_len = 0x10000;
-	i = wrap_vsnprintf(str, max_str_len, format, ap);
+	i = wrap_vsprintf(str, format, ap);
 	TRACE2("str: %p: %s", str, str);
 	EXIT2(return i);
 }
@@ -72,7 +71,7 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 }
 
 noregparm INT WIN_FUNC(_win_vsnprintf,4)
-	(char *str, SIZE_T size, const char *format, VA_LIST ap)
+	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
 	i = wrap_vsnprintf(str, size, format, ap);
@@ -81,7 +80,7 @@ noregparm INT WIN_FUNC(_win_vsnprintf,4)
 }
 
 noregparm INT WIN_FUNC(_win__vsnprintf,4)
-	(char *str, SIZE_T size, const char *format, VA_LIST ap)
+	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
 	i = wrap_vsnprintf(str, size, format, ap);
