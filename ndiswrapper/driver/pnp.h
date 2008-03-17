@@ -20,8 +20,6 @@
 #include "ndis.h"
 #include "wrapndis.h"
 
-NTSTATUS pnp_set_power_state(struct wrap_device *wd,
-			     enum device_power_state state);
 NTSTATUS pnp_start_device(struct wrap_device *wd);
 NTSTATUS pnp_stop_device(struct wrap_device *wd);
 NTSTATUS pnp_remove_device(struct wrap_device *wd);
