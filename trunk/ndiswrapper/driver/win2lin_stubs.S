@@ -112,19 +112,24 @@ In Linux it should look like:
 #define win2lin_arg5 mov win2lin_win_arg(5), %r8
 #define win2lin_arg6 mov win2lin_win_arg(6), %r9
 
+	.type	win2lin0, @function
 win2lin0:
 	win2lin_prolog
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin0, .-win2lin0
 
+	.type	win2lin1, @function
 win2lin1:
 	win2lin_prolog
 	win2lin_arg1
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin1, .-win2lin1
 
+	.type	win2lin2, @function
 win2lin2:
 	win2lin_prolog
 	win2lin_arg1
@@ -132,7 +137,9 @@ win2lin2:
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin2, .-win2lin2
 
+	.type	win2lin3, @function
 win2lin3:
 	win2lin_prolog
 	win2lin_arg1
@@ -141,7 +148,9 @@ win2lin3:
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin3, .-win2lin3
 
+	.type	win2lin4, @function
 win2lin4:
 	win2lin_prolog
 	win2lin_arg1
@@ -151,7 +160,9 @@ win2lin4:
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin4, .-win2lin4
 
+	.type	win2lin5, @function
 win2lin5:
 	win2lin_prolog
 	win2lin_arg1
@@ -162,7 +173,9 @@ win2lin5:
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin5, .-win2lin5
 
+	.type	win2lin6, @function
 win2lin6:
 	win2lin_prolog
 	win2lin_arg1
@@ -174,6 +187,7 @@ win2lin6:
 	call_lin_func
 	win2lin_epilog
 	ret
+	.size	win2lin6, .-win2lin6
 
 # Allocate stack frame for Linux arguments before calling function.
 # First 6 args are passed through registers, so we need space for 7 and above.
@@ -193,6 +207,7 @@ win2lin6:
 
 #define win2lin_lin_arg(m,n) (m-1-n)*8(%rsp)
 
+	.type	win2lin7, @function
 win2lin7:
 	win2lin_prolog
 
@@ -210,7 +225,9 @@ win2lin7:
 	call_lin_func_args(7)
 	win2lin_epilog
 	ret
+	.size	win2lin7, .-win2lin7
 
+	.type	win2lin8, @function
 win2lin8:
 	win2lin_prolog
 
@@ -230,7 +247,9 @@ win2lin8:
 	call_lin_func_args(8)
 	win2lin_epilog
 	ret
+	.size	win2lin8, .-win2lin8
 
+	.type	win2lin9, @function
 win2lin9:
 win2lin10:
 win2lin11:
@@ -257,6 +276,7 @@ win2lin12:
 	call_lin_func_args(12)
 	win2lin_epilog
 	ret
+	.size	win2lin9, .-win2lin9
 
 #define win2lin(name, argc)			\
 ENTRY(win2lin_ ## name ## _ ## argc)		\
