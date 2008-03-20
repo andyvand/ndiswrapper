@@ -14,17 +14,143 @@
  */
 
 #include "ntoskernel.h"
-#include "vsnprintf.h"
 #include "crt_exports.h"
+
+#ifdef CONFIG_X86_64
+/* Windows long is 32-bit, so strip single 'l' in integer formats */
+static void strip_l_modifier(char *str)
+{
+	char *ptr = str;
+	int in_format = 0;
+	char *lptr = NULL;
+	char last = 0;
+	char *end_ptr;
+	char *wptr;
+
+	/* Replace single 'l' inside integer formats with '\0' */
+	for (ptr = str; *ptr; ptr++) {
+		if (!in_format) {
+			if (*ptr == '%')
+				in_format = 1;
+			last = *ptr;
+			continue;
+		}
+		switch (*ptr) {
+		case 'd':
+		case 'i':
+		case 'o':
+		case 'u':
+		case 'x':
+		case 'X':
+		case 'p':
+		case 'n':
+		case 'm':
+			if (lptr) {
+				*lptr = '\0';
+				lptr = NULL;
+			}
+			in_format = 0;
+			break;
+		case 'c':
+		case 'C':
+		case 's':
+		case 'S':
+		case 'f':
+		case 'e':
+		case 'E':
+		case 'g':
+		case 'G':
+		case 'a':
+		case 'A':
+			lptr = NULL;
+			in_format = 0;
+			break;
+		case '%':
+			lptr = NULL;
+			if (last == '%')
+				in_format = 0;
+			else
+				in_format = 1;	/* ignore previous junk */
+			break;
+		case 'l':
+			if (last == 'l')
+				lptr = NULL;
+			else
+				lptr = ptr;
+			break;
+		default:
+			break;
+		}
+		last = *ptr;
+	}
+
+	/* Purge zeroes from the resulting string */
+	end_ptr = ptr;
+	wptr = str;
+	for (ptr = str; ptr < end_ptr; ptr++)
+		if (*ptr != 0)
+			*(wptr++) = *ptr;
+	*wptr = 0;
+}
+
+struct x86_64_va_list {
+	int gp_offset;
+	int fp_offset;
+	void *overflow_arg_area;
+	void *reg_save_area;
+};
+
+#define VA_LIST_DECL(_args) \
+	va_list _args##new; \
+	struct x86_64_va_list *_args##x;
+#define VA_LIST_PREP(_args) \
+	_args##x = (struct x86_64_va_list *)&_args##new; \
+	_args##x->gp_offset = 48;	/* no GP registers used */ \
+	_args##x->fp_offset = 304;	/* no FP registers used */ \
+	_args##x->overflow_arg_area = (void *)_args; \
+	_args##x->reg_save_area = NULL;
+#define VA_LIST_CONV(_args) (_args##new)
+#define VA_LIST_FREE(_args)
+#define FMT_DECL(_fmt) \
+	char *_fmt##copy; \
+	int _fmt##len;
+#define FMT_PREP(_fmt) \
+	_fmt##len = strlen(format) + 1; \
+	_fmt##copy = kmalloc(_fmt##len, GFP_KERNEL); \
+	if (_fmt##copy) { \
+		memcpy(_fmt##copy, format, _fmt##len); \
+		strip_l_modifier(_fmt##copy); \
+	}
+#define FMT_CONV(_fmt) (_fmt##copy ? _fmt##copy : format)
+#define FMT_FREE(_fmt) \
+	kfree(_fmt##copy);
+
+#else /* !CONFIG_X86_64 */
+
+#define VA_LIST_DECL(_args)
+#define VA_LIST_PREP(_args)
+#define VA_LIST_CONV(_args) (_args)
+#define VA_LIST_FREE(_args)
+#define FMT_DECL(_fmt)
+#define FMT_PREP(_fmt)
+#define FMT_CONV(_fmt) (format)
+#define FMT_FREE(_fmt)
+
+#endif /* !CONFIG_X86_64 */
 
 noregparm INT WIN_FUNC(_win_sprintf,12)
 	(char *buf, const char *format, ...)
 {
 	va_list args;
 	int res;
+	FMT_DECL(format)
+
+	FMT_PREP(format)
 	va_start(args, format);
-	res = vsprintf(buf, format, args);
+	res = vsprintf(buf, FMT_CONV(format), args);
 	va_end(args);
+	FMT_FREE(format)
+
 	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
@@ -40,8 +166,17 @@ noregparm INT WIN_FUNC(_win_vsprintf,3)
 	(char *str, const char *format, va_list ap)
 {
 	INT i;
-	i = wrap_vsprintf(str, format, ap);
+	VA_LIST_DECL(ap)
+	FMT_DECL(format)
+
+	VA_LIST_PREP(ap)
+	FMT_PREP(format)
+
+	i = vsprintf(str, FMT_CONV(format), VA_LIST_CONV(ap));
 	TRACE2("str: %p: %s", str, str);
+
+	FMT_FREE(format)
+	VA_LIST_FREE(ap)
 	EXIT2(return i);
 }
 
@@ -50,11 +185,15 @@ noregparm INT WIN_FUNC(_win_snprintf,12)
 {
 	va_list args;
 	int res;
+	FMT_DECL(format)
 
+	FMT_PREP(format)
 	va_start(args, format);
-	res = vsnprintf(buf, count, format, args);
+	res = vsnprintf(buf, count, FMT_CONV(format), args);
 	va_end(args);
 	TRACE2("buf: %p: %s", buf, buf);
+
+	FMT_FREE(format)
 	return res;
 }
 
@@ -63,11 +202,15 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 {
 	va_list args;
 	int res;
+	FMT_DECL(format)
 
+	FMT_PREP(format)
 	va_start(args, format);
-	res = vsnprintf(buf, count, format, args);
+	res = vsnprintf(buf, count, FMT_CONV(format), args);
 	va_end(args);
 	TRACE2("buf: %p: %s", buf, buf);
+
+	FMT_FREE(format)
 	return res;
 }
 
@@ -75,8 +218,17 @@ noregparm INT WIN_FUNC(_win_vsnprintf,4)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
-	i = wrap_vsnprintf(str, size, format, ap);
+	VA_LIST_DECL(ap)
+	FMT_DECL(format)
+
+	VA_LIST_PREP(ap)
+	FMT_PREP(format)
+
+	i = vsnprintf(str, size, FMT_CONV(format), VA_LIST_CONV(ap));
 	TRACE2("str: %p: %s", str, str);
+
+	FMT_FREE(format)
+	VA_LIST_FREE(ap)
 	EXIT2(return i);
 }
 
@@ -84,8 +236,17 @@ noregparm INT WIN_FUNC(_win__vsnprintf,4)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
-	i = wrap_vsnprintf(str, size, format, ap);
+	VA_LIST_DECL(ap)
+	FMT_DECL(format)
+
+	VA_LIST_PREP(ap)
+	FMT_PREP(format)
+
+	i = vsnprintf(str, size, FMT_CONV(format), VA_LIST_CONV(ap));
 	TRACE2("str: %p: %s", str, str);
+
+	FMT_FREE(format)
+	VA_LIST_FREE(ap)
 	EXIT2(return i);
 }
 
