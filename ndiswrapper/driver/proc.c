@@ -20,11 +20,11 @@
 #include "iw_ndis.h"
 #include "wrapndis.h"
 #include "pnp.h"
+#include "wrapper.h"
 
 #define MAX_PROC_STR_LEN 32
 
 static struct proc_dir_entry *wrap_procfs_entry;
-extern int proc_uid, proc_gid, hangcheck_interval;
 
 static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 				  int count, int *eof, void *data)

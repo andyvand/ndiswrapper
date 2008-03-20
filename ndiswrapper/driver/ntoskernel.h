@@ -1136,6 +1136,13 @@ NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
+extern spinlock_t ntoskernel_lock;
+extern spinlock_t irp_cancel_lock;
+extern struct nt_list object_list;
+#ifdef CONFIG_X86_64
+extern struct kuser_shared_data kuser_shared_data;
+#endif
+
 #define IoCompleteRequest(irp, prio) IofCompleteRequest(irp, prio)
 #define IoCallDriver(dev, irp) IofCallDriver(dev, irp)
 
