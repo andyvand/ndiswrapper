@@ -14,6 +14,7 @@
  */
 
 #include "ntoskernel.h"
+#include "hal_exports.h"
 
 wstdcall void WIN_FUNC(WRITE_PORT_ULONG,2)
 	(ULONG_PTR port, ULONG value)
@@ -154,5 +155,3 @@ wfastcall void WIN_FUNC(KefReleaseSpinLockFromDpcLevel,1)
 #endif
 	nt_spin_unlock(lock);
 }
-
-#include "hal_exports.h"

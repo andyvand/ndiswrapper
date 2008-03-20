@@ -18,6 +18,7 @@
 #include "wrapndis.h"
 #include "pnp.h"
 #include "loader.h"
+#include "ndis_exports.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
@@ -2269,8 +2270,6 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 {
 	TODO();
 }
-
-#include "ndis_exports.h"
 
 /* ndis_init_device is called for each device */
 int ndis_init_device(struct ndis_device *wnd)

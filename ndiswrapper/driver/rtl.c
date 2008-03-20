@@ -14,6 +14,7 @@
  */
 
 #include "ntoskernel.h"
+#include "rtl_exports.h"
 
 wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
 	(const void *a, const void *b, SIZE_T len)
@@ -685,13 +686,11 @@ wstdcall void WIN_FUNC(RtlAssert,4)
 	return;
 }
 
-void WIN_FUNC(RtlUnwind,0)
+wstdcall void WIN_FUNC(RtlUnwind,0)
 	(void)
 {
 	TODO();
 }
-
-#include "rtl_exports.h"
 
 int rtl_init(void)
 {

@@ -18,6 +18,7 @@
 #include "wrapndis.h"
 #include "usb.h"
 #include "loader.h"
+#include "ntoskernel_io_exports.h"
 
 extern spinlock_t ntoskernel_lock;
 extern spinlock_t irp_cancel_lock;
@@ -1113,5 +1114,3 @@ wstdcall void WIN_FUNC(IoInvalidateDeviceState,1)
 	INFO("%p", pdo);
 	TODO();
 }
-
-#include "ntoskernel_io_exports.h"

@@ -8,6 +8,16 @@ exports=$(basename "$output" .h)
 exec >"$output"
 
 echo "/* automatically generated from src */";
+
+sed -n -e '/^\(wstdcall\|wfastcall\|noregparm\|__attribute__\)/{
+:more
+N
+s/\([^{]\)$/\1/
+t more
+s/\n{$/;/
+p
+}' $input
+
 echo "#ifdef CONFIG_X86_64";
 
 sed -n \
@@ -17,6 +27,7 @@ sed -n \
 'WIN_FUNC_DECL(\1, \2)/p' $input | sort -u
 
 echo "#endif"
+echo "extern struct wrap_export $exports[];"
 echo "struct wrap_export $exports[] = {"
 
 sed -n \
