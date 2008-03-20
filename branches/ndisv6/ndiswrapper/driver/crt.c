@@ -15,6 +15,7 @@
 
 #include "ntoskernel.h"
 #include "vsnprintf.h"
+#include "crt_exports.h"
 
 noregparm INT WIN_FUNC(_win_sprintf,12)
 	(char *buf, const char *format, ...)
@@ -383,8 +384,6 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 	printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
 	kfree(buf);
 }
-
-#include "crt_exports.h"
 
 int crt_init(void)
 {
