@@ -20,6 +20,7 @@
 #include "loader.h"
 #include <linux/kernel_stat.h>
 #include <asm/dma.h>
+#include "ndis_exports.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS TX_RING_SIZE
 #define MAX_ALLOCATED_NDIS_BUFFERS TX_RING_SIZE
@@ -2892,8 +2893,6 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 {
 	TODO();
 }
-
-#include "ndis_exports.h"
 
 static void *ndis_get_routine_address(char *name)
 {

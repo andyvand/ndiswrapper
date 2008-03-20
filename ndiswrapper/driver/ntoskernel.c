@@ -18,6 +18,7 @@
 #include "usb.h"
 #include "pnp.h"
 #include "loader.h"
+#include "ntoskernel_exports.h"
 
 /* MDLs describe a range of virtual address with an array of physical
  * pages right after the header. For different ranges of virtual
@@ -2436,19 +2437,17 @@ wstdcall void WIN_FUNC(__C_specific_handler,0)
 	TODO();
 }
 
-void WIN_FUNC(_purecall,0)
+wstdcall void WIN_FUNC(_purecall,0)
 	(void)
 {
 	TODO();
 }
 
-void WIN_FUNC(__chkstk,0)
+wstdcall void WIN_FUNC(__chkstk,0)
 	(void)
 {
 	TODO();
 }
-
-#include "ntoskernel_exports.h"
 
 struct worker_init_struct {
 	work_struct_t work;

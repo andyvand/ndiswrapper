@@ -16,6 +16,7 @@
 
 #include "ndis.h"
 #include "usb.h"
+#include "usb_exports.h"
 
 #ifdef USB_DEBUG
 static unsigned int urb_id = 0;
@@ -1425,8 +1426,6 @@ USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
 	ERROR("%p, %x, %x, %x, %x", context, driver_tag, enum_tag, p1, p2);
 	USBEXIT(return STATUS_SUCCESS);
 }
-
-#include "usb_exports.h"
 
 int usb_init(void)
 {
