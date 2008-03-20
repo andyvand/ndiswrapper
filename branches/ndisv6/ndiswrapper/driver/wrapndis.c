@@ -19,10 +19,13 @@
 #include "loader.h"
 #include "wrapndis.h"
 #include <linux/inetdevice.h>
+#include "wrapper.h"
 
-extern char *if_name;
-extern int hangcheck_interval;
-extern NT_SPIN_LOCK timer_lock;
+/* Functions callable from the NDIS driver */
+wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
+					    struct irp *irp);
+wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp);
+wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp);
 
 workqueue_struct_t *wrapndis_wq;
 
@@ -37,8 +40,8 @@ static void set_multicast_list(struct ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
 
-NDIS_STATUS mp_oid_request(struct ndis_device *wnd,
-			   struct ndis_oid_request *oid_req)
+static NDIS_STATUS mp_oid_request(struct ndis_device *wnd,
+				  struct ndis_oid_request *oid_req)
 {
 	NDIS_STATUS res;
 	struct mp_driver_characteristics *mp_driver;
@@ -783,8 +786,8 @@ static void ndis_worker(worker_param_t param)
 	EXIT3(return);
 }
 
-NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
-			       enum ndis_power_state state)
+static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
+				      enum ndis_power_state state)
 {
 	NDIS_STATUS status;
 
@@ -928,8 +931,8 @@ NDIS_STATUS ndis_reinit(struct ndis_device *wnd)
 	return status;
 }
 
-void get_dot11_encryption_capa(struct ndis_device *wnd,
-			       void *buf, int buf_len)
+static void get_dot11_encryption_capa(struct ndis_device *wnd,
+				      void *buf, int buf_len)
 {
 	struct ndis_dot11_auth_cipher_pair_list *auth_cipher_pairs;
 	NDIS_STATUS res;
