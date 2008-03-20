@@ -547,7 +547,7 @@ NDIS_STATUS set_auth_algo(struct ndis_device *wnd,
 	EXIT2(return res);
 }
 
-enum ndis_dot11_auth_algorithm get_auth_algo(struct ndis_device *wnd)
+static enum ndis_dot11_auth_algorithm get_auth_algo(struct ndis_device *wnd)
 {
 	struct ndis_dot11_auth_algorithm_list auth_algos;
 	NDIS_STATUS res;
@@ -604,7 +604,7 @@ NDIS_STATUS set_cipher_algo(struct ndis_device *wnd,
 	EXIT2(return res);
 }
 
-enum ndis_dot11_cipher_algorithm get_cipher_algo(struct ndis_device *wnd)
+static enum ndis_dot11_cipher_algorithm get_cipher_algo(struct ndis_device *wnd)
 {
 	struct ndis_dot11_cipher_algorithm_list cipher_algos;
 	NDIS_STATUS res;
@@ -698,9 +698,9 @@ static int iw_get_cipher(struct net_device *dev, struct iw_request_info *info,
 }
 
 /* index must be 0 - N, as per NDIS  */
-int add_cipher_key(struct ndis_device *wnd, char *key, int key_len,
-		   int index, enum ndis_dot11_cipher_algorithm algo,
-		   mac_address mac)
+static int add_cipher_key(struct ndis_device *wnd, char *key, int key_len,
+			  int index, enum ndis_dot11_cipher_algorithm algo,
+			  mac_address mac)
 {
 	struct ndis_dot11_cipher_default_key_value *ndis_key;
 	NDIS_STATUS res;

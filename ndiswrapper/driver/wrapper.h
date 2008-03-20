@@ -16,6 +16,9 @@
 #ifndef WRAPPER_H
 #define WRAPPER_H
 
-#include "ndis.h"
+extern char *if_name;
+extern int proc_uid;
+extern int proc_gid;
+extern int hangcheck_interval;
 
 #endif /* WRAPPER_H */
