@@ -494,8 +494,7 @@ static int fix_pe_image(struct pe_image *pe)
 }
 
 #if defined(CONFIG_X86_64)
-extern struct kuser_shared_data kuser_shared_data;
-void fix_user_shared_data_addr(char *driver, unsigned long length)
+static void fix_user_shared_data_addr(char *driver, unsigned long length)
 {
 	unsigned long i, n, max_addr, *addr;
 

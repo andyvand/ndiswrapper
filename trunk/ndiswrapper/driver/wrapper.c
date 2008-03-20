@@ -17,11 +17,12 @@
 #include "iw_ndis.h"
 #include "loader.h"
 #include "pnp.h"
+#include "wrapper.h"
 
 char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 int hangcheck_interval;
-char *utils_version = UTILS_VERSION;
+static char *utils_version = UTILS_VERSION;
 
 #if defined(DEBUG) && (DEBUG > 0)
 int debug = DEBUG;

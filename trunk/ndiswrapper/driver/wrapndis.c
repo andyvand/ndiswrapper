@@ -23,10 +23,13 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <linux/in.h>
+#include "wrapper.h"
 
-extern char *if_name;
-extern int hangcheck_interval;
-extern spinlock_t ntoskernel_lock;
+/* Functions callable from the NDIS driver */
+wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
+					    struct irp *irp);
+wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp);
+wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp);
 
 workqueue_struct_t *wrapndis_wq;
 static struct nt_thread *wrapndis_worker_thread;

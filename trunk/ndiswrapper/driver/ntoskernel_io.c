@@ -20,10 +20,6 @@
 #include "loader.h"
 #include "ntoskernel_io_exports.h"
 
-extern spinlock_t ntoskernel_lock;
-extern spinlock_t irp_cancel_lock;
-extern struct nt_list object_list;
-
 wstdcall void WIN_FUNC(IoAcquireCancelSpinLock,1)
 	(KIRQL *irql) __acquires(irql)
 {
