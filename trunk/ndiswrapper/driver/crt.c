@@ -93,6 +93,23 @@ static void strip_l_modifier(char *str)
 	*wptr = 0;
 }
 
+/*
+ * va_list on x86_64 Linux is designed to allow passing arguments in registers
+ * even to variadic functions.  va_list is a structure holding pointers to the
+ * register save area, which holds the arguments passed in registers, and to
+ * the stack, which may have the arguments that did not fit the registers.
+ * va_list also holds offsets in the register save area for the next general
+ * purpose and floating point registers that the next va_arg() would fetch.
+ *
+ * Unlike Linux, the Windows va_list is just a pointer to the stack.  No
+ * arguments are passed in the registers.  That's why we construct the Linux
+ * va_list so that the register save area is never used.  For that goal, we set
+ * the offsets to the maximal allowed values, meaning that the arguments passed
+ * in the registers have been exhausted.  The values are 48 for general purpose
+ * registers (6 registers, 8 bytes each) and 304 for floating point registers
+ * (16 registers, 16 bytes each, on top of general purpose register).
+ */
+
 struct x86_64_va_list {
 	int gp_offset;
 	int fp_offset;
@@ -104,26 +121,29 @@ struct x86_64_va_list {
 	va_list _args##new; \
 	struct x86_64_va_list *_args##x;
 #define VA_LIST_PREP(_args) \
+do { \
 	_args##x = (struct x86_64_va_list *)&_args##new; \
-	_args##x->gp_offset = 48;	/* no GP registers used */ \
-	_args##x->fp_offset = 304;	/* no FP registers used */ \
+	_args##x->gp_offset = 6 * 8;		/* GP registers exhausted */ \
+	_args##x->fp_offset = 6 * 8 + 16 * 16;	/* FP registers exhausted */ \
 	_args##x->overflow_arg_area = (void *)_args; \
-	_args##x->reg_save_area = NULL;
+	_args##x->reg_save_area = NULL; \
+} while (0)
 #define VA_LIST_CONV(_args) (_args##new)
 #define VA_LIST_FREE(_args)
 #define FMT_DECL(_fmt) \
 	char *_fmt##copy; \
 	int _fmt##len;
 #define FMT_PREP(_fmt) \
+do { \
 	_fmt##len = strlen(format) + 1; \
 	_fmt##copy = kmalloc(_fmt##len, GFP_KERNEL); \
 	if (_fmt##copy) { \
 		memcpy(_fmt##copy, format, _fmt##len); \
 		strip_l_modifier(_fmt##copy); \
-	}
+	} \
+} while (0)
 #define FMT_CONV(_fmt) (_fmt##copy ? _fmt##copy : format)
-#define FMT_FREE(_fmt) \
-	kfree(_fmt##copy);
+#define FMT_FREE(_fmt) kfree(_fmt##copy)
 
 #else /* !CONFIG_X86_64 */
 
@@ -145,11 +165,11 @@ noregparm INT WIN_FUNC(_win_sprintf,12)
 	int res;
 	FMT_DECL(format)
 
-	FMT_PREP(format)
+	FMT_PREP(format);
 	va_start(args, format);
 	res = vsprintf(buf, FMT_CONV(format), args);
 	va_end(args);
-	FMT_FREE(format)
+	FMT_FREE(format);
 
 	TRACE2("buf: %p: %s", buf, buf);
 	return res;
@@ -169,14 +189,14 @@ noregparm INT WIN_FUNC(_win_vsprintf,3)
 	VA_LIST_DECL(ap)
 	FMT_DECL(format)
 
-	VA_LIST_PREP(ap)
-	FMT_PREP(format)
+	VA_LIST_PREP(ap);
+	FMT_PREP(format);
 
 	i = vsprintf(str, FMT_CONV(format), VA_LIST_CONV(ap));
 	TRACE2("str: %p: %s", str, str);
 
-	FMT_FREE(format)
-	VA_LIST_FREE(ap)
+	FMT_FREE(format);
+	VA_LIST_FREE(ap);
 	EXIT2(return i);
 }
 
@@ -187,13 +207,13 @@ noregparm INT WIN_FUNC(_win_snprintf,12)
 	int res;
 	FMT_DECL(format)
 
-	FMT_PREP(format)
+	FMT_PREP(format);
 	va_start(args, format);
 	res = vsnprintf(buf, count, FMT_CONV(format), args);
 	va_end(args);
 	TRACE2("buf: %p: %s", buf, buf);
 
-	FMT_FREE(format)
+	FMT_FREE(format);
 	return res;
 }
 
@@ -204,13 +224,13 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	int res;
 	FMT_DECL(format)
 
-	FMT_PREP(format)
+	FMT_PREP(format);
 	va_start(args, format);
 	res = vsnprintf(buf, count, FMT_CONV(format), args);
 	va_end(args);
 	TRACE2("buf: %p: %s", buf, buf);
 
-	FMT_FREE(format)
+	FMT_FREE(format);
 	return res;
 }
 
@@ -221,14 +241,14 @@ noregparm INT WIN_FUNC(_win_vsnprintf,4)
 	VA_LIST_DECL(ap)
 	FMT_DECL(format)
 
-	VA_LIST_PREP(ap)
-	FMT_PREP(format)
+	VA_LIST_PREP(ap);
+	FMT_PREP(format);
 
 	i = vsnprintf(str, size, FMT_CONV(format), VA_LIST_CONV(ap));
 	TRACE2("str: %p: %s", str, str);
 
-	FMT_FREE(format)
-	VA_LIST_FREE(ap)
+	FMT_FREE(format);
+	VA_LIST_FREE(ap);
 	EXIT2(return i);
 }
 
@@ -239,14 +259,14 @@ noregparm INT WIN_FUNC(_win__vsnprintf,4)
 	VA_LIST_DECL(ap)
 	FMT_DECL(format)
 
-	VA_LIST_PREP(ap)
-	FMT_PREP(format)
+	VA_LIST_PREP(ap);
+	FMT_PREP(format);
 
 	i = vsnprintf(str, size, FMT_CONV(format), VA_LIST_CONV(ap));
 	TRACE2("str: %p: %s", str, str);
 
-	FMT_FREE(format)
-	VA_LIST_FREE(ap)
+	FMT_FREE(format);
+	VA_LIST_FREE(ap);
 	EXIT2(return i);
 }
 
