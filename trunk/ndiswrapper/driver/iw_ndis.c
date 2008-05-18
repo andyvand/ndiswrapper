@@ -1704,16 +1704,14 @@ static int iw_set_encodeext(struct net_device *dev,
 	} else
 		memcpy(ndis_key.key, ext->key, ext->key_len);
 
-	res = mp_set(wnd, OID_802_11_ADD_KEY,
-		     &ndis_key, ndis_key.struct_size);
+	res = mp_set(wnd, OID_802_11_ADD_KEY, &ndis_key, ndis_key.struct_size);
 	if (res) {
 		TRACE2("adding key failed (%08X), %u",
 		       res, ndis_key.struct_size);
 		EXIT2(return -1);
 	}
 	wnd->encr_info.keys[keyidx].length = ext->key_len;
-	memcpy(&wnd->encr_info.keys[keyidx].key,
-	       ndis_key.key, ext->key_len);
+	memcpy(&wnd->encr_info.keys[keyidx].key, ndis_key.key, ext->key_len);
 	if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
 		wnd->encr_info.tx_key_index = keyidx;
 	TRACE2("key %d added", keyidx);
