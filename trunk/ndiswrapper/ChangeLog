@@ -1,3 +1,19 @@
+Version 1.53 2008-05-17
+=======================	
+* Implemented va_list conversion for x86_64, which fixes oops in  
+  vsprintf() and vsnprintf().
+* Fixed oops on unload if using our workqueue implementation with SMP enabled.
+* Don't change the actual thread priority, just pretend it was changed.
+* Implemented format string conversion for x86_64, so that Windows long  
+  is mapped to Linux int.
+* Fixed most sparse warnings.
+* Simplified code and build system to remove already broken support for  
+  Linux versions prior to 2.6.16.
+* Added .size and .type for all functions in win2lin_stubs.S to improve  
+  backtrace on x86_64.
+* Fixed rx key authentication sequence number conversion from Windows to
+  Linux so WPA authentication doesn't sometimes go into re-key auth loop.
+
 Version 1.52 2008-02-02
 =======================	
 * Fixed kernel crash when CONFIG_DEBUG_SHIRQ is enabled
