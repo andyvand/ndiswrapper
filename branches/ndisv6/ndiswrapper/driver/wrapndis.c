@@ -241,7 +241,8 @@ static void mp_halt(struct ndis_device *wnd)
 
 	hangcheck_del(wnd);
 	del_stats_timer(wnd);
-	down_interruptible(&wnd->ndis_comm_mutex);
+	if (down_interruptible(&wnd->ndis_comm_mutex))
+		WARNING("couldn't obtain ndis_comm_mutex");
 	LIN2WIN2(mp_driver->halt, wnd->nmb->adapter_ctx, halt_action);
 	up(&wnd->ndis_comm_mutex);
 	/* cancel any timers left by bugyy windows driver; also free
@@ -1502,7 +1503,8 @@ static int ndis_remove_device(struct ndis_device *wnd)
 		mp_set(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
 		if (wnd->phy_types)
 			kfree(wnd->phy_types);
-		down_interruptible(&wnd->ndis_comm_mutex);
+		if (down_interruptible(&wnd->ndis_comm_mutex))
+			WARNING("couldn't obtain ndis_comm_mutex");
 	}
 	set_bit(SHUTDOWN, &wnd->ndis_pending_work);
 	wnd->tx_ok = 0;
