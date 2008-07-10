@@ -903,7 +903,16 @@ static int iw_get_nick(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static char *ndis_translate_scan(struct net_device *dev, char *event,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 27) && !defined(IW_REQUEST_FLAG_COMPAT)
+#define	iwe_stream_add_event(a, b, c, d, e)	iwe_stream_add_event(b, c, d, e)
+#define	iwe_stream_add_point(a, b, c, d, e)	iwe_stream_add_point(b, c, d, e)
+#define	iwe_stream_add_value(a, b, c, d, e, f)	\
+	iwe_stream_add_value(b, c, d, e, f)
+#define	iwe_stream_lcp_len(a)			IW_EV_LCP_LEN
+#endif
+
+static char *ndis_translate_scan(struct net_device *dev,
+				 struct iw_request_info *info, char *event,
 				 char *end_buf, void *item)
 {
 	struct ndis_device *wnd = netdev_priv(dev);
@@ -927,7 +936,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.ap_addr.sa_family = ARPHRD_ETHER;
 	iwe.len = IW_EV_ADDR_LEN;
 	memcpy(iwe.u.ap_addr.sa_data, bss->bss_id, ETH_ALEN);
-	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_ADDR_LEN);
+	event = iwe_stream_add_event(info, event, end_buf, &iwe,
+				     IW_EV_ADDR_LEN);
 
 	/* add protocol name */
 	TRACE2("0x%x", bss->phy_id);
@@ -936,7 +946,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	strncpy(iwe.u.name,
 		network_type_to_name(wnd->phy_types->phy_types[bss->phy_id]),
 		IFNAMSIZ);
-	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_CHAR_LEN);
+	event = iwe_stream_add_event(info, event, end_buf, &iwe,
+				     IW_EV_CHAR_LEN);
 
 	/* add mode */
 	memset(&iwe, 0, sizeof(iwe));
@@ -947,7 +958,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 		iwe.u.mode = IW_MODE_INFRA;
 	else // if (bss->bss_type == ndis_dot11_bss_type_any)
 		iwe.u.mode = IW_MODE_AUTO;
-	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_UINT_LEN);
+	event = iwe_stream_add_event(info, event, end_buf, &iwe,
+				     IW_EV_UINT_LEN);
 
 	/* add qual */
 	memset(&iwe, 0, sizeof(iwe));
@@ -956,13 +968,14 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.qual.noise = WL_NOISE;
 	iwe.u.qual.qual  = bss->link_quality;
 	iwe.len = IW_EV_QUAL_LEN;
-	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_QUAL_LEN);
+	event = iwe_stream_add_event(info, event, end_buf, &iwe,
+				     IW_EV_QUAL_LEN);
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
 	sprintf(buf, "time=%Lu", bss->time_stamp);
 	iwe.u.data.length = strlen(buf);
-	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
+	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
 
 	i = 0;
 	ie = (typeof(ie))bss->buffer;
@@ -980,7 +993,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iwe.u.data.length = IW_ESSID_MAX_SIZE;
 			iwe.u.data.flags = 1;
 			iwe.len = IW_EV_POINT_LEN + iwe.u.data.length;
-			event = iwe_stream_add_point(event, end_buf, &iwe,
+			event = iwe_stream_add_point(info, event, end_buf, &iwe,
 						     ((char *)ie) + sizeof(*ie));
 			break;
 		case DOT11_IE_SUPPORTED_RATES:
@@ -995,7 +1008,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iwe.u.bitrate.value =
 					(cbuf[i] & 0x7f) * 500000;
 				current_val =
-					iwe_stream_add_value(event, current_val,
+					iwe_stream_add_value(info, event,
+							     current_val,
 							     end_buf, &iwe,
 							     IW_EV_PARAM_LEN);
 			}
@@ -1009,7 +1023,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ie->length;
 			cbuf = (char *)ie + sizeof(*ie);
-			event = iwe_stream_add_point(event, end_buf,
+			event = iwe_stream_add_point(info, event, end_buf,
 						     &iwe, cbuf);
 			break;
 		default:
@@ -1116,7 +1130,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	     i += sizeof(*bss) - 1 + bss->buffer_length) {
 		bss = (typeof(bss))(&byte_array->buffer[i]);
 		TRACE2("%d", bss->buffer_length);
-		event = ndis_translate_scan(dev, event,
+		event = ndis_translate_scan(dev, info, event,
 					    extra + IW_SCAN_MAX_DATA, bss);
 	}
 	wrqu->data.length = event - extra;
