@@ -139,7 +139,7 @@ cmd_mkexport = $(SHELL) $(obj)/mkexport.sh $< $@
 %_exports.h: %.c $(obj)/mkexport.sh FORCE
 	$(call if_changed,mkexport)
 
-extra-y := $(EXPORTS)
+$(addprefix $(obj)/,$(EXPORTS:_exports.h=.o)): %.o: %_exports.h
 
 ifeq ($(CONFIG_X86_64),y)
 quiet_cmd_mkstubs = MKSTUBS $@
@@ -148,7 +148,7 @@ cmd_mkstubs = $(SHELL) $(obj)/mkstubs.sh $(addprefix $(src)/,$(STUB_SRCS)) >$@
 $(obj)/win2lin_stubs.h: $(addprefix $(src)/,$(STUB_SRCS)) FORCE
 	$(call if_changed,mkstubs)
 
-extra-y += win2lin_stubs.h
+$(obj)/win2lin_stubs.o: $(obj)/win2lin_stubs.h
 OBJS += win2lin_stubs.o
 else
 OBJS += divdi3.o
