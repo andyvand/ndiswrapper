@@ -419,12 +419,12 @@ static void timer_proc(unsigned long data)
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	kdpc = nt_timer->kdpc;
-	if (kdpc)
-		queue_kdpc(kdpc);
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
+	kdpc = nt_timer->kdpc;
+	if (kdpc)
+		queue_kdpc(kdpc);
 	TIMEREXIT(return);
 }
 
@@ -561,11 +561,10 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 #ifdef TIMER_DEBUG
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	TIMERTRACE("canceling timer %p(%p)", wrap_timer, nt_timer);
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
-	ret = del_timer(&wrap_timer->timer);
+	ret = del_timer_sync(&wrap_timer->timer);
 	/* the documentation for KeCancelTimer suggests the DPC is
 	 * deqeued, but actually DPC is left to run */
 	if (ret)
