@@ -98,7 +98,7 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 
 	res = mp_query(wnd, OID_802_11_SSID, &essid, sizeof(essid));
 	if (!res)
-		p += sprintf(p, "essid=%.*s\n", essid.length + 1, essid.essid);
+		p += sprintf(p, "essid=%.*s\n", essid.length, essid.essid);
 
 	res = mp_query_int(wnd, OID_802_11_ENCRYPTION_STATUS, &encr_status);
 	if (!res) {
