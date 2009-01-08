@@ -2423,6 +2423,13 @@ noregparm ULONG WIN_FUNC(DbgPrint,12)
 	return STATUS_SUCCESS;
 }
 
+wstdcall void WIN_FUNC(KeBugCheck,1)
+	(ULONG code)
+{
+	TODO();
+	return;
+}
+
 wstdcall void WIN_FUNC(KeBugCheckEx,5)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
