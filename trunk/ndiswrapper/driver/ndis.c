@@ -2014,24 +2014,10 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	ENTER2("status=0x%x len=%d", status, len);
 	switch (status) {
 	case NDIS_STATUS_MEDIA_CONNECT:
-		netif_carrier_on(wnd->net_dev);
-		wnd->tx_ok = 1;
-		if (netif_queue_stopped(wnd->net_dev))
-			netif_wake_queue(wnd->net_dev);
-		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
-			set_bit(LINK_STATUS_ON, &wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
-		}
+		set_media_state(wnd, NdisMediaStateConnected);
 		break;
 	case NDIS_STATUS_MEDIA_DISCONNECT:
-		netif_carrier_off(wnd->net_dev);
-		netif_stop_queue(wnd->net_dev);
-		wnd->tx_ok = 0;
-		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
-			memset(&wnd->essid, 0, sizeof(wnd->essid));
-			set_bit(LINK_STATUS_OFF, &wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
-		}
+		set_media_state(wnd, NdisMediaStateDisconnected);
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)

@@ -207,10 +207,10 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 			  opt_hdr->DataDirectory[i].Size);
 	}
 
-	if ((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_DLL))
-		return IMAGE_FILE_DLL;
 	if ((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE))
 		return IMAGE_FILE_EXECUTABLE_IMAGE;
+	if ((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_DLL))
+		return IMAGE_FILE_DLL;
 	return -EINVAL;
 }
 
