@@ -1716,7 +1716,8 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 	struct net_device *net_dev = ptr;
 
 	ENTER2("0x%lx", event);
-	if (net_dev->open == ndis_net_dev_open && event == NETDEV_CHANGENAME) {
+	if (net_dev->ethtool_ops == &ndis_ethtool_ops
+	    && event == NETDEV_CHANGENAME) {
 		struct ndis_device *wnd = netdev_priv(net_dev);
 		/* called with rtnl lock held, so no need to lock */
 		wrap_procfs_remove_ndis_device(wnd);
@@ -1732,6 +1733,21 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 static struct notifier_block netdev_notifier = {
 	.notifier_call = notifier_event,
 };
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+static const struct net_device_ops ndis_netdev_ops = {
+	.ndo_open = ndis_net_dev_open,
+	.ndo_stop = ndis_net_dev_close,
+	.ndo_start_xmit = tx_skbuff,
+	.ndo_change_mtu = ndis_change_mtu,
+	.ndo_set_multicast_list = ndis_set_multicast_list,
+	.ndo_set_mac_address = ndis_set_mac_address,
+	.ndo_get_stats = ndis_get_stats,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.poll_controller = ndis_poll_controller;
+#endif
+};
+#endif
 
 static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 {
@@ -1772,17 +1788,23 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |
 		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_MULTICAST;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	net_dev->netdev_ops = &ndis_netdev_ops;
+#else
 	net_dev->open = ndis_net_dev_open;
 	net_dev->hard_start_xmit = tx_skbuff;
 	net_dev->stop = ndis_net_dev_close;
 	net_dev->get_stats = ndis_get_stats;
 	net_dev->change_mtu = ndis_change_mtu;
-	net_dev->do_ioctl = NULL;
+	net_dev->set_multicast_list = ndis_set_multicast_list;
+	net_dev->set_mac_address = ndis_set_mac_address;
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	net_dev->poll_controller = ndis_poll_controller;
+#endif
+#endif
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		net_dev->wireless_handlers = &ndis_handler_def;
 	}
-	net_dev->set_multicast_list = ndis_set_multicast_list;
-	net_dev->set_mac_address = ndis_set_mac_address;
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
 	if (wnd->mp_interrupt)
 		net_dev->irq = wnd->mp_interrupt->irq;
@@ -1796,9 +1818,6 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 		net_dev->flags |= IFF_MULTICAST;
 	else
 		net_dev->flags &= ~IFF_MULTICAST;
-#ifdef CONFIG_NET_POLL_CONTROLLER
-	net_dev->poll_controller = ndis_poll_controller;
-#endif
 
 	buf = kmalloc(buf_len, GFP_KERNEL);
 	if (!buf) {
