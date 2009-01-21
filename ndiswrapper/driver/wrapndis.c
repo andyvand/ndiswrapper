@@ -801,6 +801,32 @@ static int set_packet_filter(struct ndis_device *wnd, ULONG packet_filter)
 		EXIT3(return -1);
 }
 
+void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
+{
+	ENTER2("state: 0x%x", state);
+	if (state == NdisMediaStateConnected) {
+		netif_carrier_on(wnd->net_dev);
+		wnd->tx_ok = 1;
+		if (netif_queue_stopped(wnd->net_dev))
+			netif_wake_queue(wnd->net_dev);
+		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+			set_bit(LINK_STATUS_ON, &wnd->ndis_pending_work);
+			schedule_wrapndis_work(&wnd->ndis_work);
+		}
+	} else if (state == NdisMediaStateDisconnected) {
+		netif_carrier_off(wnd->net_dev);
+		netif_stop_queue(wnd->net_dev);
+		wnd->tx_ok = 0;
+		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+			memset(&wnd->essid, 0, sizeof(wnd->essid));
+			set_bit(LINK_STATUS_OFF, &wnd->ndis_pending_work);
+			schedule_wrapndis_work(&wnd->ndis_work);
+		}
+	} else {
+		WARNING("invalid media state: 0x%x", state);
+	}
+}
+
 static int ndis_net_dev_open(struct net_device *net_dev)
 {
 	ENTER1("%p", netdev_priv(net_dev));
@@ -1879,6 +1905,9 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 		set_default_iw_params(wnd);
 	}
+	status = mp_query_int(wnd, OID_GEN_MEDIA_CONNECT_STATUS, (int *)buf);
+	if (status == NDIS_STATUS_SUCCESS)
+		set_media_state(wnd, *((int *)buf));
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
 	hangcheck_add(wnd);
