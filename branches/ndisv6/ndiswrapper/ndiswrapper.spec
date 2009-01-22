@@ -78,13 +78,13 @@ if [ "`uname -r`" = "%{kernel}" ] ; then
 fi
 
 %changelog
-* Mon Jan 10 2005 David Kaplan <dmk@localhost.localdomain> - 
+* Mon Jan 10 2005 David Kaplan <dmk@localhost.localdomain> -
 - Got rid of makeinstall macro as it asks for problems and use naming convention of make files.
 
-* Tue Jan  4 2005 David Kaplan <dmk@localhost.localdomain> - 
+* Tue Jan  4 2005 David Kaplan <dmk@localhost.localdomain> -
 - Updated spec file so that it is closer to kernel module standard spec
 - Made ndiswrapper_version a configurable macro
 
-* Tue Feb  3 2004  <abennett@olin.edu> - 
+* Tue Feb  3 2004  <abennett@olin.edu> -
 - Initial build.
 

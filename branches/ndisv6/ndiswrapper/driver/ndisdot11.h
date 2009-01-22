@@ -46,7 +46,7 @@ enum ndis_dot11_bss_type {
 	ndis_dot11_bss_type_independent = 2,
 	ndis_dot11_bss_type_any = 3
 };
-	
+
 #define DOT11_RATE_SET_MAX_LENGTH		126
 
 struct ndis_dot11_rate_set {
@@ -75,7 +75,7 @@ struct ndis_dot11_rate_set {
 #define DOT11_HW_MSDU_AUTH_SUPPORTED_TX		0x00000010
 #define DOT11_HW_MSDU_AUTH_SUPPORTED_RX		0x00000020
 #define DOT11_CONF_ALGO_WEP_RC4			0x00000001
-#define DOT11_CONF_ALGO_TKIP			0x00000002 
+#define DOT11_CONF_ALGO_TKIP			0x00000002
 #define DOT11_AUTH_ALGO_MICHAEL			0x00000001
 
 struct ndis_dot11_offload_capability {

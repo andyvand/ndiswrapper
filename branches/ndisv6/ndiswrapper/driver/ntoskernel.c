@@ -1797,8 +1797,8 @@ wstdcall void WIN_FUNC(MmUnmapIoSpace,2)
 wstdcall ULONG WIN_FUNC(MmSizeOfMdl,2)
 	(void *base, ULONG length)
 {
-	return (sizeof(struct mdl) +
-		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length)));
+	return sizeof(struct mdl) +
+	       (sizeof(PFN_NUMBER) * SPAN_PAGES(base, length));
 }
 
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
@@ -2417,7 +2417,7 @@ noregparm ULONG WIN_FUNC(DbgPrint,12)
 
 	va_start(args, format);
 	vsnprintf(buf, sizeof(buf), format, args);
-	printk(KERN_DEBUG "%s (%s): %s", DRIVER_NAME, __FUNCTION__, buf);
+	printk(KERN_DEBUG "%s (%s): %s", DRIVER_NAME, __func__, buf);
 	va_end(args);
 #endif
 	return STATUS_SUCCESS;

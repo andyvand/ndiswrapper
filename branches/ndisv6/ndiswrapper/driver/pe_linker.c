@@ -47,7 +47,7 @@ extern struct kuser_shared_data kuser_shared_data;
 
 #if defined(DEBUGLINKER) && DEBUGLINKER > 0
 #define DBGLINKER(fmt, ...) printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
-				   DRIVER_NAME, __FUNCTION__,		\
+				   DRIVER_NAME, __func__,		\
 				   __LINE__ , ## __VA_ARGS__);
 static const char *image_directory_name[] = {
 	"EXPORT",

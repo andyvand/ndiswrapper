@@ -251,7 +251,7 @@ enum ndis_request_type {
 	NdisRequestSend, NdisRequestTransferData, NdisRequestReset,
 	NdisRequestGeneric1, NdisRequestGeneric2, NdisRequestGeneric3,
 	NdisRequestGeneric4, NdisRequestMethod,
-};	
+};
 
 enum ndis_medium {
 	NdisMedium802_3, NdisMedium802_5, NdisMediumFddi, NdisMediumWan,
@@ -683,11 +683,11 @@ struct mp_general_attrs {
 	UCHAR current_mac_address[NDIS_MAX_PHYS_ADDRESS_LENGTH];
 	struct ndis_rx_scale_capabilities *rx_scale_capabilities;
 	enum net_if_access_type access_type;
-	enum net_if_direction_type direction_type; 
-	enum net_if_connection_type connection_type; 
+	enum net_if_direction_type direction_type;
+	enum net_if_connection_type connection_type;
 	NET_IFTYPE if_type;
 	BOOLEAN if_connector_present;
-	ULONG supported_statistics; 
+	ULONG supported_statistics;
 	ULONG supported_pause_functions;
 	ULONG data_back_fill_size;
 	ULONG context_back_fill_size;
@@ -788,7 +788,7 @@ struct ndis_offload {
 	struct ndis_tcp_large_send_offload_v1 lso_v1;
 	struct ndis_ipsec_offload_v1 ipsec_v1;
 	struct ndis_tcp_large_send_offload_v2 lso_v2;
-	ULONG flags; 
+	ULONG flags;
 };
 
 struct mp_offload_attrs {
@@ -932,9 +932,9 @@ struct ndis_restart_general_attrs {
 	ULONG max_multicastlist_size;
 	struct ndis_rx_scale_capabilities *rx_scale_capabilities;
 	enum net_if_access_type access_type;
-	enum net_if_direction_type direction_type; 
-	enum net_if_connection_type connection_type; 
-	ULONG supported_statistics; 
+	enum net_if_direction_type direction_type;
+	enum net_if_connection_type connection_type;
+	ULONG supported_statistics;
 	ULONG data_back_fill_size;
 	ULONG context_back_fill_size;
 	ndis_oid *supported_oid_list;
@@ -1002,7 +1002,7 @@ struct ndis_pci_device_custom_props {
 	UINT32 max_link_width;
 };
 
-#define NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS	0x81 
+#define NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS	0x81
 #define NDIS_MINIPORT_INIT_PARAMETERS_REVISION_1	1
 
 #define NDIS_PORT_AUTHENTICATION_PARAMETERS_REVISION_1	1

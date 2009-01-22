@@ -845,9 +845,9 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 						wnd->net_dev->name, status);
 			}
 			status = mp_set_int(wnd, OID_PNP_SET_POWER, pm_state);
-			if (status == NDIS_STATUS_SUCCESS) {
+			if (status == NDIS_STATUS_SUCCESS)
 				set_bit(HW_SUSPENDED, &wnd->hw_status);
-			} else
+			else
 				WARNING("suspend failed: %08X", status);
 		}
 		if (status != NDIS_STATUS_SUCCESS) {
@@ -886,7 +886,7 @@ NDIS_STATUS mp_pnp_event(struct ndis_device *wnd,
 	net_event.header.size = sizeof(net_event);
 	net_event.port = 0;
 	net_event.event = event;
-	
+
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
 		net_event.buf = NULL;
@@ -1054,7 +1054,7 @@ static void init_dot11_station(struct ndis_device *wnd, void *buf,
 	country_region_list = (typeof(country_region_list))buf;
 #if 0
 	init_ndis_object_header(country_region_list, NDIS_OBJECT_TYPE_DEFAULT,
-				DOT11_COUNTRY_OR_REGION_STRING_LIST_REVISION_1);	
+				DOT11_COUNTRY_OR_REGION_STRING_LIST_REVISION_1);
 	res = mp_query(wnd, OID_DOT11_SUPPORTED_COUNTRY_OR_REGION_STRING,
 		       buf, buf_len);
 	TRACE2("%08X", res);

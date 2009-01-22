@@ -330,7 +330,7 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	ULONG i, n;
 
-	
+
 	res = mp_query(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS, &power_levels,
 		       sizeof(power_levels));
 	if (res) {
@@ -491,9 +491,9 @@ static int iw_get_ap_address(struct net_device *dev,
 	       assoc_info->power_mode,
 	       assoc_info->assoc_uptime,
 	       assoc_info->num_tx_packet_success,
-	       assoc_info->num_tx_packet_failure, 
-	       assoc_info->num_rx_packet_success, 
-	       assoc_info->num_rx_packet_failure); 
+	       assoc_info->num_tx_packet_failure,
+	       assoc_info->num_rx_packet_success,
+	       assoc_info->num_rx_packet_failure);
 	memcpy(wrqu->ap_addr.sa_data, assoc_info->peer_mac,
 	       sizeof(assoc_info->peer_mac));
 	wrqu->ap_addr.sa_family = ARPHRD_ETHER;
@@ -727,7 +727,7 @@ static int add_cipher_key(struct ndis_device *wnd, char *key, int key_len,
 
 	init_ndis_object_header(ndis_key, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_CIPHER_DEFAULT_KEY_VALUE_REVISION_1);
-	
+
 	ndis_key->key_index = index;
 	TRACE2("key %d/%d: " MACSTRSEP, index, key_len, MAC2STR(key));
 
@@ -768,7 +768,7 @@ static int delete_cipher_key(struct ndis_device *wnd, int index,
 	ndis_key = (typeof(ndis_key))key_buf;
 	init_ndis_object_header(ndis_key, NDIS_OBJECT_TYPE_DEFAULT,
 				DOT11_CIPHER_DEFAULT_KEY_VALUE_REVISION_1);
-	
+
 	ndis_key->key_index = index;
 	ndis_key->algo_id = wnd->cipher_info.algo;
 	if (mac)
@@ -1060,7 +1060,7 @@ int set_scan(struct ndis_device *wnd)
 	scan_req->restricted_scan = FALSE;
 	scan_req->num_ssids = 1;
 	scan_req->num_phy_types = 0;
-//	dump_bytes(__FUNCTION__, (void *)scan_req, len);
+//	dump_bytes(__func__, (void *)scan_req, len);
 	res = mp_set(wnd, OID_DOT11_SCAN_REQUEST, scan_req, len);
 	kfree(scan_req);
 	if (res) {
@@ -1125,7 +1125,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		EXIT2(return -EOPNOTSUPP);
 	}
 	TRACE2("%d, %d", byte_array->num_bytes, byte_array->num_total_bytes);
-//	dump_bytes(__FUNCTION__, byte_array->buffer, byte_array->num_bytes);
+//	dump_bytes(__func__, byte_array->buffer, byte_array->num_bytes);
 	for (i = 0; i < byte_array->num_bytes;
 	     i += sizeof(*bss) - 1 + bss->buffer_length) {
 		bss = (typeof(bss))(&byte_array->buffer[i]);

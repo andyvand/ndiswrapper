@@ -9,14 +9,14 @@ DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec \
 				   ndiswrapper.8 loadndisdriver.8
 DIST_SUBDIRS=utils driver
 
-DESTDIR = 
+DESTDIR =
 mandir = $(DESTDIR)$(shell [ -d /usr/man/man8 ] && echo /usr/man || echo /usr/share/man )
 
 KVERS ?= $(shell uname -r)
 
 .PHONY: all
 
-all: 
+all:
 	+make -C driver
 	+make -C utils
 
