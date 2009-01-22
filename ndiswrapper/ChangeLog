@@ -1,3 +1,8 @@
+Version 1.54 2009-01-21
+=======================	
+* Fixed buffer overflows with nickname
+* Compilation issues with 2.6.27 and 2.6.28 fixed
+
 Version 1.53 2008-05-17
 =======================	
 * Implemented va_list conversion for x86_64, which fixes oops in  
