@@ -692,7 +692,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 }
 
 static inline void lower_irql(KIRQL oldirql)
-{									
+{
 	irql_info_t *info;
 
 	assert(oldirql <= DISPATCH_LEVEL);

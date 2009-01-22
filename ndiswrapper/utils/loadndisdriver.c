@@ -51,7 +51,7 @@ static int debug;
 
 #define LOG_MSG(where, fmt, ...)					\
 	syslog(LOG_KERN | where, "%s: %s(%d): " fmt "\n",		\
-	       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__)
+	       PROG_NAME, __func__, __LINE__ , ## __VA_ARGS__)
 #define ERROR(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 #define INFO(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 #define DBG(fmt, ...) do {					\
@@ -199,7 +199,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 			ERROR("too many settings");
 			return -EINVAL;
 		}
-				
+
 	}
 
 	fclose(config);
@@ -263,7 +263,7 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 		      driver_name, strerror(errno));
 		return -EINVAL;
 	}
-		
+
 	if ((driver = malloc(sizeof(*driver))) == NULL) {
 		ERROR("couldn't allocate memory for driver %s", driver_name);
 		goto err;

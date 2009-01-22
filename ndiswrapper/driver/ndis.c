@@ -1033,10 +1033,10 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 	TRACE3("%p, %p, %u", buf, MmGetSystemAddressForMdl(buf),
 	       MmGetMdlByteCount(buf));
 	DBG_BLOCK(4) {
-		dump_bytes(__FUNCTION__, MmGetSystemAddressForMdl(buf),
+		dump_bytes(__func__, MmGetSystemAddressForMdl(buf),
 			   MmGetMdlByteCount(buf));
 	}
-	wnd->dma_map_addr[index] = 
+	wnd->dma_map_addr[index] =
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
 				   MmGetSystemAddressForMdl(buf),
 				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
