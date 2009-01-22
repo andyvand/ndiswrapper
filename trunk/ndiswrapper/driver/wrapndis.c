@@ -547,7 +547,7 @@ static struct ndis_packet *alloc_tx_packet(struct ndis_device *wnd,
 			(void *)(ULONG_PTR)csum.value;
 	}
 	DBG_BLOCK(4) {
-		dump_bytes(__FUNCTION__, skb->data, skb->len);
+		dump_bytes(__func__, skb->data, skb->len);
 	}
 	TRACE4("%p, %p, %p", packet, buffer, skb);
 	return packet;
@@ -1021,7 +1021,7 @@ static void link_status_on(struct ndis_device *wnd)
 		TRACE2("query assoc_info failed (%08X)", res);
 		kfree(ndis_assoc_info);
 		goto send_assoc_event;
-	}	
+	}
 	TRACE2("%u, 0x%x, %u, 0x%x, %u", ndis_assoc_info->length,
 	       ndis_assoc_info->req_ies, ndis_assoc_info->req_ie_length,
 	       ndis_assoc_info->resp_ies, ndis_assoc_info->resp_ie_length);
@@ -1652,7 +1652,7 @@ static u32 ndis_get_rx_csum(struct net_device *dev)
 		return 1;
 	else
 		return 0;
-} 
+}
 
 static int ndis_set_tx_csum(struct net_device *dev, u32 data)
 {
@@ -1661,9 +1661,9 @@ static int ndis_set_tx_csum(struct net_device *dev, u32 data)
 	if (data && (wnd->tx_csum.value == 0))
 		return -EOPNOTSUPP;
 
-	if (wnd->tx_csum.ip_csum) {
+	if (wnd->tx_csum.ip_csum)
 		ethtool_op_set_tx_hw_csum(dev, data);
-	} else
+	else
 		ethtool_op_set_tx_csum(dev, data);
 	return 0;
 }
@@ -1686,7 +1686,7 @@ static u32 ndis_get_sg(struct net_device *dev)
 		return ethtool_op_get_sg(dev);
 	else
 		return 0;
-} 
+}
 
 static int ndis_set_sg(struct net_device *dev, u32 data)
 {
@@ -1695,7 +1695,7 @@ static int ndis_set_sg(struct net_device *dev, u32 data)
 		return ethtool_op_set_sg(dev, data);
 	else
 		return -EOPNOTSUPP;
-} 
+}
 
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_drvinfo	= ndis_get_drvinfo,

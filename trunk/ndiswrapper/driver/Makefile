@@ -52,7 +52,7 @@ $(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
 endif
 include $(KBUILD)/.config
 
-# returns of structs and unions in registers when possible, like Windows 
+# returns of structs and unions in registers when possible, like Windows
 EXTRA_CFLAGS += -freg-struct-return
 
 # to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
