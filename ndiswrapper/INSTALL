@@ -4,7 +4,7 @@ troubleshooting, FAQ etc. can be found in the Wiki at
 
 http://ndiswrapper.sourceforge.net/wiki
 
-Prerequisites 
+Prerequisites
 =============
 
 You need a recent kernel, at least 2.6.16, with header files for the
@@ -15,7 +15,7 @@ directory. The command
 
 should have at least 'include' directory and '.config' file.
 
-Downloading 
+Downloading
 ===========
 
 Download the latest version of the ndiswrapper sources from here and
@@ -32,7 +32,7 @@ directory and run
 Login as root and run
   make install
 
-Install Windows driver 
+Install Windows driver
 ======================
 
 If this is the first time you install ndiswrapper, you need to install

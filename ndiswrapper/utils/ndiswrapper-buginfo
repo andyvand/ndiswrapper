@@ -84,8 +84,8 @@ while :; do
     read res
 
     # default to N, (nothing entered)
-    if [ "$res" == "" ]; then 
-	res="N" 
+    if [ "$res" == "" ]; then
+	res="N"
     fi
 
     case $res in
@@ -137,7 +137,7 @@ if [ $FULL -eq 1 ]; then
     log "kernel configuration:"
     if [ -r /proc/config.gz ]; then
 	    log_cmd 'gzip -d < /proc/config.gz'
-    else 
+    else
 	    if [ -r /lib/modules/$KVERS/build/.config ]; then
 		    log_cmd "cat /lib/modules/$KVERS/build/.config"
 	    else

@@ -204,7 +204,7 @@ wstdcall ULONG WIN_FUNC(RtlxAnsiStringToUnicodeSize,1)
 
 	for (i = 0; i < string->max_length && string->buf[i]; i++)
 		;
-	return (i * sizeof(wchar_t));
+	return i * sizeof(wchar_t);
 }
 
 wstdcall ULONG WIN_FUNC(RtlxUnicodeStringToAnsiSize,1)

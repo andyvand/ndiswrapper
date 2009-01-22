@@ -191,7 +191,7 @@ noregparm void WIN_FUNC(NdisWriteErrorLogEntry,12)
 	va_end(args);
 	DBG_BLOCK(2) {
 		void *p = __builtin_return_address(0) - 30;
-		dump_bytes(__FUNCTION__, p, 30);
+		dump_bytes(__func__, p, 30);
 	}
 	EXIT2(return);
 }
@@ -1293,7 +1293,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateNetBufferListContext,4)
 
 	ENTER3("%p, %u, %u", buffer_list, ctx_size, backfill);
 
-	/* TODO: how is this context list organized in buffer_list? 
+	/* TODO: how is this context list organized in buffer_list?
 	 * newer members are added to the end of list or front (as in
 	 * the case of MDL)? */
 	if (!buffer_list->context || buffer_list->context->offset < ctx_size) {
@@ -1655,7 +1655,7 @@ wstdcall struct mdl *WIN_FUNC(NdisAllocateMdl,3)
 
 	ENTER4("%p, %p, %u", handle, virt, length);
 	mdl = allocate_init_mdl(virt, length);
-	MmBuildMdlForNonPagedPool(mdl);	
+	MmBuildMdlForNonPagedPool(mdl);
 //	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 //	mdl->flags |= MDL_ALLOCATED_FIXED_SIZE;
 	TRACE4("%p", mdl);
@@ -2262,7 +2262,7 @@ wstdcall void WIN_FUNC(NdisFreeIoWorkItem,1)
 wstdcall UINT WIN_FUNC(NdisGetVersion,0)
 	(void)
 {
-	return (6 << 16 | 0);
+	return (6 << 16) | 0;
 }
 
 wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)

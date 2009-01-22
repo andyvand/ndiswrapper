@@ -69,7 +69,7 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 		*eof = 1;
 	}
 
-	return (p - page);
+	return p - page;
 }
 
 static int procfs_read_ndis_encr(char *page, char **start, off_t off,
@@ -88,7 +88,7 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		*eof = 1;
 	}
 
-	return (p - page);
+	return p - page;
 }
 
 static int procfs_read_ndis_hw(char *page, char **start, off_t off,
@@ -140,7 +140,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 		*eof = 1;
 	}
 
-	return (p - page);
+	return p - page;
 }
 
 static int procfs_read_ndis_settings(char *page, char **start, off_t off,
@@ -167,7 +167,7 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
 	}
 
-	return (p - page);
+	return p - page;
 }
 
 static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
@@ -400,7 +400,7 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		p += sprintf(p, "total size of allocations in %d: %d\n",
 			     type, alloc_size(type));
 #endif
-	return (p - page);
+	return p - page;
 }
 
 static int procfs_write_debug(struct file *file, const char __user *buf,
