@@ -58,6 +58,7 @@ void free_tx_buffer_list(struct ndis_device *wnd,
 			 struct net_buffer_list *buffer_list);
 int init_ndis_driver(struct driver_object *drv_obj);
 NDIS_STATUS ndis_reinit(struct ndis_device *wnd);
+void set_media_state(struct ndis_device *wnd, enum ndis_media_state state);
 
 void get_encryption_capa(struct ndis_device *wnd);
 void hangcheck_add(struct ndis_device *wnd);
