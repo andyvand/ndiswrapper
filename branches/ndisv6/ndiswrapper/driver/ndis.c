@@ -1913,16 +1913,10 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		TRACE2("%d", link_state->media_connect_state);
 		if (link_state->media_connect_state ==
 		    MediaConnectStateConnected) {
-			netif_carrier_on(wnd->net_dev);
-			set_bit(LINK_STATUS_CHANGED,
-				&wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			set_media_state(wnd, NdisMediaStateConnected);
 		} else if (link_state->media_connect_state ==
 			   MediaConnectStateDisconnected) {
-			netif_carrier_off(wnd->net_dev);
-			set_bit(LINK_STATUS_CHANGED,
-				&wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			set_media_state(wnd, NdisMediaStateDisconnected);
 		}
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_START:
