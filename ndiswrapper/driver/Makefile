@@ -136,6 +136,7 @@ all: config_check modules
 quiet_cmd_mkexport = MKEXPORT $@
 cmd_mkexport = $(SHELL) $(obj)/mkexport.sh $< $@
 
+extra-y += $(EXPORTS)
 %_exports.h: %.c $(obj)/mkexport.sh FORCE
 	$(call if_changed,mkexport)
 
@@ -145,6 +146,7 @@ ifeq ($(CONFIG_X86_64),y)
 quiet_cmd_mkstubs = MKSTUBS $@
 cmd_mkstubs = $(SHELL) $(obj)/mkstubs.sh $(addprefix $(src)/,$(STUB_SRCS)) >$@
 
+extra-y += win2lin_stubs.h
 $(obj)/win2lin_stubs.h: $(addprefix $(src)/,$(STUB_SRCS)) FORCE
 	$(call if_changed,mkstubs)
 
