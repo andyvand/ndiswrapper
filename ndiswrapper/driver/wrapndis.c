@@ -1744,7 +1744,7 @@ static const struct net_device_ops ndis_netdev_ops = {
 	.ndo_set_mac_address = ndis_set_mac_address,
 	.ndo_get_stats = ndis_get_stats,
 #ifdef CONFIG_NET_POLL_CONTROLLER
-	.poll_controller = ndis_poll_controller;
+	.ndo_poll_controller = ndis_poll_controller,
 #endif
 };
 #endif
