@@ -51,11 +51,13 @@
 
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
 #ifndef IRQ_HANDLED
 #define IRQ_HANDLED
 #define IRQ_NONE
 #define irqreturn_t void
 #endif
+#endif /* Linux < 2.6.29 */
 
 /* pci functions in 2.6 kernels have problems allocating dma buffers,
  * but seem to work fine with dma functions
