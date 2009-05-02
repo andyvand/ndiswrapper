@@ -1230,6 +1230,30 @@ enum ndis_shutdown_action {
 	NdisShutdownPowerOff, NdisShutdownBugCheck
 };
 
+enum ndis_port_type {NdisPortTypeUndefined, NdisPortTypeBridge,
+		     NdisPortTypeRasConnection, NdisPortType8021xSupplicant, };
+
+struct ndis_port_characteristics {
+	struct ndis_object_header header;
+	NDIS_PORT_NUMBER port;
+	ULONG flags;
+	enum ndis_port_type type;
+	enum ndis_media_connect_state media_connect_state;
+	ULONG64 xmit_link_speed;
+	ULONG64 rcv_link_speed;
+	enum net_if_direction_type direction_type;
+	enum ndis_port_control_state tx_control_state;
+	enum ndis_port_control_state rx_control_state;
+	enum ndis_port_authorization_state tx_auth_state;
+	enum ndis_port_authorization_state rx_auth_state;
+};
+
+struct net_pnp_event_notification {
+	struct ndis_object_header header;
+	NDIS_PORT_NUMBER port;
+	struct net_pnp_event event;
+};
+
 struct mp_driver_characteristics {
 	struct ndis_object_header header;
 	UCHAR major_version;

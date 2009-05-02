@@ -731,6 +731,35 @@ wstdcall ULONG WIN_FUNC(NdisMSetBusData,5)
 	}
 }
 
+wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocatePort,2)
+	(struct ndis_mp_block *nmb,
+	 struct ndis_port_characteristics *port_chars)
+{
+	ENTER1("%p, 0x%x, %d", nmb, port_chars->flags, port_chars->type);
+	TODO();
+	port_chars->port = 1;
+	return NDIS_STATUS_SUCCESS;
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMFreePort,2)
+	(struct ndis_mp_block *nmb,
+	 struct ndis_port_characteristics *port_chars)
+{
+	ENTER1("%p, 0x%x, %d, %d", nmb, port_chars->flags, port_chars->type,
+	       port_chars->port);
+	TODO();
+	return NDIS_STATUS_SUCCESS;
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMNetPnPEvent,2)
+	(struct ndis_mp_block *nmb,
+	 struct net_pnp_event_notification *pnp_event)
+{
+	ENTER1("%p, %d, %d", nmb, pnp_event->port, pnp_event->event.code);
+	TODO();
+	return NDIS_STATUS_SUCCESS;
+}
+
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)
 	(struct ndis_mp_block *nmb, ULONG port, char *data)
 {
@@ -1149,6 +1178,57 @@ wstdcall void WIN_FUNC(NdisAdvanceNetBufferDataStart,4)
 	}
 	TRACE2("%p, %u", mdl, buffer->header.data.data_offset);
 }
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisCopyFromNetBufferToNetBuffer,6)
+	(struct net_buffer *dst_buffer, ULONG dst_offset, ULONG bytes_to_copy,
+	 struct net_buffer *src_buffer, ULONG src_offset, ULONG *bytes_copied)
+{
+	struct mdl *src_mdl, *dst_mdl;
+
+	src_mdl = src_buffer->header.data.mdl_chain;
+	while (src_mdl != src_buffer->header.data.current_mdl)
+		src_mdl = src_mdl->next;
+
+	src_offset += src_buffer->header.data.current_mdl_offset;
+
+	while (src_offset > MmGetMdlByteCount(src_mdl)) {
+		src_offset -= MmGetMdlByteCount(src_mdl);
+		src_mdl = src_mdl->next;
+	}
+
+	dst_mdl = dst_buffer->header.data.mdl_chain;
+	while (dst_mdl != dst_buffer->header.data.current_mdl)
+		dst_mdl = dst_mdl->next;
+
+	dst_offset += dst_buffer->header.data.current_mdl_offset;
+
+	while (dst_offset > MmGetMdlByteCount(dst_mdl)) {
+		dst_offset -= MmGetMdlByteCount(dst_mdl);
+		dst_mdl = dst_mdl->next;
+	}
+	while (bytes_to_copy > 0 && src_mdl && dst_mdl) {
+		ULONG n = min(MmGetMdlByteCount(src_mdl) - src_offset,
+			      MmGetMdlByteCount(dst_mdl) - dst_offset);
+		n = min(n, bytes_to_copy);
+		memcpy(MmGetSystemAddressForMdl(dst_mdl) + dst_offset,
+		       MmGetSystemAddressForMdl(src_mdl) + src_offset, n);
+		bytes_to_copy -= n;
+		if (n == (MmGetMdlByteCount(src_mdl) + src_offset)) {
+			src_offset = 0;
+			src_mdl = src_mdl->next;
+		} else {
+			src_offset += n;
+		}
+		if (n == (MmGetMdlByteCount(dst_mdl) + dst_offset)) {
+			dst_offset = 0;
+			dst_mdl = dst_mdl->next;
+		} else {
+			dst_offset += n;
+		}
+	}
+	return NDIS_STATUS_SUCCESS;
+}
+
 
 wstdcall struct net_buffer_list_pool *WIN_FUNC(NdisAllocateNetBufferListPool,2)
 	(struct ndis_mp_block *nmb,
