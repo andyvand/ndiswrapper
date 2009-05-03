@@ -1185,27 +1185,21 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisCopyFromNetBufferToNetBuffer,6)
 {
 	struct mdl *src_mdl, *dst_mdl;
 
-	src_mdl = src_buffer->header.data.mdl_chain;
-	while (src_mdl != src_buffer->header.data.current_mdl)
-		src_mdl = src_mdl->next;
-
+	src_mdl = src_buffer->header.data.current_mdl;
 	src_offset += src_buffer->header.data.current_mdl_offset;
-
-	while (src_offset > MmGetMdlByteCount(src_mdl)) {
+	while (src_mdl && src_offset > MmGetMdlByteCount(src_mdl)) {
 		src_offset -= MmGetMdlByteCount(src_mdl);
 		src_mdl = src_mdl->next;
 	}
 
-	dst_mdl = dst_buffer->header.data.mdl_chain;
-	while (dst_mdl != dst_buffer->header.data.current_mdl)
-		dst_mdl = dst_mdl->next;
-
+	dst_mdl = dst_buffer->header.data.current_mdl;
 	dst_offset += dst_buffer->header.data.current_mdl_offset;
-
-	while (dst_offset > MmGetMdlByteCount(dst_mdl)) {
+	while (dst_mdl && dst_offset > MmGetMdlByteCount(dst_mdl)) {
 		dst_offset -= MmGetMdlByteCount(dst_mdl);
 		dst_mdl = dst_mdl->next;
 	}
+
+	*bytes_copied = 0;
 	while (bytes_to_copy > 0 && src_mdl && dst_mdl) {
 		ULONG n = min(MmGetMdlByteCount(src_mdl) - src_offset,
 			      MmGetMdlByteCount(dst_mdl) - dst_offset);
@@ -1213,13 +1207,14 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisCopyFromNetBufferToNetBuffer,6)
 		memcpy(MmGetSystemAddressForMdl(dst_mdl) + dst_offset,
 		       MmGetSystemAddressForMdl(src_mdl) + src_offset, n);
 		bytes_to_copy -= n;
-		if (n == (MmGetMdlByteCount(src_mdl) + src_offset)) {
+		*bytes_copied += n;
+		if (n == (MmGetMdlByteCount(src_mdl) - src_offset)) {
 			src_offset = 0;
 			src_mdl = src_mdl->next;
 		} else {
 			src_offset += n;
 		}
-		if (n == (MmGetMdlByteCount(dst_mdl) + dst_offset)) {
+		if (n == (MmGetMdlByteCount(dst_mdl) - dst_offset)) {
 			dst_offset = 0;
 			dst_mdl = dst_mdl->next;
 		} else {
