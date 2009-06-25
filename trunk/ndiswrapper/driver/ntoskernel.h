@@ -306,20 +306,10 @@ typedef u32 pm_message_t;
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
 
-#ifndef DMA_24BIT_MASK
-#define DMA_24BIT_MASK 0x0000000000ffffffULL
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+#ifndef DMA_BIT_MASK
+#define DMA_BIT_MASK(n)	(((n) == 64) ? ~0ULL : ((1ULL<<(n))-1))
 #endif
-
-#ifndef DMA_30BIT_MASK
-#define DMA_30BIT_MASK 0x000000003fffffffULL
-#endif
-
-#ifndef DMA_31BIT_MASK
-#define DMA_31BIT_MASK 0x000000007fffffffULL
-#endif
-
-#ifndef DMA_32BIT_MASK
-#define DMA_32BIT_MASK 0x00000000ffffffffULL
 #endif
 
 #ifndef __GFP_DMA32
