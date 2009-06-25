@@ -1893,7 +1893,7 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 {
 	struct ndis_mp_interrupt *mp_interrupt = ctx;
 	struct ndis_device *wnd = mp_interrupt->nmb->wnd;
-	BOOLEAN recognized, queue_handler;
+	BOOLEAN recognized = TRUE, queue_handler = TRUE;
 
 	TRACE6("%p", wnd);
 	/* kernel may call ISR when registering interrupt, in
