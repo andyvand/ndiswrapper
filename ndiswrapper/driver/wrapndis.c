@@ -243,7 +243,7 @@ static void mp_halt(struct ndis_device *wnd)
 	del_stats_timer(wnd);
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		WARNING("couldn't obtain ndis_comm_mutex");
-	LIN2WIN2(mp_driver->halt, wnd->nmb->adapter_ctx, halt_action);
+	LIN2WIN2(mp_driver->mphalt, wnd->nmb->adapter_ctx, halt_action);
 	up(&wnd->ndis_comm_mutex);
 	/* cancel any timers left by bugyy windows driver; also free
 	 * the memory for timers */

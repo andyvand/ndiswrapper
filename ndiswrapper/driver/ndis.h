@@ -1264,7 +1264,7 @@ struct mp_driver_characteristics {
 	NDIS_STATUS (*set_options)(void *, void *) wstdcall;
 	NDIS_STATUS (*initialize)(void *, void *,
 				  struct mp_init_params *) wstdcall;
-	void (*halt)(void *, enum ndis_halt_action) wstdcall;
+	void (*mphalt)(void *, enum ndis_halt_action) wstdcall;
 	void (*unload)(struct driver_object *) wstdcall;
 	NDIS_STATUS (*pause)(void *, struct mp_pause_params *) wstdcall;
 	NDIS_STATUS (*restart)(void *, struct mp_restart_params *) wstdcall;
