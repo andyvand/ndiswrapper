@@ -945,19 +945,19 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 		EXIT2(return NDIS_STATUS_RESOURCES);
 	}
 	if (dmasize == NDIS_DMA_24BITS) {
-		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_24BIT_MASK) ||
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_BIT_MASK(24)) ||
 		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
-						DMA_24BIT_MASK))
+						DMA_BIT_MASK(24)))
 			WARNING("setting dma mask failed");
 	} else if (dmasize == NDIS_DMA_32BITS) {
 		/* consistent dma is in low 32-bits by default */
-		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK))
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_BIT_MASK(32)))
 			WARNING("setting dma mask failed");
 #ifdef CONFIG_X86_64
 	} else if (dmasize == NDIS_DMA_64BITS) {
-		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_64BIT_MASK) ||
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_BIT_MASK(64)) ||
 		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
-						DMA_64BIT_MASK))
+						DMA_BIT_MASK(64)))
 			WARNING("setting dma mask failed");
 		else
 			wnd->net_dev->features |= NETIF_F_HIGHDMA;
@@ -2600,9 +2600,9 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
 #ifdef CONFIG_X86_64
 	if (dma_size != NDIS_DMA_64BITS) {
 		TRACE1("DMA size is not 64-bits");
-		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK) ||
+		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_BIT_MASK(32)) ||
 		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
-						DMA_32BIT_MASK))
+						DMA_BIT_MASK(32)))
 			WARNING("setting dma mask failed");
 	}
 #endif
