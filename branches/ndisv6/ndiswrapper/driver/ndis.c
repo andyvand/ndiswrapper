@@ -1902,7 +1902,7 @@ WIN_FUNC_DECL(ndis_irq_handler,4)
 wstdcall BOOLEAN ndis_isr(struct kinterrupt *interrupt, void *ctx)
 {
 	struct ndis_device *wnd = ctx;
-	BOOLEAN recognized, queue_handler;
+	BOOLEAN recognized = TRUE, queue_handler = TRUE;
 	ULONG proc = 0;
 
 	ENTER6("%p", wnd);
