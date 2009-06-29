@@ -1,3 +1,7 @@
+Version 1.55 2009-06-28
+=======================
+* Fixed compilation issues with recent kernels
+
 Version 1.54 2009-01-21
 =======================
 * Fixed buffer overflows with nickname
