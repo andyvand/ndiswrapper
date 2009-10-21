@@ -57,7 +57,7 @@ my $modconf;
 if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
     if ($2 > 4) {
 	if (-d "/etc/modprobe.d") {
-	    $modconf = "/etc/modprobe.d/ndiswrapper";
+	    $modconf = "/etc/modprobe.d/ndiswrapper.conf";
 	} else {
 	    $modconf = "/etc/modprobe.conf";
 	}
