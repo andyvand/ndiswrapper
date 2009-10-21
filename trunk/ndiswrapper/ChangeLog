@@ -1,3 +1,5 @@
+* Use /etc/modprobe.d/ndiswrapper.conf, not /etc/modprobe.d/ndiswrapper.
+
 Version 1.55 2009-06-28
 =======================
 * Fixed compilation issues with recent kernels
