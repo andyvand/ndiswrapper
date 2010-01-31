@@ -875,8 +875,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 #define u64_low_32(x) ((u32)x)
 #define u64_high_32(x) ((u32)(x >> 32))
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
-static inline u64 cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
+static inline u64 nt_cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
 {
 	u64 prev;
 
@@ -887,7 +886,6 @@ static inline u64 cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
 		: "A" (old), "b" (u64_low_32(new)), "c" (u64_high_32(new)));
 	return prev;
 }
-#endif
 
 /* slist routines below update slist atomically - no need for
  * spinlocks */
@@ -902,7 +900,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 		entry->next = old.next;
 		new.next = entry;
 		new.depth = old.depth + 1;
-	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	} while (nt_cmpxchg8b(&head->align, old.align, new.align) != old.align);
 	TRACE4("%p, %p, %p", head, entry, old.next);
 	return old.next;
 }
@@ -919,7 +917,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 			break;
 		new.next = entry->next;
 		new.depth = old.depth - 1;
-	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	} while (nt_cmpxchg8b(&head->align, old.align, new.align) != old.align);
 	TRACE4("%p, %p", head, entry);
 	return entry;
 }
