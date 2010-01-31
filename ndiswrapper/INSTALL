@@ -51,7 +51,7 @@ if it is PCI device or
 if it is USB device.
 
 Then lookup in that List for the device ID and if a driver is known to
-work, get that driver. Occassionally, Windows driver on the CD or your
+work, get that driver. Occasionally, Windows driver on the CD or your
 Windows partition may work, but if it doesn't, don't complain - get a
 known-to-work driver.
 

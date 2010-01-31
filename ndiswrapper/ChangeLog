@@ -33,7 +33,7 @@ Version 1.52 2008-02-02
 
 Version 1.51 2007-12-17
 =======================
-* Fixed an smp issue that may cause ndiswrapper to stop transmitting packets
+* Fixed an SMP issue that may cause ndiswrapper to stop transmitting packets
   after a while (noticed with Marvell Pre-N USB driver)
 
 Version 1.50 2007-11-27
@@ -51,7 +51,7 @@ Version 1.49 2007-10-27
   queried with OID_802_3_CURRENT_ADDRESS (probably because
   NdisReadNetworkAddress returns NDIS_STATUS_FAILURE?), use
   OID_802_3_PERMANENT_ADDRESS to get the correct address. This is required for
-  some atheros devices (e.g., AR5007EG)
+  some Atheros devices (e.g., AR5007EG)
 * Fixed a kernel crash with non-preempt kernels (observed with acx111 driver)
 * Preemption, as required by Windows, has been reimplemented. With this,
   ndiswrapper works with RT-preempt and non-preempt kernels
@@ -60,7 +60,7 @@ Version 1.49 2007-10-27
 Version 1.48 2007-09-19
 =======================
 * Support for 2.6.23 kernel
-* Disassocation with wpa_supplicant is fixed (earlier, after disassociation,
+* Disassociation with wpa_supplicant is fixed (earlier, after disassociation,
   the driver and ndiswrapper would be configured differently, requiring
   unloading and reloading of ndiswrapper module)
 * (Re)Association / (Re)Authentication issues with wpa_supplicant with
@@ -70,7 +70,7 @@ Version 1.48 2007-09-19
 
 Version 1.47 2007-06-12
 =======================
-* Fixed random (occassional) crash issues with 64-bit drivers (observed with
+* Fixed random (occasional) crash issues with 64-bit drivers (observed with
   Broadcom driver)
 * Fixed compilation issues with version 1.46
 
@@ -89,13 +89,13 @@ Version 1.45 2007-05-28
 * Fixed kernel crash with PsCreateSystemThread that manifested with
   sis163u when preempt is enabled
 * Changing MAC address with 'ifconfig <iface> hw ether' should work
-  with all drivers now. If MAC address should be changed everytime
+  with all drivers now. If MAC address should be changed every time
   ndiswrapper is loaded, change 'NetworkAddress' setting, as explained
   in wiki entry 'Tips' (earlier 'mac_address' setting was used, but
   that no longer applies)
 * Fixed an issue with some drivers (e.g., sis163u) that would stall
   after working for a while
-* Fixed crashes when removing module with usb devices
+* Fixed crashes when removing module with USB devices
 
 Version 1.44 2007-05-17
 =======================
@@ -108,7 +108,7 @@ Version 1.44 2007-05-17
 Version 1.43 2007-04-30
 =======================
 * Fixed long standing memory allocation issues with some
-  drivers, Atheros especially. With this fix, Atheros cards in Macbook
+  drivers, Atheros especially. With this fix, Atheros cards in MacBook
   with Core 2 Duo are known to work
 * The above fix changes core architecture of ndiswrapper and improves
   memory allocation issues with all drivers, as well as executes
@@ -120,7 +120,7 @@ Version 1.43 2007-04-30
 
 Version 1.42 2007-04-16
 =======================
-* Yet another smp fix
+* Yet another SMP fix
 * Bug fix related to events (no driver seems to be affected by this)
 
 Version 1.41 2007-03-31
@@ -133,15 +133,15 @@ Version 1.40 2007-03-29
 =======================
 * The workaround for large memory allocations (needed by Atheros drivers)
   with 2.6.19+ kernels, introduced in version 1.33, causes soft-lockup
-  with smp. This is now fixed.
+  with SMP. This is now fixed.
 
 Version 1.39 2007-03-23
 =======================
-* An smp issue is fixed
+* An SMP issue is fixed
 * When initializing a card that supports 802.11a and either 802.11g or b, set
   the mode to 802.11g or b, as 802.11a is far less common
 * Added support for driver for Atheros device with PCI ID 168C:1014
-* Fixed issue with initializing athfmwdl driver (for atheros USB cards)
+* Fixed issue with initializing athfmwdl driver (for Atheros USB cards)
 
 Version 1.38 2007-02-28
 =======================
@@ -159,7 +159,7 @@ Version 1.36 2007-02-01
 =======================
 * Fixed ndiswrapper script (broken since 1.23 for sis163u driver)
 * Implemented full scatter/gather lists (not tested)
-* Implemented support for hardware tcp/ip checksumming (through NDIS)
+* Implemented support for hardware TCP/IP checksumming (through NDIS)
 
 Version 1.35 2007-01-28
 =======================
@@ -170,7 +170,7 @@ Version 1.35 2007-01-28
 Version 1.34 2007-01-08
 =======================
 * Provide workaround for large memory allocations in interrupt context with
-  2.6.19+ kernels. With this, atheros (and other?) drivers don't need kernel
+  2.6.19+ kernels. With this, Atheros (and other?) drivers don't need kernel
   to be patched.
 
 Version 1.33 2006-12-28
@@ -181,7 +181,7 @@ Version 1.33 2006-12-28
 
 Version 1.32 2006-12-23
 =======================
-* Added compatability with 2.6.20-rc1 kernel
+* Added compatibility with 2.6.20-rc1 kernel
 * Fixed crash when changing MAC address (with 'ifconfig hw ether')
 * Fixed crash when names of other network device are changed (e.g., by udev)
 
@@ -291,7 +291,7 @@ Version 1.17 2006-06-04
 Version 1.16 2006-05-06
 =======================
 * Compilation issues 2.4 kernels fixed.
-* Support for lck pathset (Con Kolivas's preempt patch) for 2.4 kernels added.
+* Support for lck patchset (Con Kolivas's preempt patch) for 2.4 kernels added.
 * Added workqueue functions for 2.4 kernels so drivers that need more
   than one workqueue work.
 * Added support for more USB devices with 2.4 kernels (so far, devices
@@ -307,7 +307,7 @@ Version 1.15 2006-04-26
 * Fix for crash when module is removed with new Atheros USB driver,
   which supports WPA2 and has no firmware driver (athfmwdl).
 * Memory leaks plugged.
-* Wireless statistics are enabled (inadvertantly disabled in version 1.14).
+* Wireless statistics are enabled (inadvertently disabled in version 1.14).
 * Suspend/resume issues fixed - all devices, including USB devices,
   should work with suspend/resume.
 * Plugging/unplugging/rmmod issues fixed; Marvell devices don't need
@@ -319,7 +319,7 @@ Version 1.14 2006-04-17
 * Only wireless devices will be registered as wireless devices to
   kernel; others (e.g., X400 ADSL) will be registered as network
   devices, by default, with wlan%d.
-* Issues with multicasting fixed.
+* Issues with multicast fixed.
 * Issues with ZyDas ZD1211 fixed (broken since 1.9 or so).
 * Fixed memory corruption issues, discovered with CONFIG_DEBUG_SLAB.
 
@@ -400,7 +400,7 @@ Version 1.6 2005-11-29
 * Bulk and interrupt URBs were being mixed up in earlier releases - this issue
   is fixed.
 * Crashes due to 'divide by zero' error in update_wireless_stats fixed.
-* Support for Atheros USB drivers, including RangeMAX MIMO,  added. This
+* Added support for Atheros USB drivers including RangeMAX MIMO. This
   requires loading ar5523.bin firmware file with user-space tool
   load_fw_ar5523 in utils.
 * Suspend and resume support improved; USB devices should now be able
@@ -426,7 +426,7 @@ Version 1.4 2005-10-06
 ======================
 * WPA2 support added.
 * Implemented most of IO manager, PnP manager and Obj manager.
-* No need to update utils everytime ndiswrapper is updated but only when utils
+* No need to update utils every time ndiswrapper is updated but only when utils
   interface changes.
 * USB layer has been rewritten with many fixes; e.g., USB devices no
   longer disconnect unexpectedly.
@@ -442,7 +442,7 @@ Version 1.4 2005-10-06
 * Added support for Inprocomm IPN2220 with 64-bit.
 * Added support for RNDIS USB devices (tested with U.S. Robotics
   USR5420).
-* Issue with unloading module with some drirvers (e.g., sis and
+* Issue with unloading module with some drivers (e.g., sis and
   Inprocomm ipn2220) fixed.
 * Issue with WPA with sis162u, sis163u and ZyDas zd1211 fixed.
 * Initialization failure with WUSB54v1 fixed.
@@ -454,7 +454,7 @@ Version 1.2 2005-06-10
 * Implemented I/O manager and Object layers.
 * Many bug fixes
 
-Versoin 1.1 2005-03-04
+Version 1.1 2005-03-04
 ======================
 * Free kmem_cache of MDLs; this fixes crashes when removing module.
 * Yet another spinlock (re)implementation. We don't use Linux spinlocks to
@@ -481,7 +481,7 @@ Versoin 1.1 2005-03-04
 * Issue with Prism54 driver sometimes crashing kernel when scanning fixed.
 * Added private ioctl to set the network type to a specific type. Use
   "iwpriv wlan0 network_type <char>" to set the network type to what <char>
-  represents, where <char> is one of a, b, g or any other characther.
+  represents, where <char> is one of a, b, g or any other character.
   For example, to set to 802.11b, use "iwpriv wlan0 network_type b",
   and to set to auto, "iwpriv wlan0 network_type x".
 
@@ -492,7 +492,7 @@ Version 1.0 2005-01-29
 * With new spinlock implementation, CONFIG_DEBUG_SPINLOCK option can be
   enabled in the kernel.
 * WavePlus 1200 chipset supported.
-* Works with some vendor kernels that use different semantcis (from vanilla
+* Works with some vendor kernels that use different semantics (from vanilla
   kernels) for PCI/USB register functions.
 * Don't free memory allocated for 'devices' twice (which was causing kernel
   crash) when device registration failed.
@@ -507,7 +507,7 @@ Version 1.0 2005-01-29
   .conf files (e.g., Centrino), only drivers and device configurations
   necessary are loaded.
 * Set RadioState used by Broadcom drivers to 0, instead of 1. This
-  turns on radio (although name suggets the other way round).
+  turns on radio (although name suggests the other way round).
 * Bug fixes
 * Workaround for CONFIG_DEBUG_SPINLOCK, but this option is discouraged
 * task_nice is not used anymore, so should compile with kernels where
@@ -521,7 +521,7 @@ Version 1.0 2005-01-29
 * Most of the functionality of loader is moved to userspace tool
   loadndisdriver so it is more robust
 * Encryption info is restored during disassociation; this is useful if
-  ad-hoc mode is used as psuedo master mode
+  ad-hoc mode is used as pseudo master mode
 * MAC address can be set in .conf files (in /etc/ndiswrapper/<driver>
   directory) or changed at any time (with 'ifconfig hw class' command)
 * Association and disassociation should happen quickly especially with
@@ -546,7 +546,7 @@ Version 0.11 2004-10-08
 =======================
 * Compilation issues with USB are fixed.
 * WPA issues fixed.
-* Older Prism USB devices (e.g., Dlink DWL-122, Netgear MA111)  supported.
+* Older Prism USB devices (e.g., D-Link DWL-122, Netgear MA111) supported.
 * Suspend/resume of devices with no power management (e.g., TI) fixed.
 * ndiswrapper script has an option "-d" to install drivers for a
   different device (if the chipset is same); the script also installs
@@ -584,12 +584,12 @@ Version 0.9 2004-08-05
 
 Version 0.8 2004-06-10
 ======================
-* Support for 802.1x (multiple wep keys).
+* Support for 802.1x (multiple WEP keys).
 * Support for more chipsets/cards (DWL-G630, Marvell W8100, Atheros 5211,
   Atheros 5212).
-* Many bug fixes (scanning, dma aka shared memory allocation, timers, irqs,
+* Many bug fixes (scanning, DMA aka shared memory allocation, timers, IRQs,
   spinlocks, memory allocation, serialized drivers).
-* Added hangcheck_interval module option to either disable it (some realtek
+* Added hangcheck_interval module option to either disable it (some Realtek
   drivers seem to have problems with it) or force it to any given value.
 
 Version 0.7 2004-04-23
@@ -620,7 +620,7 @@ Version 0.5 2004-03-08
 * Better support for multiple driver and cards.
 * Compiles on some more kernels.
 * Suspend/resume follow new power management driver model and work with S3/S4.
-* Powerup the card during initializtion so ndiswrapper works if the card is in
+* Power up the card during initialization so ndiswrapper works if the card is in
   powered down state.
 * Background AP scanning is removed, so it doesn't affect IP traffic anymore.
 * WEP key and essid can be set in any order, not necessarily key first and
@@ -655,7 +655,7 @@ Version 0.2 2003-12-04
 * WEP support.
 * Byte statistics for ifconfig.
 * Kernel 2.4 support.
-* Support for more Broadcom cards (No centrino yet).
+* Support for more Broadcom cards (No Centrino yet).
 * Tons of bugfixes should improve stability a lot.
 
 Version 0.1 2003-11-17
