@@ -2,8 +2,8 @@ What is it?
 ===========
 
 Some vendors do not release specifications of the hardware or provide
-a linux driver for their wireless network cards. This project provides
-a linux kernel module that loads and runs NDIS (Windows network driver
+a Linux driver for their wireless network cards. This project provides
+a Linux kernel module that loads and runs NDIS (Windows network driver
 API) drivers supplied by the vendors
 
 Status
@@ -35,7 +35,7 @@ Follow the instructions below when sending a bug report:
      possible.  Include details about your card, chipset (reported by lspci),
      distribution, kernel version in the post.
 
-   * Check if latest CVS works.
+   * Check if latest SVN works.
 
    * Use an alternate windows driver; see the link in Status section above
      for a driver that is known to work for your chipset. You may also
