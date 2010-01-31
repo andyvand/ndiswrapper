@@ -1,3 +1,4 @@
+* Fixed compilation with 2.6.31 and newer on i386
 * Use /etc/modprobe.d/ndiswrapper.conf, not /etc/modprobe.d/ndiswrapper.
 
 Version 1.55 2009-06-28
