@@ -42,7 +42,7 @@ work. See http://ndiswrapper.sourceforge.net/wiki/List for status
 about the device for which you are installing Windows driver. For
 this, you need to identify device ID with
 
-  lspci -n
+  lspci -nn
 
 if it is PCI device or
 
