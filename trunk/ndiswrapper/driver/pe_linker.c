@@ -440,6 +440,7 @@ static int fix_pe_image(struct pe_image *pe)
 		      " %d bytes", image_size);
 		return -ENOMEM;
 	}
+	memset(image, 0, image_size);
 
 	/* Copy all the headers, ie everything before the first section. */
 
