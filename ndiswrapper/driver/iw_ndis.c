@@ -1591,12 +1591,14 @@ static int iw_set_auth(struct net_device *dev,
 		if (wrqu->param.value)
 			deauthenticate(wnd);
 		break;
+#ifdef IW_AUTH_MFP
 	case IW_AUTH_MFP:
 	        if (wrqu->param.value == IW_AUTH_MFP_DISABLED ||
                     wrqu->param.value == IW_AUTH_MFP_OPTIONAL)
 		        break;
 		WARNING("MFP not implemented");
 		return -EOPNOTSUPP;
+#endif
 	case IW_AUTH_TKIP_COUNTERMEASURES:
 	case IW_AUTH_DROP_UNENCRYPTED:
 	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
