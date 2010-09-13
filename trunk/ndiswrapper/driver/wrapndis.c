@@ -950,20 +950,34 @@ static void set_multicast_list(struct ndis_device *wnd)
 		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS |
 			NDIS_PACKET_TYPE_ALL_LOCAL;
 	} else if (net_dev->flags & IFF_ALLMULTI ||
-		   net_dev->mc_count > wnd->multicast_size) {
+		   netdev_mc_count(net_dev) > wnd->multicast_size) {
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 		TRACE2("0x%08x", packet_filter);
-	} else if (net_dev->mc_count > 0) {
+	} else if (netdev_mc_count(net_dev) > 0) {
 		int i, size;
 		char *buf;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
+		struct netdev_hw_addr *ha;
+#else
 		struct dev_mc_list *mclist;
-		size = min(wnd->multicast_size, net_dev->mc_count);
-		TRACE2("%d, %d", wnd->multicast_size, net_dev->mc_count);
+#endif
+		size = min(wnd->multicast_size, netdev_mc_count(net_dev));
+		TRACE2("%d, %d", wnd->multicast_size, netdev_mc_count(net_dev));
 		buf = kmalloc(size * ETH_ALEN, GFP_KERNEL);
 		if (!buf) {
 			WARNING("couldn't allocate memory");
 			EXIT2(return);
 		}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
+		i = 0;
+		netdev_for_each_mc_addr(ha, net_dev) {
+			if (i >= size)
+				break;
+			memcpy(buf + i * ETH_ALEN, ha->addr, ETH_ALEN);
+			TRACE2(MACSTRSEP, MAC2STR(ha->addr));
+ 			i++;
+ 		}
+#else
 		mclist = net_dev->mc_list;
 		for (i = 0; i < size && mclist; mclist = mclist->next) {
 			if (mclist->dmi_addrlen != ETH_ALEN)
@@ -972,6 +986,7 @@ static void set_multicast_list(struct ndis_device *wnd)
 			TRACE2(MACSTRSEP, MAC2STR(mclist->dmi_addr));
 			i++;
 		}
+#endif
 		res = mp_set(wnd, OID_802_3_MULTICAST_LIST, buf, i * ETH_ALEN);
 		if (res == NDIS_STATUS_SUCCESS && i > 0)
 			packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
