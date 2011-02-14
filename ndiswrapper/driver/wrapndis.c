@@ -13,16 +13,16 @@
  *
  */
 
-#include "ndis.h"
-#include "iw_ndis.h"
-#include "pnp.h"
-#include "loader.h"
-#include "wrapndis.h"
 #include <linux/inetdevice.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <linux/in.h>
+#include "ndis.h"
+#include "iw_ndis.h"
+#include "pnp.h"
+#include "loader.h"
+#include "wrapndis.h"
 #include "wrapper.h"
 
 /* Functions callable from the NDIS driver */
