@@ -47,6 +47,12 @@
 #include <linux/kthread.h>
 #include <linux/workqueue.h>
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+#define netdev_mc_count(dev) ((dev)->mc_count)
+#define usb_alloc_coherent(dev, size, mem_flags, dma) (usb_buffer_alloc((dev), (size), (mem_flags), (dma)))
+#define usb_free_coherent(dev, size, addr, dma) (usb_buffer_free((dev), (size), (addr), (dma)))
+#endif
+
 #include "winnt_types.h"
 
 /* Interrupt backwards compatibility stuff */
