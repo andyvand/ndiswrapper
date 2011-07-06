@@ -45,8 +45,7 @@ static const char ioctl_file[] = "/dev/ndiswrapper";
 static int debug;
 
 #ifndef UTILS_VERSION
-#error compile this file with 'make' in the 'utils' \
-	directory only
+#error "compile this file with 'make' in the 'utils' directory only"
 #endif
 
 #define LOG_MSG(where, fmt, ...)					\
@@ -83,7 +82,7 @@ static int load_file(char *filename, struct load_driver_file *driver_file)
 	}
 	size = statbuf.st_size;
 
-	image = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	image = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (image == MAP_FAILED) {
 		ERROR("unable to mmap driver: %s", strerror(errno));
 		close(fd);
@@ -457,7 +456,7 @@ static int load_device(int ioctl_device, int vendor, int device,
   * we create a device in /dev instead of /tmp as some distributions don't
   * allow creation of devices in /tmp
   */
-static int get_ioctl_device()
+static int get_ioctl_device(void)
 {
 	int fd, minor_dev;
 	char line[64];
@@ -505,7 +504,8 @@ static int get_ioctl_device()
 
 int main(int argc, char *argv[0])
 {
-	int i, ioctl_device, res;
+	int i, res;
+	int ioctl_device = -1;
 	char *cmd;
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN | LOG_DEBUG);
@@ -583,6 +583,10 @@ int main(int argc, char *argv[0])
 			goto out;
 		}
 		res = load_bin_file(ioctl_device, argv[4], argv[5]);
+	} else {
+		ERROR("incorrect usage of %s (%d)", argv[0], argc);
+		res = 13;
+		goto out;
 	}
 out:
 	if (ioctl_device != -1)
