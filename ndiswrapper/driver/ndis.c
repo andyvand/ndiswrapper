@@ -1746,13 +1746,11 @@ wstdcall void WIN_FUNC(NdisFreeMdl,1)
 
 wstdcall void mp_timer_dpc(struct kdpc *kdpc, void *ctx, void *arg1, void *arg2)
 {
-	struct ndis_mp_block *nmb;
 	struct ndis_mp_timer *timer;
 
 	timer = ctx;
 	ENTER3("timer: %p, func: %p, ctx: %p, nmb: %p",
 	       timer, timer->func, timer->ctx, timer->nmb);
-	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
 	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
 	EXIT3(return);

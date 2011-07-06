@@ -718,13 +718,11 @@ void __devexit wrap_pnp_remove_usb_device(struct usb_interface *intf)
 int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 {
 	struct wrap_device *wd;
-	struct device_object *pdo;
 
 	wd = usb_get_intfdata(intf);
 	ENTER1("%p, %p", intf, wd);
 	if (!wd)
 		EXIT1(return 0);
-	pdo = wd->pdo;
 	if (pnp_set_device_power_state(wd, PowerDeviceD3))
 		return -1;
 	return 0;

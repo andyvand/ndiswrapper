@@ -1351,7 +1351,6 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	const int buf_len = 256;
 	mac_address mac;
 	struct mp_pnp_characteristics *mp_pnp_chars;
-	struct transport_header_offset transport_header_offset;
 	int n;
 	struct net_buffer_pool_params nb_pool_params;
 	struct net_buffer_list_pool_params nbl_pool_params;
@@ -1441,7 +1440,7 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 		net_dev->wireless_handlers = &ndis_handler_def;
 	}
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
-	net_dev->irq = wnd->wd->pci.pdev->irq;
+	net_dev->irq = wd->pci.pdev->irq;
 	net_dev->mem_start = wnd->mem_start;
 	net_dev->mem_end = wnd->mem_end;
 	res = mp_query_int(wnd, OID_802_3_MAXIMUM_LIST_SIZE,
@@ -1481,8 +1480,8 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using NDIS "
 	       "driver: %s, version: 0x%x, NDIS version: 0x%x, vendor: '%s', "
 	       "%s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
-	       wnd->wd->driver->name, n, wnd->drv_ndis_version, buf,
-	       wnd->wd->conf_file_name);
+	       wd->driver->name, n, wnd->drv_ndis_version, buf,
+	       wd->conf_file_name);
 
 	/* deserialized drivers don't have a limit, but we
 	 * keep max at TX_RING_SIZE */
@@ -1527,9 +1526,10 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	    NDIS_STATUS_SUCCESS && n > 0)
 		TRACE2("mac options supported: 0x%x", n);
 
+#if 0
+	struct transport_header_offset transport_header_offset;
 	transport_header_offset.protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
 	transport_header_offset.header_offset = sizeof(ETH_HLEN);
-#if 0
 	res = mp_set_info(wnd, OID_GEN_TRANSPORT_HEADER_OFFSET,
 			  &transport_header_offset,
 			  sizeof(transport_header_offset));
