@@ -117,7 +117,7 @@ int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
 
 int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
-	if (NR_CPUS == 1 || workq->singlethread)
+	if (num_online_cpus() == 1 || workq->singlethread)
 		return wrap_queue_work_on(workq, work, 0);
 	else {
 		typeof(workq->qon) qon;
@@ -153,7 +153,7 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 	if (singlethread)
 		n = 1;
 	else
-		n = NR_CPUS;
+		n = num_online_cpus();
 	workq = kmalloc(sizeof(*workq) + n * sizeof(workq->threads[0]),
 			GFP_KERNEL);
 	if (!workq) {
@@ -223,7 +223,7 @@ void wrap_flush_wq(workqueue_struct_t *workq)
 	if (workq->singlethread)
 		n = 1;
 	else
-		n = NR_CPUS;
+		n = num_online_cpus();
 	for (i = 0; i < n; i++)
 		wrap_flush_wq_on(workq, i);
 }
@@ -251,7 +251,7 @@ void wrap_destroy_wq(workqueue_struct_t *workq)
 	if (workq->singlethread)
 		n = 1;
 	else
-		n = NR_CPUS;
+		n = num_online_cpus();
 	for (i = 0; i < n; i++)
 		wrap_destroy_wq_on(workq, i);
 	kfree(workq);

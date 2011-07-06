@@ -2204,7 +2204,7 @@ wstdcall struct nt_list *WIN_FUNC(NdisInterlockedRemoveHeadList,2)
 wstdcall CHAR WIN_FUNC(NdisSystemProcessorCount,0)
 	(void)
 {
-	return NR_CPUS;
+	return num_online_cpus();
 }
 
 wstdcall void WIN_FUNC(NdisInitializeEvent,1)
