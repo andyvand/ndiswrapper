@@ -311,7 +311,9 @@ int wrapmem_init(void)
 
 void wrapmem_exit(void)
 {
+#ifdef ALLOC_DEBUG
 	enum alloc_type type;
+#endif
 	struct nt_list *ent;
 
 	/* free all pointers on the slack list */
@@ -328,7 +330,6 @@ void wrapmem_exit(void)
 #endif
 		kfree(info);
 	}
-	type = 0;
 #ifdef ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
 		int n = atomic_read(&alloc_sizes[type]);
