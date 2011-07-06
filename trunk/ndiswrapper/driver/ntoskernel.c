@@ -1404,11 +1404,7 @@ wstdcall KAFFINITY WIN_FUNC(KeQueryActiveProcessors,0)
 {
 	int i, n;
 	KAFFINITY bits = 0;
-#ifdef num_online_cpus
 	n = num_online_cpus();
-#else
-	n = NR_CPUS;
-#endif
 	for (i = 0; i < n; i++)
 		bits = (bits << 1) | 1;
 	return bits;

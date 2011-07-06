@@ -2624,7 +2624,7 @@ wstdcall ULONG WIN_FUNC(NdisMGetDmaAlignment,1)
 wstdcall CHAR WIN_FUNC(NdisSystemProcessorCount,0)
 	(void)
 {
-	return (CHAR)NR_CPUS;
+	return num_online_cpus();
 }
 
 wstdcall void WIN_FUNC(NdisGetCurrentProcessorCounts,3)
