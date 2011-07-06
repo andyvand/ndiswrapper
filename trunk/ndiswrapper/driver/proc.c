@@ -487,14 +487,15 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 			     int count, int *eof, void *data)
 {
 	char *p = page;
+#ifdef ALLOC_DEBUG
 	enum alloc_type type;
+#endif
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
 	p += sprintf(p, "%d\n", debug);
-	type = 0;
 #ifdef ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
 		p += sprintf(p, "total size of allocations in %d: %d\n",

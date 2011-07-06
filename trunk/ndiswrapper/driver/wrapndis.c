@@ -1864,8 +1864,8 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	       "driver: %s, version: 0x%x, NDIS version: 0x%x, vendor: '%s', "
 	       "%s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
 	       deserialized_driver(wnd) ? "" : "serialized ",
-	       wnd->wd->driver->name, n, wnd->drv_ndis_version, buf,
-	       wnd->wd->conf_file_name);
+	       wd->driver->name, n, wnd->drv_ndis_version, buf,
+	       wd->conf_file_name);
 
 	if (deserialized_driver(wnd)) {
 		/* deserialized drivers don't have a limit, but we
