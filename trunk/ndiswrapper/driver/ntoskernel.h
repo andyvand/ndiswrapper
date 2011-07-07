@@ -426,7 +426,7 @@ struct wrap_export {
 
 #endif
 
-#define WIN_FUNC(name, argc) name
+#define WIN_FUNC(name, argc) (name)
 /* map name s to f - if f is different from s */
 #define WIN_SYMBOL_MAP(s, f)
 
@@ -1000,13 +1000,9 @@ void ObfDereferenceObject(void *object) wfastcall;
 void WRITE_PORT_UCHAR(ULONG_PTR port, UCHAR value) wstdcall;
 UCHAR READ_PORT_UCHAR(ULONG_PTR port) wstdcall;
 
-#undef ExAllocatePoolWithTag
-void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
-			    ULONG tag) wstdcall;
-#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
-#define ExAllocatePoolWithTag(pool_type, size, tag)			\
-	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
-#endif
+/* prevent expansion of ExAllocatePoolWithTag macro */
+void *(ExAllocatePoolWithTag)(enum pool_type pool_type, SIZE_T size,
+			      ULONG tag) wstdcall;
 
 void ExFreePool(void *p) wstdcall;
 ULONG MmSizeOfMdl(void *base, ULONG length) wstdcall;
