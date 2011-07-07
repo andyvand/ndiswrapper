@@ -800,8 +800,6 @@ wstdcall KIRQL WIN_FUNC(KeAcquireSpinLockRaiseToDpc,1)
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
-#undef ExAllocatePoolWithTag
-
 wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
@@ -895,11 +893,6 @@ wstdcall void WIN_FUNC(ExDeleteNPagedLookasideList,1)
 		LIN2WIN1(lookaside->free_func, entry);
 	EXIT3(return);
 }
-
-#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
-#define ExAllocatePoolWithTag(pool_type, size, tag)			\
-	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
-#endif
 
 wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,4)
 	(struct callback_object **object, struct object_attributes *attributes,
