@@ -263,7 +263,6 @@ void wrap_free_pages(unsigned long ptr, int order)
 }
 
 #if ALLOC_DEBUG > 1
-#undef ExAllocatePoolWithTag
 void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				 ULONG tag, const char *file, int line)
 {
@@ -271,7 +270,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	struct alloc_info *info;
 
 	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
-	addr = ExAllocatePoolWithTag(pool_type, size, tag);
+	addr = (ExAllocatePoolWithTag)(pool_type, size, tag);
 	if (!addr)
 		return NULL;
 	info = addr - sizeof(*info);
