@@ -14,6 +14,7 @@
  */
 
 #ifndef _WRAPMEM_H_
+#define _WRAPMEM_H_
 
 /* define ALLOC_DEBUG below to get information about memory used by
  * both ndiswrapper and Windows driver by reading
@@ -50,6 +51,13 @@ void *wrap_alloc_pages(gfp_t flags, unsigned int size,
 void wrap_free_pages(unsigned long ptr, int order);
 int alloc_size(enum alloc_type type);
 
+#if ALLOC_DEBUG > 1
+void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
+				 ULONG tag, const char *file, int line);
+#define ExAllocatePoolWithTag(pool_type, size, tag)			\
+	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
+#endif
+
 #ifndef _WRAPMEM_C_
 #undef kmalloc
 #undef kzalloc
@@ -72,13 +80,6 @@ int alloc_size(enum alloc_type type);
 	wrap_alloc_pages(flags, size, __FILE__, __LINE__)
 #undef free_pages
 #define free_pages(ptr, order) wrap_free_pages(ptr, order)
-
-#if ALLOC_DEBUG > 1
-void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
-				 ULONG tag, const char *file, int line);
-#define ExAllocatePoolWithTag(pool_type, size, tag)			\
-	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
-#endif
 
 #endif // _WRAPMEM_C_
 

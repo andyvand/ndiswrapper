@@ -16,6 +16,7 @@
 #define _WRAPMEM_C_
 
 #include "ntoskernel.h"
+#include "wrapmem.h"
 
 struct slack_alloc_info {
 	struct nt_list list;
