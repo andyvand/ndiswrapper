@@ -98,7 +98,7 @@ __udivmoddi4 (UDWtype n, UDWtype d, UDWtype *rp)
 	  /* Remainder in n0.  */
 	}
 
-      if (rp != 0)
+      if (rp != NULL)
 	{
 	  rr.s.low = n0;
 	  rr.s.high = 0;
@@ -173,7 +173,7 @@ __udivmoddi4 (UDWtype n, UDWtype d, UDWtype *rp)
 	  /* Remainder in n0 >> bm.  */
 	}
 
-      if (rp != 0)
+      if (rp != NULL)
 	{
 	  rr.s.low = n0 >> bm;
 	  rr.s.high = 0;
@@ -192,7 +192,7 @@ __udivmoddi4 (UDWtype n, UDWtype d, UDWtype *rp)
 	  q1 = 0;
 
 	  /* Remainder in n1n0.  */
-	  if (rp != 0)
+	  if (rp != NULL)
 	    {
 	      rr.s.low = n0;
 	      rr.s.high = n1;
@@ -224,7 +224,7 @@ __udivmoddi4 (UDWtype n, UDWtype d, UDWtype *rp)
 
 	      q1 = 0;
 
-	      if (rp != 0)
+	      if (rp != NULL)
 		{
 		  rr.s.low = n0;
 		  rr.s.high = n1;
@@ -256,7 +256,7 @@ __udivmoddi4 (UDWtype n, UDWtype d, UDWtype *rp)
 	      q1 = 0;
 
 	      /* Remainder in (n1n0 - m1m0) >> bm.  */
-	      if (rp != 0)
+	      if (rp != NULL)
 		{
 		  sub_ddmmss (n1, n0, n1, n0, m1, m0);
 		  rr.s.low = (n1 << b) | (n0 >> bm);
