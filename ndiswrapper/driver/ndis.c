@@ -995,9 +995,9 @@ wstdcall void WIN_FUNC(NdisMFreeMapRegisters,1)
 	if (wnd->dma_map_addr) {
 		for (i = 0; i < wnd->dma_map_count; i++) {
 			if (wnd->dma_map_addr[i])
-				WARNING("%s: dma addr %p not freed by "
+				WARNING("%s: dma addr 0x%llx not freed by "
 					"Windows driver", wnd->net_dev->name,
-					(void *)wnd->dma_map_addr[i]);
+					(unsigned long long)wnd->dma_map_addr[i]);
 		}
 		kfree(wnd->dma_map_addr);
 		wnd->dma_map_addr = NULL;
