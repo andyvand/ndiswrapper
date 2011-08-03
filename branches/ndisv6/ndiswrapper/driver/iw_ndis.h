@@ -39,8 +39,8 @@ int set_priv_filter(struct ndis_device *wnd, int flags);
 int set_scan(struct ndis_device *wnd);
 extern const struct iw_handler_def ndis_handler_def;
 
-#define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
-#define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
+#define PRIV_RESET			SIOCIWFIRSTPRIV+16
+#define PRIV_POWER_PROFILE		SIOCIWFIRSTPRIV+17
 #define PRIV_SET_PHY_ID			SIOCIWFIRSTPRIV+18
 #define PRIV_SET_NIC_POWER		SIOCIWFIRSTPRIV+19
 #define PRIV_CONNECT			SIOCIWFIRSTPRIV+20

@@ -2392,4 +2392,3 @@ void ndis_exit(void)
 		ObDereferenceObject(ndis_worker_thread);
 	EXIT1(return);
 }
-
