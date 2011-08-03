@@ -13,7 +13,7 @@
  *
  */
 
-#define DOT11_BSSID_LIST_REVISION_1 		1
+#define DOT11_BSSID_LIST_REVISION_1		1
 struct ndis_dot11_bssid_list {
 	struct ndis_object_header header;
 	ULONG num_entries;
@@ -1387,4 +1387,3 @@ struct ndis_dot11_extsta_attributes {
 #define OID_DOT11_PERMANENT_ADDRESS	(OID_DOT11_PRIVATE_OIDS_START + 3)
 #define OID_DOT11_MULTICAST_LIST	(OID_DOT11_PRIVATE_OIDS_START + 4)
 #define OID_DOT11_MAXIMUM_LIST_SIZE	(OID_DOT11_PRIVATE_OIDS_START + 5)
-

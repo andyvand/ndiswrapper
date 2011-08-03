@@ -1038,30 +1038,30 @@ UDItype __umulsidi3 (USItype, USItype);
     && W_TYPE_SIZE == 64
 #define add_ssaaaa(sh, sl, ah, al, bh, bl)				\
   __asm__ ("addcc %r4,%5,%1\n\t"					\
-   	   "add %r2,%3,%0\n\t"						\
-   	   "bcs,a,pn %%xcc, 1f\n\t"					\
-   	   "add %0, 1, %0\n"						\
+	   "add %r2,%3,%0\n\t"						\
+	   "bcs,a,pn %%xcc, 1f\n\t"					\
+	   "add %0, 1, %0\n"						\
 	   "1:"								\
-	   : "=r" ((UDItype)(sh)),				      	\
-	     "=&r" ((UDItype)(sl))				      	\
-	   : "%rJ" ((UDItype)(ah)),				     	\
-	     "rI" ((UDItype)(bh)),				      	\
-	     "%rJ" ((UDItype)(al)),				     	\
-	     "rI" ((UDItype)(bl))				       	\
+	   : "=r" ((UDItype)(sh)),					\
+	     "=&r" ((UDItype)(sl))					\
+	   : "%rJ" ((UDItype)(ah)),					\
+	     "rI" ((UDItype)(bh)),					\
+	     "%rJ" ((UDItype)(al)),					\
+	     "rI" ((UDItype)(bl))					\
 	   __CLOBBER_CC)
 
-#define sub_ddmmss(sh, sl, ah, al, bh, bl) 				\
+#define sub_ddmmss(sh, sl, ah, al, bh, bl)				\
   __asm__ ("subcc %r4,%5,%1\n\t"					\
-   	   "sub %r2,%3,%0\n\t"						\
-   	   "bcs,a,pn %%xcc, 1f\n\t"					\
-   	   "sub %0, 1, %0\n\t"						\
+	   "sub %r2,%3,%0\n\t"						\
+	   "bcs,a,pn %%xcc, 1f\n\t"					\
+	   "sub %0, 1, %0\n\t"						\
 	   "1:"								\
-	   : "=r" ((UDItype)(sh)),				      	\
-	     "=&r" ((UDItype)(sl))				      	\
-	   : "rJ" ((UDItype)(ah)),				     	\
-	     "rI" ((UDItype)(bh)),				      	\
-	     "rJ" ((UDItype)(al)),				     	\
-	     "rI" ((UDItype)(bl))				       	\
+	   : "=r" ((UDItype)(sh)),					\
+	     "=&r" ((UDItype)(sl))					\
+	   : "rJ" ((UDItype)(ah)),					\
+	     "rI" ((UDItype)(bh)),					\
+	     "rJ" ((UDItype)(al)),					\
+	     "rI" ((UDItype)(bl))					\
 	   __CLOBBER_CC)
 
 #define umul_ppmm(wh, wl, u, v)						\

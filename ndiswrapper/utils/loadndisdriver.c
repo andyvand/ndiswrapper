@@ -594,4 +594,3 @@ out:
 	closelog();
 	return res;
 }
-

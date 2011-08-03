@@ -1148,7 +1148,7 @@ do {								\
 	IoReleaseCancelSpinLock(_irql_);			\
 } while (0)
 
-#define IoSkipCurrentIrpStackLocation(irp) 			\
+#define IoSkipCurrentIrpStackLocation(irp)			\
 do {								\
 	KIRQL _irql_;						\
 	IoAcquireCancelSpinLock(&_irql_);			\
