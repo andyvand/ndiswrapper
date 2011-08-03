@@ -87,4 +87,3 @@ extern struct semaphore loader_mutex;
 #endif
 
 #endif /* LOADER_H */
-
