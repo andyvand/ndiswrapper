@@ -975,8 +975,8 @@ static void set_multicast_list(struct ndis_device *wnd)
 				break;
 			memcpy(buf + i * ETH_ALEN, ha->addr, ETH_ALEN);
 			TRACE2(MACSTRSEP, MAC2STR(ha->addr));
- 			i++;
- 		}
+			i++;
+		}
 #else
 		mclist = net_dev->mc_list;
 		for (i = 0; i < size && mclist; mclist = mclist->next) {
