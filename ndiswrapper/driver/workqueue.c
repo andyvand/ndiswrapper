@@ -154,13 +154,12 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 		n = 1;
 	else
 		n = num_online_cpus();
-	workq = kmalloc(sizeof(*workq) + n * sizeof(workq->threads[0]),
+	workq = kzalloc(sizeof(*workq) + n * sizeof(workq->threads[0]),
 			GFP_KERNEL);
 	if (!workq) {
 		WARNING("couldn't allocate memory");
 		return NULL;
 	}
-	memset(workq, 0, sizeof(*workq) + n * sizeof(workq->threads[0]));
 	WORKTRACE("%p", workq);
 	workq->singlethread = singlethread;
 	init_completion(&started);

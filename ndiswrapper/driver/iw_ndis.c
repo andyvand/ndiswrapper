@@ -1212,14 +1212,13 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		return -EAGAIN;
 	/* try with space for a few scan items */
 	list_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;
-	bssid_list = kmalloc(list_len, GFP_KERNEL);
+	bssid_list = kzalloc(list_len, GFP_KERNEL);
 	if (!bssid_list) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
 	/* some drivers don't set bssid_list->num_items to 0 if
 	   OID_802_11_BSSID_LIST returns no items (prism54 driver, e.g.,) */
-	memset(bssid_list, 0, list_len);
 
 	needed = 0;
 	res = mp_query_info(wnd, OID_802_11_BSSID_LIST,
@@ -1229,12 +1228,11 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		/* now try with required space */
 		kfree(bssid_list);
 		list_len = needed;
-		bssid_list = kmalloc(list_len, GFP_KERNEL);
+		bssid_list = kzalloc(list_len, GFP_KERNEL);
 		if (!bssid_list) {
 			ERROR("couldn't allocate memory");
 			return -ENOMEM;
 		}
-		memset(bssid_list, 0, list_len);
 
 		res = mp_query(wnd, OID_802_11_BSSID_LIST,
 			       bssid_list, list_len);
