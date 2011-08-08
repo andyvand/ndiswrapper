@@ -919,7 +919,7 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 	else
 		index = encr_info->tx_key_index;
 
-	if (index < 0 || index >= MAX_ENCR_KEYS) {
+	if (index >= MAX_ENCR_KEYS) {
 		WARNING("encryption index out of range (%u)", index);
 		EXIT2(return -EINVAL);
 	}
