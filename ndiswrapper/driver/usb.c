@@ -74,7 +74,7 @@ static unsigned int urb_id = 0;
 /* transfer_buffer for urb is allocated; free it in wrap_free_urb */
 #define WRAP_URB_COPY_BUFFER 0x01
 
-static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
+static inline int wrap_cancel_urb(struct wrap_urb *wrap_urb)
 {
 	int ret;
 	USBTRACE("%p, %p, %d", wrap_urb, wrap_urb->urb, wrap_urb->state);
