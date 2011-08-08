@@ -809,7 +809,7 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 	else
 		index = cipher_info->tx_index;
 
-	if (index < 0 || index >= MAX_CIPHER_KEYS) {
+	if (index >= MAX_CIPHER_KEYS) {
 		WARNING("encryption index out of range (%u)", index);
 		EXIT2(return -EINVAL);
 	}
