@@ -479,7 +479,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	if (status == STATUS_SUCCESS)
 		fdo_drv_obj->drv_ext->count--;
 	TRACE1("count: %d", fdo_drv_obj->drv_ext->count);
-	if (fdo_drv_obj->drv_ext->count < 0)
+	if ((LONG)fdo_drv_obj->drv_ext->count < 0)
 		WARNING("wrong count: %d", fdo_drv_obj->drv_ext->count);
 	if (fdo_drv_obj->drv_ext->count == 0) {
 		struct wrap_driver *wrap_driver;
