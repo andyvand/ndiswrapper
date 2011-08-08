@@ -222,11 +222,9 @@ static NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 					   struct  irp *irp)
 {
-	struct io_stack_location *irp_sl;
 	NTSTATUS status;
 
 	DUMP_IRP(irp);
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
 #ifdef ENABLE_USB
 	status = wrap_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
