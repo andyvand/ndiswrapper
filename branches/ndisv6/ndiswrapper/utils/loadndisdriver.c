@@ -104,15 +104,17 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	char *val, *end;
 	int i;
 
-	// We try to be really paranoid parsing settings
+	/* We try to be really paranoid parsing settings */
 	for (s = setting_line; isspace(*s); s++)
 		;
 
-	// ignore comments and blank lines
+	/* ignore comments and blank lines */
 	if (*s == '#' || *s == ';' || *s == '\0')
 		return 0;
-	if ((val = strchr(s, '|')) == NULL ||
-	    (end = strchr(s, '\n')) == NULL) {
+
+	val = strchr(s, '|');
+	end = strchr(s, '\n');
+	if (val == NULL || end == NULL) {
 		ERROR("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
@@ -133,7 +135,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	}
 	DBG("Found setting: name=%s, val=\"%s\"", setting_name, setting_val);
 
-	// setting_val can be empty, but not name
+	/* setting_val can be empty, but not name */
 	if (strlen(setting_name) == 0) {
 		ERROR("invalid setting: \"%s\"", setting_line);
 		return -EINVAL;
@@ -174,7 +176,8 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	num_settings = 0;
 	driver->num_settings = 0;
 
-	if ((config = fopen(conf_file_name, "r")) == NULL) {
+	config = fopen(conf_file_name, "r");
+	if (config == NULL) {
 		ERROR("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
@@ -239,7 +242,8 @@ static int load_bin_file(int ioctl_device, char *driver_name, char *file_name)
  * open a windows driver and pass it to the kernel module.
  * returns 0: on success, -1 on error
  */
-static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name)
+static int load_driver(int ioctl_device, char *driver_name,
+		       char *conf_file_name)
 {
 	int i;
 	struct dirent *dirent;
@@ -257,13 +261,15 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 		      driver_name, strerror(errno));
 		return -EINVAL;
 	}
-	if ((driver_dir = opendir(".")) == NULL) {
+	driver_dir = opendir(".");
+	if (driver_dir == NULL) {
 		ERROR("couldn't open driver directory %s: %s",
 		      driver_name, strerror(errno));
 		return -EINVAL;
 	}
 
-	if ((driver = malloc(sizeof(*driver))) == NULL) {
+	driver = malloc(sizeof(*driver));
+	if (driver == NULL) {
 		ERROR("couldn't allocate memory for driver %s", driver_name);
 		goto err;
 	}
@@ -298,7 +304,8 @@ static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name
 		     strcasecmp(&dirent->d_name[len-5], ".conf") == 0)
 			continue;
 
-		if (len > 4 && strcasecmp(&dirent->d_name[len-4], ".sys") == 0) {
+		if (len > 4 &&
+		    strcasecmp(&dirent->d_name[len-4], ".sys") == 0) {
 			if (load_file(dirent->d_name,
 				      &driver->sys_files[num_sys_files])) {
 				ERROR("couldn't load .sys file %s",
@@ -425,7 +432,8 @@ static int load_device(int ioctl_device, int vendor, int device,
 		ERROR("couldn't chdir to %s: %s", confdir, strerror(errno));
 		return -EINVAL;
 	}
-	if ((dir = opendir(".")) == NULL) {
+	dir = opendir(".");
+	if (dir == NULL) {
 		ERROR("directory %s is not valid: %s",
 		      confdir, strerror(errno));
 		return -EINVAL;
