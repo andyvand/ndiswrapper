@@ -25,8 +25,10 @@ endif
 
 # Kernel Makefile doesn't always know the exact kernel version, so we
 # get it from the kernel headers instead and pass it to make.
-
+VERSION_H := $(KBUILD)/include/generated/utsrelease.h
+ifeq (,$(wildcard $(VERSION_H)))
 VERSION_H := $(KBUILD)/include/linux/utsrelease.h
+endif
 ifeq (,$(wildcard $(VERSION_H)))
 VERSION_H := $(KBUILD)/include/linux/version.h
 endif
@@ -35,6 +37,10 @@ $(error Cannot find kernel version in $(KBUILD), is it configured?)
 endif
 
 KVERS := $(shell sed -ne 's/"//g;s/^\#define UTS_RELEASE //p' $(VERSION_H))
+
+ifeq (,$(KVERS))
+$(error Cannot find UTS_RELEASE in $(VERSION_H), has 'make modules_prepare' been called?)
+endif
 
 ifdef DIST_DESTDIR
 DESTDIR = $(DIST_DESTDIR)
