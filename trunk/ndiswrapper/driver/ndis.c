@@ -89,6 +89,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 	TRACE1("driver: %p", ndis_driver);
 	memcpy(&ndis_driver->mp, mp, min_t(int, sizeof(*mp), length));
 
+#if defined(DEBUG) && DEBUG >= 2
 	DBG_BLOCK(2) {
 		int i;
 		void **func;
@@ -104,6 +105,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 		for (i = 0; i < (sizeof(mp_funcs) / sizeof(mp_funcs[0])); i++)
 			TRACE2("function '%s' is at %p", mp_funcs[i], func[i]);
 	}
+#endif
 	EXIT1(return NDIS_STATUS_SUCCESS);
 }
 
