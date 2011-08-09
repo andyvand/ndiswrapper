@@ -31,5 +31,5 @@ install: all
 
 dist:
 	@for file in $(DISTFILES); do \
-	  cp  $$file $(distdir)/$$file; \
+	  cp $$file $(distdir)/$$file || exit 1; \
 	done
