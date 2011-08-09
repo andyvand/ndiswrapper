@@ -6,8 +6,8 @@ DISTFILES = \
 	loader.h longlong.h mkexport.sh mkstubs.sh ndis.c ndis.h ndisdot11.h \
 	ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c pe_linker.c \
 	pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h win2lin_stubs.S \
-	winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c wrapndis.h \
-	wrapndis.c
+	winnt_types.h workqueue.c wrapmem.c wrapmem.h wrapndis.c wrapndis.h \
+	wrapper.c wrapper.h
 
 # By default, we try to compile the modules for the currently running
 # kernel.  But it's the first approximation, as we will re-read the
@@ -210,7 +210,7 @@ endif
 
 dist:
 	@for file in $(DISTFILES); do \
-		cp $$file $(distdir)/$$file; \
+		cp $$file $(distdir)/$$file || exit 1; \
 	done
 
 .PHONY: all modules clean install config_check dist
