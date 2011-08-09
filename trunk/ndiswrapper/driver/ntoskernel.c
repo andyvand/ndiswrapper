@@ -462,7 +462,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 #endif
 	nt_timer->wrap_timer = wrap_timer;
 	nt_timer->kdpc = NULL;
-	initialize_object(&nt_timer->dh, type, 0);
+	initialize_object(&nt_timer->dh, (enum dh_type)type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	TIMERTRACE("timer %p (%p)", wrap_timer, nt_timer);
 	spin_lock_bh(&ntoskernel_lock);
@@ -1204,7 +1204,7 @@ wstdcall void WIN_FUNC(KeInitializeEvent,3)
 	(struct nt_event *nt_event, enum event_type type, BOOLEAN state)
 {
 	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
-	initialize_object(&nt_event->dh, type, state);
+	initialize_object(&nt_event->dh, (enum dh_type)type, state);
 	EVENTEXIT(return);
 }
 
