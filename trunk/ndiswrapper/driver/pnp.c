@@ -241,15 +241,14 @@ WIN_FUNC_DECL(pdoDispatchDeviceControl,2)
 wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
-	struct wrap_device *wd;
 	NTSTATUS status;
 #ifdef ENABLE_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
+	struct wrap_device *wd = pdo->reserved;
 #endif
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	TRACE2("%p %d:%d", pdo, irp_sl->major_fn, irp_sl->minor_fn);
-	wd = pdo->reserved;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
 		status = start_pdo(pdo);
