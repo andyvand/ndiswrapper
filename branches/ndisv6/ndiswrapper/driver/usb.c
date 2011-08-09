@@ -1049,6 +1049,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 		break;
 	case IOCTL_INTERNAL_USB_SUBMIT_IDLE_NOTIFICATION:
 		idle_callback = irp_sl->params.dev_ioctl.type3_input_buf;
+		(void)idle_callback;
 		USBTRACE("suspend function: %p", idle_callback->callback);
 		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
@@ -1305,12 +1306,12 @@ wstdcall NTSTATUS
 USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 				  ULONG *buf_length, ULONG *buf_actual_length)
 {
+#if 0
 	struct wrap_device *wd = context;
-	struct usb_bus_information_level *bus_info;
-	struct usb_bus *bus;
+	struct usb_bus *bus = wd->usb.udev->bus;
+	struct usb_bus_information_level *bus_info = buf;
+#endif
 
-	bus = wd->usb.udev->bus;
-	bus_info = buf;
 	TODO();
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
