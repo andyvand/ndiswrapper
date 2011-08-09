@@ -1994,11 +1994,13 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_START:
 		assoc_start = status->buf;
+		(void)assoc_start;
 		TRACE2("0x%x, 0x%zx, " MACSTRSEP, assoc_start->header.size,
 		       sizeof(*assoc_start), MAC2STR(assoc_start->mac));
 		break;
 	case NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION:
 		assoc_comp = status->buf;
+		(void)assoc_comp;
 		TRACE2("0x%x, 0x%zx, 0x%x", assoc_comp->header.size,
 		       sizeof(*assoc_comp), status->buf_len);
 		TRACE2("ap: " MACSTRSEP ", 0x%x, 0x%x, 0x%x",
@@ -2012,6 +2014,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_CONNECTION_START:
 		conn_start = status->buf;
+		(void)conn_start;
 		TRACE2("0x%x, 0x%zx, 0x%x", conn_start->header.size,
 		       sizeof(*conn_start), conn_start->bss_type);
 		break;
@@ -2033,6 +2036,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		break;
 	case NDIS_STATUS_DOT11_PHY_STATE_CHANGED:
 		phy_state = status->buf;
+		(void)phy_state;
 		TRACE2("%d, %d, %d", phy_state->phy_id, phy_state->hw_state,
 		       phy_state->sw_state);
 		set_bit(PHY_STATE_CHANGED, &wnd->ndis_pending_work);
