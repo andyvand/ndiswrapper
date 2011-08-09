@@ -33,14 +33,14 @@
 /* the indices used here must match macros WRAP_NDIS_DEVICE etc. */
 static struct guid class_guids[] = {
 	/* Network */
-	{0x4d36e972, 0xe325, 0x11ce, },
+	{ .data1 = 0x4d36e972, .data2 = 0xe325, .data3 = 0x11ce },
 	/* USB WDM */
-	{0x36fc9e60, 0xc465, 0x11cf, },
+	{ .data1 = 0x36fc9e60, .data2 = 0xc465, .data3 = 0x11cf },
 	/* Bluetooth */
-	{0xe0cbf06c, 0xcd8b, 0x4647, },
+	{ .data1 = 0xe0cbf06c, .data2 = 0xcd8b, .data3 = 0x4647 },
 	/* ivtcorporatino.com's bluetooth device claims this is
 	 * bluetooth guid */
-	{0xf12d3cf8, 0xb11d, 0x457e, },
+	{ .data1 = 0xf12d3cf8, .data2 = 0xb11d, .data3 = 0x457e},
 };
 
 struct semaphore loader_mutex;
@@ -596,7 +596,15 @@ static int load_user_space_driver(struct load_driver *load_driver)
 }
 
 static struct pci_device_id wrap_pci_id_table[] = {
-	{PCI_ANY_ID, PCI_ANY_ID, PCI_ANY_ID, PCI_ANY_ID},
+	{
+		.vendor = PCI_ANY_ID,
+		.device = PCI_ANY_ID,
+		.subvendor = PCI_ANY_ID,
+		.subdevice = PCI_ANY_ID,
+		.class = 0,
+		.class_mask = 0,
+		.driver_data = 0
+	}
 };
 
 static struct pci_driver wrap_pci_driver = {
