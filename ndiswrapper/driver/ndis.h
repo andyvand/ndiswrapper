@@ -423,24 +423,6 @@ struct ndis_wireless_stats {
 	LARGE_INTEGER decrypt_failure_count;
 };
 
-enum ndis_status_type {
-	Ndis802_11StatusType_Authentication,
-	Ndis802_11StatusType_MediaStreamMode,
-	Ndis802_11StatusType_PMKID_CandidateList,
-	Ndis802_11StatusType_RadioState,
-};
-
-enum ndis_radio_status {
-	Ndis802_11RadioStatusOn, Ndis802_11RadioStatusHardwareOff,
-	Ndis802_11RadioStatusSoftwareOff,
-};
-
-struct ndis_radio_status_indication
-{
-	enum ndis_status_type status_type;
-	enum ndis_radio_status radio_state;
-};
-
 enum ndis_media_state {
 	NdisMediaStateConnected,
 	NdisMediaStateDisconnected,
@@ -872,10 +854,6 @@ struct ndis_link_state {
 	ULONG64 rx_link_speed;
 	enum ndis_supported_pause_functions pause_funcs;
 	ULONG auto_negotiation_flags;
-};
-
-struct ndis5_status_indication {
-	enum ndis_status_type status_type;
 };
 
 struct ndis_status_indication {
