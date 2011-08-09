@@ -620,6 +620,7 @@ static void update_wireless_stats(struct ndis_device *wnd)
 	if (res != NDIS_STATUS_SUCCESS)
 		return;
 	mac_stats = &ndis_stats->mac_ucast_stats;
+	(void)mac_stats;
 	TRACE2("%Lu, %Lu, %Lu, %Lu", mac_stats->tx_frames,
 		  mac_stats->rx_frames, mac_stats->tx_failure_frames,
 		  mac_stats->rx_failure_frames);
@@ -824,6 +825,7 @@ static void ndis_worker(worker_param_t param)
 		BOOLEAN b = TRUE;
 		res = mp_set_info(wnd, OID_DOT11_HARDWARE_PHY_STATE, &b,
 				  sizeof(b), NULL, NULL);
+		(void)res;
 		TRACE1("%08X", res);
 	}
 	if (test_and_clear_bit(MINIPORT_RESET, &wnd->ndis_pending_work))
@@ -1383,6 +1385,7 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	get_supported_oids(wnd);
 
 	extsta_attrs = wnd->native_802_11_attrs.extsta_attrs;
+	(void)extsta_attrs;
 	TRACE2("0x%x, %u, %u, %u, %u : %u, %u, %u, %u, %u : %u, %u, %u, "
 		  "%u, %u : %u, 0x%x, %d, %u, %u : %u, %u, %u",
 		  wnd->native_802_11_attrs.op_mode_capability,
