@@ -157,7 +157,7 @@ do {								       \
 #define USBENTER ENTER1
 #define USBEXIT EXIT1
 #else
-#define USBTRACE(fmt, ...)
+#define USBTRACE(fmt, ...) do { } while (0)
 #define USBENTER(fmt, ...)
 #define USBEXIT(stmt) stmt
 #endif
@@ -167,7 +167,7 @@ do {								       \
 #define EVENTENTER ENTER1
 #define EVENTEXIT EXIT1
 #else
-#define EVENTTRACE(fmt, ...)
+#define EVENTTRACE(fmt, ...) do { } while (0)
 #define EVENTENTER(fmt, ...)
 #define EVENTEXIT(stmt) stmt
 #endif
@@ -177,7 +177,7 @@ do {								       \
 #define TIMERENTER ENTER1
 #define TIMEREXIT EXIT1
 #else
-#define TIMERTRACE(fmt, ...)
+#define TIMERTRACE(fmt, ...) do { } while (0)
 #define TIMERENTER(fmt, ...)
 #define TIMEREXIT(stmt) stmt
 #endif
@@ -187,7 +187,7 @@ do {								       \
 #define IOENTER ENTER1
 #define IOEXIT EXIT1
 #else
-#define IOTRACE(fmt, ...)
+#define IOTRACE(fmt, ...) do { } while (0)
 #define IOENTER(fmt, ...)
 #define IOEXIT(stmt) stmt
 #endif
@@ -197,7 +197,7 @@ do {								       \
 #define WORKENTER ENTER1
 #define WORKEXIT EXIT1
 #else
-#define WORKTRACE(fmt, ...)
+#define WORKTRACE(fmt, ...) do { } while (0)
 #define WORKENTER(fmt, ...)
 #define WORKEXIT(stmt) stmt
 #endif
