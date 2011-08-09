@@ -67,7 +67,7 @@ dist:
 	@rm -rf ${distdir}
 	mkdir -p ${distdir}
 	@for file in $(DISTFILES); do \
-	  cp  $$file $(distdir)/$$file; \
+	  cp $$file $(distdir)/$$file || exit 1; \
 	done
 	for subdir in $(DIST_SUBDIRS); do \
 	  if test "$$subdir" = .; then :; else \
@@ -79,8 +79,9 @@ dist:
 	+$(MAKE) -C driver distdir=../${distdir}/driver dist
 	+$(MAKE) -C utils distdir=../${distdir}/utils dist
 
-	# Update version in dist rpm spec file - don't crash if it fails
-	-sed -i "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(DRIVER_VERSION)\}/" $(distdir)/ndiswrapper.spec
+	# Update version in dist rpm spec file
+	sed "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(DRIVER_VERSION)\}/" \
+		ndiswrapper.spec >$(distdir)/ndiswrapper.spec
 	tar cfz ${distarchive} ${distdir}
 
 rpm: dist ndiswrapper.spec
