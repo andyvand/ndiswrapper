@@ -156,7 +156,7 @@ void wrap_kfree(void *ptr)
 	spin_unlock_bh(&alloc_lock);
 	if (!(info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
 	      info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC))
-		WARNING("invliad type: %d", info->type);
+		WARNING("invalid type: %d", info->type);
 #endif
 	kfree(info);
 }
@@ -219,7 +219,7 @@ void wrap_vfree(void *ptr)
 	spin_unlock_bh(&alloc_lock);
 	if (!(info->type == ALLOC_TYPE_VMALLOC_ATOMIC ||
 	      info->type == ALLOC_TYPE_VMALLOC_NON_ATOMIC))
-		WARNING("invliad type: %d", info->type);
+		WARNING("invalid type: %d", info->type);
 #endif
 	vfree(info);
 }
@@ -258,7 +258,7 @@ void wrap_free_pages(unsigned long ptr, int order)
 	RemoveEntryList(&info->list);
 	spin_unlock_bh(&alloc_lock);
 	if (info->type != ALLOC_TYPE_PAGES)
-		WARNING("invliad type: %d", info->type);
+		WARNING("invalid type: %d", info->type);
 #endif
 	free_pages((unsigned long)info, get_order(info->size));
 }
