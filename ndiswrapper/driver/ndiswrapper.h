@@ -41,7 +41,7 @@
  * vendors say 15 is USB; which is correct? */
 #define WRAP_USB_BUS 15
 
-/* NDIS device must be 0, for compatability with old versions of
+/* NDIS device must be 0, for compatibility with old versions of
  * ndiswrapper where device type for NDIS drivers is 0 */
 #define WRAP_NDIS_DEVICE 0
 #define WRAP_USB_DEVICE 1

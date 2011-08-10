@@ -100,7 +100,7 @@ wstdcall void WIN_FUNC(NdisMDeregisterMiniportDriver,1)
 	(struct wrap_driver *driver)
 {
 	ENTER1("%p", driver);
-	/* TOODO */
+	/* TODO */
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisSetOptionalHandlers,2)
@@ -866,7 +866,7 @@ wstdcall void WIN_FUNC(NdisInitializeReadWriteLock,1)
 	EXIT3(return);
 }
 
-/* read/write locks are implemented in a rather simplisitic way - we
+/* read/write locks are implemented in a rather simplistic way - we
  * should probably use Linux's rw_lock implementation */
 
 wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)

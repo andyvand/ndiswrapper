@@ -121,7 +121,7 @@ int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 		return wrap_queue_work_on(workq, work, 0);
 	else {
 		typeof(workq->qon) qon;
-		/* work is queued on threads in a round-robbin fashion */
+		/* work is queued on threads in a round-robin fashion */
 		do {
 			qon = workq->qon % workq->num_cpus;
 			atomic_inc_var(workq->qon);
