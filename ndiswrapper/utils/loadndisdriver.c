@@ -339,7 +339,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 	}
 
 	if (num_sys_files == 0) {
-		ERROR("coudln't find valid drivers files for driver %s",
+		ERROR("couldn't find valid drivers files for driver %s",
 		      driver_name);
 		goto err;
 	}

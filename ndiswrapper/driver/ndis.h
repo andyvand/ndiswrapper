@@ -783,7 +783,7 @@ struct ndis_mp_block {
 	struct unicode_string basename;
 	struct unicode_string symlink_name;
 	ULONG ndis_hangcheck_interval;
-	USHORT hanghcheck_ticks;
+	USHORT hangcheck_ticks;
 	USHORT hangcheck_tick;
 	NDIS_STATUS ndis_reset_status;
 	void *resetopen;
@@ -1244,7 +1244,7 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define NDIS_MEMORY_CONTIGUOUS			0x00000001
 #define NDIS_MEMORY_NONCACHED			0x00000002
 
-/* Atrribute flags to NdisMSetAtrributesEx */
+/* Attribute flags to NdisMSetAtrributesEx */
 #define NDIS_ATTRIBUTE_IGNORE_PACKET_TIMEOUT    0x00000001
 #define NDIS_ATTRIBUTE_IGNORE_REQUEST_TIMEOUT   0x00000002
 #define NDIS_ATTRIBUTE_IGNORE_TOKEN_RING_ERRORS 0x00000004

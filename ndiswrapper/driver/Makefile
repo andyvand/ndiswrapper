@@ -112,7 +112,7 @@ STUB_SRCS = crt.c hal.c ndis.c ntoskernel.c ntoskernel_io.c \
 
 
 # By default, USB layer is compiled in if USB support is in kernel;
-# to disable USB support in ndiswrapper even if USB support is in kenrel,
+# to disable USB support in ndiswrapper even if USB support is in kernel,
 # add option "DISABLE_USB=1"
 ifndef DISABLE_USB
 ifeq ($(CONFIG_USB),y)

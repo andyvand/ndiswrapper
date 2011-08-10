@@ -278,7 +278,7 @@ static void mp_halt(struct ndis_device *wnd)
 	 * halt, deregister it now */
 	if (wnd->mp_interrupt)
 		NdisMDeregisterInterrupt(wnd->mp_interrupt);
-	/* cancel any timers left by bugyy windows driver; also free
+	/* cancel any timers left by buggy windows driver; also free
 	 * the memory for timers */
 	while (1) {
 		struct nt_slist *slist;
@@ -1339,7 +1339,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 	struct ndis_device *wnd;
 
 	TRACE3("fdo: %p", fdo);
-	/* for now, we don't have anything intresting here, so pass it
+	/* for now, we don't have anything interesting here, so pass it
 	 * down to bus driver */
 	wnd = fdo->reserved;
 	return IoPassIrpDown(wnd->nmb->pdo, irp);
@@ -1917,7 +1917,7 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		mp_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 		get_encryption_capa(wnd, buf, buf_len);
-		TRACE1("capbilities = %ld", wnd->capa.encr);
+		TRACE1("capabilities = %ld", wnd->capa.encr);
 		printk(KERN_INFO "%s: encryption modes supported: "
 		       "%s%s%s%s%s%s%s\n", net_dev->name,
 		       test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr) ?

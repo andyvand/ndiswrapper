@@ -46,7 +46,7 @@
 # from Windows, for now, we just assume this is 0 (hence %rax is cleared).
 #
 # Windows pushes arguments 5 and higher onto stack in case of integer
-# variables and 4 and higher in case of floating point variabes (passed
+# variables and 4 and higher in case of floating point variables (passed
 # in SSE registers).
 
 In a windows function, the stackframe/registers look like this:
