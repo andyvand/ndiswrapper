@@ -1345,7 +1345,7 @@ wfastcall void WIN_FUNC(KeAcquireGuardedMutex,1)
 	spin_lock_bh(&dispatcher_lock);
 	if (mutex->count++) {
 		struct wait_block wb;
-		int res, wait_done;
+		int wait_done;
 
 		wait_done = 0;
 		wb.wait_done = &wait_done;
@@ -1354,7 +1354,8 @@ wfastcall void WIN_FUNC(KeAcquireGuardedMutex,1)
 		TRACE3("%p", &wb);
 		InsertTailList(&mutex->gate.dh.wait_blocks, &wb.list);
 		spin_unlock_bh(&dispatcher_lock);
-		res = wait_condition(wait_done, 0, TASK_INTERRUPTIBLE);
+		if (wait_condition(wait_done, 0, TASK_INTERRUPTIBLE) < 0)
+			WARNING("wait_condition() failed");
 	} else
 		spin_unlock_bh(&dispatcher_lock);
 	EXIT3(return);
