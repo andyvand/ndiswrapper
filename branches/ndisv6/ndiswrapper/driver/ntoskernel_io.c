@@ -939,13 +939,12 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceProperty,5)
 
 wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
 	(struct unicode_string *name, ACCESS_MASK desired_access,
-	 void *file_obj, struct device_object *dev_obj)
+	 struct file_object *file_obj, struct device_object *dev_obj)
 {
 	struct common_object_header *coh;
 
 	dev_obj = NULL;
-	/* TODO: access is not checked and file_obj is set to NULL */
-	file_obj = NULL;
+	/* TODO: access is not checked and file_obj is filled with zeroes */
 	spin_lock_bh(&ntoskernel_lock);
 	nt_list_for_each_entry(coh, &object_list, list) {
 		TRACE5("header: %p, type: %d", coh, coh->type);
@@ -958,9 +957,11 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
 		}
 	}
 	spin_unlock_bh(&ntoskernel_lock);
-	if (dev_obj)
+	if (dev_obj) {
+		memset(file_obj, 0, sizeof(*file_obj));
+		WARNING("file_obj filled with zeroes");
 		IOEXIT(return STATUS_SUCCESS);
-	else
+	} else
 		IOEXIT(return STATUS_OBJECT_NAME_INVALID);
 }
 
