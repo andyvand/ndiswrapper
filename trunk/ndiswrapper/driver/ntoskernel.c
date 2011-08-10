@@ -2394,6 +2394,8 @@ wstdcall void WIN_FUNC(KeBugCheckEx,5)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
 {
+	INFO("code: 0x%x, params: 0x%lx 0x%lx 0x%lx 0x%lx\n", code, param1,
+	     param2, param3, param4);
 	TODO();
 	return;
 }
