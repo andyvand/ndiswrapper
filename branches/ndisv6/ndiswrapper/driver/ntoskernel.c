@@ -95,7 +95,7 @@ DEFINE_PER_CPU(irql_info_t, irql_info);
 static void update_user_shared_data_proc(unsigned long data)
 {
 	/* timer is supposed to be scheduled every 10ms, but bigger
-	 * intervals seem to work (tried upto 50ms) */
+	 * intervals seem to work (tried up to 50ms) */
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	*((ULONG64 *)&kuser_shared_data.interrupt_time) =
 		jiffies * TICKSPERSEC / HZ;
@@ -1019,7 +1019,7 @@ static int grab_object(struct dispatcher_header *dh,
 }
 
 /* this function should be called holding dispatcher_lock */
-static void object_signalled(struct dispatcher_header *dh)
+static void object_signaled(struct dispatcher_header *dh)
 {
 	struct nt_list *cur, *next;
 	struct wait_block *wb;
@@ -1123,7 +1123,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 
 	assert(current_irql() < DISPATCH_LEVEL);
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
-	/* we don't honor 'alertable' - according to decription for
+	/* we don't honor 'alertable' - according to description for
 	 * this, even if waiting in non-alertable state, thread may be
 	 * alerted in some circumstances */
 	while (wait_count) {
@@ -1151,7 +1151,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				EVENTEXIT(return STATUS_TIMEOUT);
 		}
 		assert(res > 0);
-		/* woken because object(s) signalled */
+		/* woken because object(s) signaled */
 		for (i = 0; wait_count && i < count; i++) {
 			if (!wb[i].thread || !wb[i].object)
 				continue;
@@ -1219,7 +1219,7 @@ wstdcall LONG WIN_FUNC(KeSetEvent,3)
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
-		object_signalled(&nt_event->dh);
+		object_signaled(&nt_event->dh);
 	spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return old_state);
 }
@@ -1282,7 +1282,7 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 		ret = mutex->dh.signal_state++;
 		if (ret == 0) {
 			mutex->owner_thread = NULL;
-			object_signalled(&mutex->dh);
+			object_signaled(&mutex->dh);
 		}
 	} else {
 		ret = STATUS_MUTANT_NOT_OWNED;
@@ -1300,8 +1300,8 @@ wstdcall void WIN_FUNC(KeInitializeSemaphore,3)
 {
 	EVENTENTER("%p: %d", semaphore, count);
 	/* if limit > 1, we need to satisfy as many waits (until count
-	 * becomes 0); so we keep decrementing count everytime a wait
-	 * is satisified */
+	 * becomes 0); so we keep decrementing count every time a wait
+	 * is satisfied */
 	initialize_object(&semaphore->dh, SemaphoreObject, count);
 	semaphore->dh.size = sizeof(*semaphore);
 	semaphore->limit = limit;
@@ -1326,7 +1326,7 @@ wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 		semaphore->dh.signal_state = semaphore->limit;
 	}
 	if (semaphore->dh.signal_state > 0)
-		object_signalled(&semaphore->dh);
+		object_signaled(&semaphore->dh);
 	spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return ret);
 }
@@ -1960,7 +1960,7 @@ wstdcall NTSTATUS WIN_FUNC(ObReferenceObjectByHandle,6)
 
 /* DDK doesn't say if return value should be before incrementing or
  * after incrementing reference count, but according to #reactos
- * devels, it should be return value after incrementing */
+ * developers, it should be return value after incrementing */
 wfastcall LONG WIN_FUNC(ObfReferenceObject,1)
 	(void *object)
 {

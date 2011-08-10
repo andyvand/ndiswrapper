@@ -681,7 +681,7 @@ sub del_comment {
     return $s;
 }
 
-# remove whitsepace at front and end.
+# remove whitespace at front and end.
 sub trim {
     my $s = shift;
     $s =~ s/^\s*//;

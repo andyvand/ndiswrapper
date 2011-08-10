@@ -245,7 +245,7 @@ static void mp_halt(struct ndis_device *wnd)
 		WARNING("couldn't obtain ndis_comm_mutex");
 	LIN2WIN2(mp_driver->mphalt, wnd->nmb->adapter_ctx, halt_action);
 	up(&wnd->ndis_comm_mutex);
-	/* cancel any timers left by bugyy windows driver; also free
+	/* cancel any timers left by buggy windows driver; also free
 	 * the memory for timers */
 	while (1) {
 		struct nt_slist *slist;
@@ -1030,7 +1030,7 @@ static void init_dot11_station(struct ndis_device *wnd, void *buf,
 	TRACE2("%08X", res);
 
 	get_dot11_encryption_capa(wnd, buf, buf_len);
-	TRACE1("capbilities = %ld", wnd->capa.encr);
+	TRACE1("capabilities = %ld", wnd->capa.encr);
 	printk(KERN_INFO "%s: encryption modes supported: "
 	       "%s%s%s%s%s%s%s%s%s%s%s%s\n", wnd->net_dev->name,
 	       test_bit(DOT11_CIPHER_ALGO_WEP40, &wnd->capa.encr) ?
@@ -1165,7 +1165,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 	struct ndis_device *wnd;
 
 	TRACE3("fdo: %p", fdo);
-	/* for now, we don't have anything intresting here, so pass it
+	/* for now, we don't have anything interesting here, so pass it
 	 * down to bus driver */
 	wnd = fdo->reserved;
 	return IoPassIrpDown(wnd->pdo, irp);

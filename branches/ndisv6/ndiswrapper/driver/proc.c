@@ -52,7 +52,7 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 			     stats.tx_multi_frag);
 		p += sprintf(p, "tx_failed=%Lu\n", stats.failed);
 		p += sprintf(p, "tx_retry=%Lu\n", stats.retry);
-		p += sprintf(p, "tx_multi_rerty=%Lu\n", stats.multi_retry);
+		p += sprintf(p, "tx_multi_retry=%Lu\n", stats.multi_retry);
 		p += sprintf(p, "tx_rtss_success=%Lu\n", stats.rtss_succ);
 		p += sprintf(p, "tx_rtss_fail=%Lu\n", stats.rtss_fail);
 		p += sprintf(p, "ack_fail=%Lu\n", stats.ack_fail);

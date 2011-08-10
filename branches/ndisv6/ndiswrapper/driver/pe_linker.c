@@ -186,7 +186,7 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 
 	if (opt_hdr->SectionAlignment < opt_hdr->FileAlignment) {
-		ERROR("alignment mismatch: secion: 0x%x, file: 0x%x",
+		ERROR("alignment mismatch: section: 0x%x, file: 0x%x",
 		      opt_hdr->SectionAlignment, opt_hdr->FileAlignment);
 		return -EINVAL;
 	}
@@ -397,9 +397,9 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	return 0;
 }
 
-/* Expand the image in memroy if necessary. The image on disk does not
+/* Expand the image in memory if necessary. The image on disk does not
  * necessarily maps the image of the driver in memory, so we have to
- * re-write it in order to fullfill the sections alignements. The
+ * re-write it in order to fulfill the sections alignments. The
  * advantage to do that is that rva_to_va becomes a simple
  * addition. */
 static int fix_pe_image(struct pe_image *pe)
@@ -543,7 +543,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 	struct pe_image *pe;
 
 #ifdef DEBUG
-	/* Sanity checkings */
+	/* Sanity checks */
 	CHECK_SZ(IMAGE_SECTION_HEADER, IMAGE_SIZEOF_SECTION_HEADER);
 	CHECK_SZ(IMAGE_FILE_HEADER, IMAGE_SIZEOF_FILE_HEADER);
 	CHECK_SZ(IMAGE_OPTIONAL_HEADER, IMAGE_SIZEOF_NT_OPTIONAL_HEADER);

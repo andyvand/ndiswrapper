@@ -38,7 +38,7 @@ static struct guid class_guids[] = {
 	{ .data1 = 0x36fc9e60, .data2 = 0xc465, .data3 = 0x11cf },
 	/* Bluetooth */
 	{ .data1 = 0xe0cbf06c, .data2 = 0xcd8b, .data3 = 0x4647 },
-	/* ivtcorporatino.com's bluetooth device claims this is
+	/* ivtcorporation.com's bluetooth device claims this is
 	 * bluetooth guid */
 	{ .data1 = 0xf12d3cf8, .data2 = 0xb11d, .data3 = 0x457e},
 };
@@ -239,7 +239,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 	}
 	up(&loader_mutex);
 	if (!driver) {
-		TRACE1("coudln't find bin file '%s'", bin_file_name);
+		TRACE1("couldn't find bin file '%s'", bin_file_name);
 		return NULL;
 	}
 
@@ -360,7 +360,7 @@ static int load_bin_files_info(struct wrap_driver *driver,
 	EXIT1(return 0);
 }
 
-/* load settnigs for a device. called with loader_mutex down */
+/* load settings for a device. called with loader_mutex down */
 static int load_settings(struct wrap_driver *wrap_driver,
 			 struct load_driver *load_driver)
 {
