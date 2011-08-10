@@ -1817,9 +1817,11 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	net_dev->poll_controller = ndis_poll_controller;
 #endif
 #endif
+#ifdef CONFIG_WIRELESS_EXT
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		net_dev->wireless_handlers = &ndis_handler_def;
 	}
+#endif
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
 	if (wnd->mp_interrupt)
 		net_dev->irq = wnd->mp_interrupt->irq;

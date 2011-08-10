@@ -29,6 +29,8 @@
 #include "iw_ndis.h"
 #include "wrapndis.h"
 
+#ifdef CONFIG_WIRELESS_EXT
+
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
@@ -1977,3 +1979,5 @@ const struct iw_handler_def ndis_handler_def = {
 	.private_args	= (struct iw_priv_args *)priv_args,
 	.get_wireless_stats = get_iw_stats,
 };
+
+#endif
