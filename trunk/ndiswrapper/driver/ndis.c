@@ -898,7 +898,7 @@ wstdcall void WIN_FUNC(NdisInitializeReadWriteLock,1)
 	return;
 }
 
-/* read/write locks are implemented in a rather simplisitic way - we
+/* read/write locks are implemented in a rather simplistic way - we
  * should probably use Linux's rw_lock implementation */
 
 wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)

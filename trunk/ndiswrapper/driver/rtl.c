@@ -25,12 +25,12 @@ wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
 	x = (char *)a;
 	y = (char *)b;
 	/* MSDN says this should return number of bytes that compare as
-	 * equal. This can be interpretted as either all bytes that are
+	 * equal. This can be interpreted as either all bytes that are
 	 * equal in 'len' bytes or that only until the bytes compare as
 	 * not equal. Initially we had it the former way, but Realtek driver
 	 * doesn't like it that way - it takes many attempts to associate
 	 * with WPA. ReactOS returns the number of bytes that are equal
-	 * upto when they compare as not equal.
+	 * before the first differing byte.
 	 * According to lords at #reactos, that is the way it should be
 	 * and that msdn is wrong about it!
 	 */

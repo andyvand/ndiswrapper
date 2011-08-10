@@ -421,7 +421,7 @@ static void wrap_urb_complete_worker(worker_param_t dummy)
 			 urb, nt_urb, urb->status);
 		switch (urb->status) {
 		case 0:
-			/* succesfully transferred */
+			/* successfully transferred */
 			irp->io_status.info = urb->actual_length;
 			if (nt_urb->header.function ==
 			    URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER) {
@@ -812,7 +812,7 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		if (pipe->type == UsbdPipeTypeInterrupt) {
 			/* Windows and Linux differ in how the
-			 * bInterval is interpretted */
+			 * bInterval is interpreted */
 			/* for low speed:
 			   interval (Windows) -> frames per ms (Linux)
 			   0 to 15    -> 8
@@ -946,7 +946,7 @@ static int wrap_usb_get_string(struct usb_device *udev, unsigned short langid,
 			       unsigned char index, void *buf, int size)
 {
 	int i, ret;
-	/* if langid is 0, return array of langauges supported in
+	/* if langid is 0, return array of languages supported in
 	 * buf */
 	for (i = 0; i < 3; i++) {
 		ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
@@ -1013,7 +1013,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
 		/* bulk/int and vendor/class urbs are submitted to
-		 * Linux USB core; if the call is sucessful, urb's
+		 * Linux USB core; if the call is successful, urb's
 		 * completion worker will return IRP later */
 	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
 		USBTRACE("submitting bulk/int irp: %p", irp);
