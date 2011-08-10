@@ -284,7 +284,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 
 int alloc_size(enum alloc_type type)
 {
-	if (type >= 0 && type < ALLOC_TYPE_MAX)
+	if ((int)type >= 0 && type < ALLOC_TYPE_MAX)
 		return atomic_read(&alloc_sizes[type]);
 	else
 		return -EINVAL;
