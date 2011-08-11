@@ -65,7 +65,6 @@ static struct work_struct ntos_work;
 static struct nt_list ntos_work_list;
 static spinlock_t ntos_work_lock;
 static void ntos_work_worker(struct work_struct *dummy);
-static struct nt_thread *ntos_worker_thread;
 
 spinlock_t irp_cancel_lock;
 static NT_SPIN_LOCK nt_list_lock;
@@ -2474,36 +2473,6 @@ struct worker_init_struct {
 	struct nt_thread *nt_thread;
 };
 
-static void wrap_worker_init_func(struct work_struct *work)
-{
-	struct worker_init_struct *worker_init_struct;
-
-	worker_init_struct =
-		container_of(work, struct worker_init_struct, work);
-	TRACE1("%p", worker_init_struct);
-	worker_init_struct->nt_thread = create_nt_thread(current);
-	if (!worker_init_struct->nt_thread)
-		WARNING("couldn't create worker thread");
-	complete(&worker_init_struct->completion);
-}
-
-struct nt_thread *wrap_worker_init(struct workqueue_struct *wq)
-{
-	struct worker_init_struct worker_init_struct;
-
-	TRACE1("%p", &worker_init_struct);
-	init_completion(&worker_init_struct.completion);
-	initialize_work(&worker_init_struct.work, wrap_worker_init_func);
-	worker_init_struct.nt_thread = NULL;
-	if (wq)
-		queue_work(wq, &worker_init_struct.work);
-	else
-		schedule_work(&worker_init_struct.work);
-	wait_for_completion(&worker_init_struct.completion);
-	TRACE1("%p", worker_init_struct.nt_thread);
-	return worker_init_struct.nt_thread;
-}
-
 int ntoskernel_init(void)
 {
 	struct timeval now;
@@ -2550,8 +2519,7 @@ int ntoskernel_init(void)
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;
 	}
-	ntos_worker_thread = wrap_worker_init(ntos_wq);
-	TRACE1("%p", ntos_worker_thread);
+	TRACE1("ntos_wq: %p", ntos_wq);
 
 	if (add_bus_driver("PCI")
 #ifdef ENABLE_USB
@@ -2669,9 +2637,6 @@ void ntoskernel_exit(void)
 #endif
 	if (ntos_wq)
 		destroy_workqueue(ntos_wq);
-	TRACE1("%p", ntos_worker_thread);
-	if (ntos_worker_thread)
-		ObDereferenceObject(ntos_worker_thread);
 	ENTER2("freeing objects");
 	spin_lock_bh(&ntoskernel_lock);
 	while ((cur = RemoveHeadList(&object_list))) {

@@ -28,7 +28,6 @@ static void ndis_worker(struct work_struct *dummy);
 static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
 static spinlock_t ndis_work_list_lock;
-static struct nt_thread *ndis_worker_thread;
 
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
 	(void **driver_handle, struct driver_object *driver,
@@ -2378,8 +2377,7 @@ int ndis_init(void)
 		WARNING("couldn't create worker thread");
 		EXIT1(return -ENOMEM);
 	}
-	ndis_worker_thread = wrap_worker_init(ndis_wq);
-	TRACE1("%p", ndis_worker_thread);
+	TRACE1("ndis_wq: %p", ndis_wq);
 	InitializeListHead(&ndis_worker_list);
 	spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker);
@@ -2392,7 +2390,5 @@ void ndis_exit(void)
 {
 	if (ndis_wq)
 		destroy_workqueue(ndis_wq);
-	if (ndis_worker_thread)
-		ObDereferenceObject(ndis_worker_thread);
 	EXIT1(return);
 }
