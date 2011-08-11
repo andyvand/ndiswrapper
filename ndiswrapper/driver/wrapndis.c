@@ -683,12 +683,12 @@ static u8 mp_tx_packets(struct ndis_device *wnd, u8 start, u8 n)
 	EXIT3(return sent);
 }
 
-static void tx_worker(worker_param_t param)
+static void tx_worker(struct work_struct *work)
 {
 	struct ndis_device *wnd;
 	s8 n;
 
-	wnd = worker_param_data(param, struct ndis_device, tx_work);
+	wnd = container_of(work, struct ndis_device, tx_work);
 	ENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
@@ -1133,11 +1133,11 @@ void hangcheck_del(struct ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
-static void ndis_worker(worker_param_t param)
+static void ndis_worker(struct work_struct *work)
 {
 	struct ndis_device *wnd;
 
-	wnd = worker_param_data(param, struct ndis_device, ndis_work);
+	wnd = container_of(work, struct ndis_device, ndis_work);
 	WORKTRACE("0x%lx", wnd->ndis_pending_work);
 
 	if (test_and_clear_bit(NETIF_WAKEQ, &wnd->ndis_pending_work)) {
@@ -2084,7 +2084,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	sema_init(&wnd->tx_ring_mutex, 1);
 	sema_init(&wnd->ndis_req_mutex, 1);
 	wnd->ndis_req_done = 0;
-	initialize_work(&wnd->tx_work, tx_worker, wnd);
+	initialize_work(&wnd->tx_work, tx_worker);
 	wnd->tx_ring_start = 0;
 	wnd->tx_ring_end = 0;
 	wnd->is_tx_ring_full = 0;
@@ -2102,7 +2102,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
-	initialize_work(&wnd->ndis_work, ndis_worker, wnd);
+	initialize_work(&wnd->ndis_work, ndis_worker);
 	wnd->iw_stats_enabled = TRUE;
 
 	TRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",

@@ -25,7 +25,7 @@
 #define MAX_ALLOCATED_NDIS_PACKETS TX_RING_SIZE
 #define MAX_ALLOCATED_NDIS_BUFFERS TX_RING_SIZE
 
-static void ndis_worker(worker_param_t dummy);
+static void ndis_worker(struct work_struct *dummy);
 static struct work_struct ndis_work;
 static struct nt_list ndis_work_list;
 static spinlock_t ndis_work_list_lock;
@@ -2676,7 +2676,7 @@ wstdcall void WIN_FUNC(NdisResetEvent,1)
 	KeResetEvent(&ndis_event->nt_event);
 }
 
-static void ndis_worker(worker_param_t dummy)
+static void ndis_worker(struct work_struct *dummy)
 {
 	struct nt_list *ent;
 	struct ndis_work_item *ndis_work_item;
@@ -2950,7 +2950,7 @@ int ndis_init(void)
 {
 	InitializeListHead(&ndis_work_list);
 	spin_lock_init(&ndis_work_list_lock);
-	initialize_work(&ndis_work, ndis_worker, NULL);
+	initialize_work(&ndis_work, ndis_worker);
 
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
 	if (!ndis_wq) {
