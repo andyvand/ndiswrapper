@@ -140,7 +140,7 @@ struct wrap_workqueue_struct;
 
 struct wrap_work_struct {
 	struct list_head list;
-	void (*func)(void *data);
+	void (*func)(struct wrap_work_struct *data);
 	void *data;
 	/* whether/on which thread scheduled */
 	struct workqueue_thread *thread;
@@ -149,10 +149,10 @@ struct wrap_work_struct {
 #define work_struct wrap_work_struct
 #define workqueue_struct wrap_workqueue_struct
 
-#define initialize_work(work, pfunc, pdata)			\
+#define initialize_work(work, pfunc)				\
 	do {							\
 		(work)->func = (pfunc);				\
-		(work)->data = (pdata);				\
+		(work)->data = (work);				\
 		(work)->thread = NULL;				\
 	} while (0)
 
@@ -173,20 +173,14 @@ void wrap_destroy_wq(struct workqueue_struct *workq);
 int wrap_queue_work(struct workqueue_struct *workq, struct work_struct *work);
 void wrap_cancel_work(struct work_struct *work);
 void wrap_flush_wq(struct workqueue_struct *workq);
-typedef void *worker_param_t;
-#define worker_param_data(param, type, member) param
 
 #else // WRAP_WQ
 
 #if defined(INIT_WORK_NAR) || defined(INIT_DELAYED_WORK_DEFERRABLE)
-#define initialize_work(work, func, data) INIT_WORK(work, func)
-typedef struct work_struct *worker_param_t;
-#define worker_param_data(param, type, member)	\
-	container_of(param, type, member)
+#define initialize_work(work, func) INIT_WORK(work, func)
 #else
-#define initialize_work(work, func, data) INIT_WORK(work, func, data)
-typedef void *worker_param_t;
-#define worker_param_data(param, type, member) param
+typedef void (*work_handler)(void *work);
+#define initialize_work(work, func) INIT_WORK(work, (work_handler)func, work)
 #endif // INIT_WORK_NAR
 
 #endif // WRAP_WQ

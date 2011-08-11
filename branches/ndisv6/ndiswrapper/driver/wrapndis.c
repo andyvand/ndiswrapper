@@ -327,12 +327,12 @@ void free_tx_buffer_list(struct ndis_device *wnd,
 	NdisFreeNetBufferList(buffer_list);
 }
 
-static void tx_worker(worker_param_t param)
+static void tx_worker(struct work_struct *work)
 {
 	struct ndis_device *wnd;
 	struct mp_driver_characteristics *mp_driver;
 
-	wnd = worker_param_data(param, struct ndis_device, tx_work);
+	wnd = container_of(work, struct ndis_device, tx_work);
 	ENTER3("tx_ok %d", wnd->tx_ok);
 	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver;
 	while (wnd->tx_ok) {
@@ -799,11 +799,11 @@ void hangcheck_del(struct ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
-static void ndis_worker(worker_param_t param)
+static void ndis_worker(struct work_struct *work)
 {
 	struct ndis_device *wnd;
 
-	wnd = worker_param_data(param, struct ndis_device, ndis_work);
+	wnd = container_of(work, struct ndis_device, ndis_work);
 
 	TRACE2("%lu", wnd->ndis_pending_work);
 
@@ -1644,7 +1644,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	sema_init(&wnd->ndis_comm_mutex, 1);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
-	initialize_work(&wnd->tx_work, tx_worker, wnd);
+	initialize_work(&wnd->tx_work, tx_worker);
 	wnd->capa.encr = 0;
 	wnd->capa.auth = 0;
 	wnd->attribute_flags = 0;
@@ -1660,7 +1660,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	memset(&wnd->cipher_info, 0, sizeof(wnd->cipher_info));
 	wnd->cipher_info.algo = DOT11_CIPHER_ALGO_NONE;
 	wnd->auth_algo = DOT11_AUTH_ALGO_80211_OPEN;
-	initialize_work(&wnd->ndis_work, ndis_worker, wnd);
+	initialize_work(&wnd->ndis_work, ndis_worker);
 	wnd->hw_status = 0;
 
 	wnd->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
