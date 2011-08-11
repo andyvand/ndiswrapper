@@ -44,7 +44,7 @@ static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
 static struct work_struct kdpc_work;
-static void kdpc_worker(worker_param_t dummy);
+static void kdpc_worker(struct work_struct *dummy);
 
 static struct nt_list kdpc_list;
 static spinlock_t kdpc_list_lock;
@@ -64,7 +64,7 @@ static struct nt_list bus_driver_list;
 static struct work_struct ntos_work;
 static struct nt_list ntos_work_list;
 static spinlock_t ntos_work_lock;
-static void ntos_work_worker(worker_param_t dummy);
+static void ntos_work_worker(struct work_struct *dummy);
 static struct nt_thread *ntos_worker_thread;
 spinlock_t irp_cancel_lock;
 static NT_SPIN_LOCK nt_list_lock;
@@ -592,7 +592,7 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	InitializeListHead(&kdpc->list);
 }
 
-static void kdpc_worker(worker_param_t dummy)
+static void kdpc_worker(struct work_struct *dummy)
 {
 	struct nt_list *entry;
 	struct kdpc *kdpc;
@@ -692,7 +692,7 @@ wstdcall void WIN_FUNC(KeSetImportanceDpc,2)
 	kdpc->importance = importance;
 }
 
-static void ntos_work_worker(worker_param_t dummy)
+static void ntos_work_worker(struct work_struct *dummy)
 {
 	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;
@@ -2450,12 +2450,12 @@ struct worker_init_struct {
 	struct nt_thread *nt_thread;
 };
 
-static void wrap_worker_init_func(worker_param_t param)
+static void wrap_worker_init_func(struct work_struct *work)
 {
 	struct worker_init_struct *worker_init_struct;
 
 	worker_init_struct =
-		worker_param_data(param, struct worker_init_struct, work);
+		container_of(work, struct worker_init_struct, work);
 	TRACE1("%p", worker_init_struct);
 	worker_init_struct->nt_thread = create_nt_thread(current);
 	if (!worker_init_struct->nt_thread)
@@ -2469,8 +2469,7 @@ struct nt_thread *wrap_worker_init(struct workqueue_struct *wq)
 
 	TRACE1("%p", &worker_init_struct);
 	init_completion(&worker_init_struct.completion);
-	initialize_work(&worker_init_struct.work, wrap_worker_init_func,
-			&worker_init_struct);
+	initialize_work(&worker_init_struct.work, wrap_worker_init_func);
 	worker_init_struct.nt_thread = NULL;
 	if (wq)
 		queue_work(wq, &worker_init_struct.work);
@@ -2499,8 +2498,8 @@ int ntoskernel_init(void)
 
 	nt_spin_lock_init(&nt_list_lock);
 
-	initialize_work(&kdpc_work, kdpc_worker, NULL);
-	initialize_work(&ntos_work, ntos_work_worker, NULL);
+	initialize_work(&kdpc_work, kdpc_worker);
+	initialize_work(&ntos_work, ntos_work_worker);
 	wrap_timer_slist.next = NULL;
 
 	do_gettimeofday(&now);
