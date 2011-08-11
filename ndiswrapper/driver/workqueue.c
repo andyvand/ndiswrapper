@@ -15,10 +15,31 @@
 
 #include "ntoskernel.h"
 
+struct workqueue_thread {
+	spinlock_t lock;
+	struct task_struct *task;
+	struct completion *completion;
+	char name[16];
+	int pid;
+	/* whether any work_structs pending? <0 implies quit */
+	s8 pending;
+	/* list of work_structs pending */
+	struct list_head work_list;
+};
+
 struct workq_thread_data {
 	struct workqueue_struct *workq;
 	int index;
 };
+
+struct wrap_workqueue_struct {
+	u8 singlethread;
+	u8 qon;
+	int num_cpus;
+	struct workqueue_thread threads[0];
+};
+
+static void wrap_destroy_wq_on(struct workqueue_struct *workq, int cpu);
 
 static int workq_thread(void *data)
 {
@@ -90,8 +111,8 @@ out:
 	return 0;
 }
 
-int wrap_queue_work_on(struct workqueue_struct *workq, struct work_struct *work,
-		       int cpu)
+static int wrap_queue_work_on(struct workqueue_struct *workq,
+			      struct work_struct *work, int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 	unsigned long flags;
@@ -201,7 +222,7 @@ struct workqueue_struct *wrap_create_wq(const char *name, u8 singlethread,
 	return workq;
 }
 
-void wrap_flush_wq_on(struct workqueue_struct *workq, int cpu)
+static void wrap_flush_wq_on(struct workqueue_struct *workq, int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 	struct completion done;
@@ -228,7 +249,7 @@ void wrap_flush_wq(struct workqueue_struct *workq)
 		wrap_flush_wq_on(workq, i);
 }
 
-void wrap_destroy_wq_on(struct workqueue_struct *workq, int cpu)
+static void wrap_destroy_wq_on(struct workqueue_struct *workq, int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 
