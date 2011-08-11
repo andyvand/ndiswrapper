@@ -866,21 +866,18 @@ static int remove_key(struct ndis_device *wnd, int index,
 	    wnd->iw_auth_cipher_pairwise == IW_AUTH_CIPHER_CCMP ||
 	    wnd->iw_auth_cipher_group == IW_AUTH_CIPHER_TKIP ||
 	    wnd->iw_auth_cipher_group == IW_AUTH_CIPHER_CCMP) {
-		struct ndis_remove_key remove_key;
-		remove_key.struct_size = sizeof(remove_key);
-		remove_key.index = index;
+		struct ndis_remove_key rmkey;
+		rmkey.struct_size = sizeof(rmkey);
+		rmkey.index = index;
 		if (bssid) {
 			/* pairwise key */
 			if (memcmp(bssid, "\xff\xff\xff\xff\xff\xff",
 				   ETH_ALEN) != 0)
-				remove_key.index |= (1 << 30);
-			memcpy(remove_key.bssid, bssid,
-			       sizeof(remove_key.bssid));
+				rmkey.index |= (1 << 30);
+			memcpy(rmkey.bssid, bssid, sizeof(rmkey.bssid));
 		} else
-			memset(remove_key.bssid, 0xff,
-			       sizeof(remove_key.bssid));
-		if (mp_set(wnd, OID_802_11_REMOVE_KEY,
-			   &remove_key, sizeof(remove_key)))
+			memset(rmkey.bssid, 0xff, sizeof(rmkey.bssid));
+		if (mp_set(wnd, OID_802_11_REMOVE_KEY, &rmkey, sizeof(rmkey)))
 			EXIT2(return -EINVAL);
 	} else {
 		ndis_key_index keyindex = index;
