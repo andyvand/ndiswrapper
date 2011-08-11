@@ -32,7 +32,6 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp);
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp);
 
 struct workqueue_struct *wrapndis_wq;
-static struct nt_thread *wrapndis_worker_thread;
 
 static int set_packet_filter(struct ndis_device *wnd,
 			     ULONG packet_filter);
@@ -2133,8 +2132,7 @@ int wrapndis_init(void)
 	wrapndis_wq = create_singlethread_workqueue("wrapndis_wq");
 	if (!wrapndis_wq)
 		EXIT1(return -ENOMEM);
-	wrapndis_worker_thread = wrap_worker_init(wrapndis_wq);
-	TRACE1("%p", wrapndis_worker_thread);
+	TRACE1("wrapndis_wq: %p", wrapndis_wq);
 	register_netdevice_notifier(&netdev_notifier);
 	return 0;
 }
@@ -2144,7 +2142,4 @@ void wrapndis_exit(void)
 	unregister_netdevice_notifier(&netdev_notifier);
 	if (wrapndis_wq)
 		destroy_workqueue(wrapndis_wq);
-	TRACE1("%p", wrapndis_worker_thread);
-	if (wrapndis_worker_thread)
-		ObDereferenceObject(wrapndis_worker_thread);
 }
