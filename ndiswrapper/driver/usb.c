@@ -96,7 +96,7 @@ static struct nt_list wrap_urb_complete_list;
 static spinlock_t wrap_urb_complete_list_lock;
 
 static struct work_struct wrap_urb_complete_work;
-static void wrap_urb_complete_worker(worker_param_t dummy);
+static void wrap_urb_complete_worker(struct work_struct *dummy);
 
 static void kill_all_urbs(struct wrap_device *wd, int complete)
 {
@@ -390,7 +390,7 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 }
 
 /* one worker for all devices */
-static void wrap_urb_complete_worker(worker_param_t dummy)
+static void wrap_urb_complete_worker(struct work_struct *dummy)
 {
 	struct irp *irp;
 	struct urb *urb;
@@ -1328,7 +1328,7 @@ int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
 	spin_lock_init(&wrap_urb_complete_list_lock);
-	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
+	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker);
 #ifdef USB_DEBUG
 	urb_id = 0;
 #endif

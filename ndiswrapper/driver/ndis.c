@@ -24,7 +24,7 @@
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
 struct workqueue_struct *ndis_wq;
-static void ndis_worker(worker_param_t dummy);
+static void ndis_worker(struct work_struct *dummy);
 static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
 static spinlock_t ndis_work_list_lock;
@@ -2265,7 +2265,7 @@ wstdcall void WIN_FUNC(NdisMPauseComplete,1)
 	EXIT3(return);
 }
 
-static void ndis_worker(worker_param_t dummy)
+static void ndis_worker(struct work_struct *dummy)
 {
 	struct ndis_work_entry *ndis_work_entry;
 	struct nt_list *ent;
@@ -2382,7 +2382,7 @@ int ndis_init(void)
 	TRACE1("%p", ndis_worker_thread);
 	InitializeListHead(&ndis_worker_list);
 	spin_lock_init(&ndis_work_list_lock);
-	initialize_work(&ndis_work, ndis_worker, NULL);
+	initialize_work(&ndis_work, ndis_worker);
 
 	return 0;
 }
