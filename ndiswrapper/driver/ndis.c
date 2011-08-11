@@ -31,7 +31,6 @@ static struct nt_list ndis_work_list;
 static spinlock_t ndis_work_list_lock;
 
 struct workqueue_struct *ndis_wq;
-static struct nt_thread *ndis_worker_thread;
 
 static void *ndis_get_routine_address(char *name);
 
@@ -2958,8 +2957,7 @@ int ndis_init(void)
 		EXIT1(return -ENOMEM);
 	}
 
-	ndis_worker_thread = wrap_worker_init(ndis_wq);
-	TRACE1("%p", ndis_worker_thread);
+	TRACE1("ndis_wq: %p", ndis_wq);
 	return 0;
 }
 
@@ -2969,8 +2967,5 @@ void ndis_exit(void)
 	ENTER1("");
 	if (ndis_wq)
 		destroy_workqueue(ndis_wq);
-	TRACE1("%p", ndis_worker_thread);
-	if (ndis_worker_thread)
-		ObDereferenceObject(ndis_worker_thread);
 	EXIT1(return);
 }
