@@ -185,8 +185,6 @@ typedef void (*work_handler)(void *work);
 
 #endif // WRAP_WQ
 
-struct nt_thread *wrap_worker_init(struct workqueue_struct *wq);
-
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
 #define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
 
