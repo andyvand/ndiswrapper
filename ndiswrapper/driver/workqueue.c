@@ -16,7 +16,7 @@
 #include "ntoskernel.h"
 
 struct workq_thread_data {
-	workqueue_struct_t *workq;
+	struct workqueue_struct *workq;
 	int index;
 };
 
@@ -24,8 +24,8 @@ static int workq_thread(void *data)
 {
 	struct workq_thread_data *thread_data = data;
 	struct workqueue_thread *thread;
-	workqueue_struct_t *workq;
-	work_struct_t *work;
+	struct workqueue_struct *workq;
+	struct work_struct *work;
 
 	workq = thread_data->workq;
 	thread = &workq->threads[thread_data->index];
@@ -70,7 +70,7 @@ static int workq_thread(void *data)
 				break;
 			}
 			entry = thread->work_list.next;
-			work = list_entry(entry, work_struct_t, list);
+			work = list_entry(entry, struct work_struct, list);
 			if (xchg(&work->thread, NULL))
 				list_del(entry);
 			else
@@ -90,7 +90,7 @@ out:
 	return 0;
 }
 
-int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+int wrap_queue_work_on(struct workqueue_struct *workq, struct work_struct *work,
 		       int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
@@ -115,7 +115,7 @@ int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
 	return ret;
 }
 
-int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
+int wrap_queue_work(struct workqueue_struct *workq, struct work_struct *work)
 {
 	if (num_online_cpus() == 1 || workq->singlethread)
 		return wrap_queue_work_on(workq, work, 0);
@@ -130,7 +130,7 @@ int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 	}
 }
 
-void wrap_cancel_work(work_struct_t *work)
+void wrap_cancel_work(struct work_struct *work)
 {
 	struct workqueue_thread *thread;
 	unsigned long flags;
@@ -144,10 +144,11 @@ void wrap_cancel_work(work_struct_t *work)
 	}
 }
 
-workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
+struct workqueue_struct *wrap_create_wq(const char *name, u8 singlethread,
+					u8 freeze)
 {
 	struct completion started;
-	workqueue_struct_t *workq;
+	struct workqueue_struct *workq;
 	int i, n;
 
 	if (singlethread)
@@ -200,7 +201,7 @@ workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze)
 	return workq;
 }
 
-void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu)
+void wrap_flush_wq_on(struct workqueue_struct *workq, int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 	struct completion done;
@@ -214,7 +215,7 @@ void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu)
 	return;
 }
 
-void wrap_flush_wq(workqueue_struct_t *workq)
+void wrap_flush_wq(struct workqueue_struct *workq)
 {
 	int i, n;
 
@@ -227,7 +228,7 @@ void wrap_flush_wq(workqueue_struct_t *workq)
 		wrap_flush_wq_on(workq, i);
 }
 
-void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu)
+void wrap_destroy_wq_on(struct workqueue_struct *workq, int cpu)
 {
 	struct workqueue_thread *thread = &workq->threads[cpu];
 
@@ -242,7 +243,7 @@ void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu)
 	}
 }
 
-void wrap_destroy_wq(workqueue_struct_t *workq)
+void wrap_destroy_wq(struct workqueue_struct *workq)
 {
 	int i, n;
 

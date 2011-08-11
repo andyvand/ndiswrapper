@@ -1304,7 +1304,7 @@ struct ndis_device {
 	BOOLEAN stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 
-	work_struct_t tx_work;
+	struct work_struct tx_work;
 	struct net_buffer_list *tx_buffer_list;
 	struct semaphore tx_buffer_list_mutex;
 	unsigned int max_tx_packets;
@@ -1338,7 +1338,7 @@ struct ndis_device {
 	struct proc_dir_entry *procfs_iface;
 
 	struct net_device_stats net_stats;
-	work_struct_t ndis_work;
+	struct work_struct ndis_work;
 	unsigned long ndis_pending_work;
 	int iw_auth_set;
 	int iw_auth_wpa_version;

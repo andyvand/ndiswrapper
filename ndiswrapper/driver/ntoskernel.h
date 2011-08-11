@@ -136,8 +136,6 @@ do {							\
 
 #ifdef WRAP_WQ
 
-struct workqueue_struct;
-
 struct workqueue_thread {
 	spinlock_t lock;
 	struct task_struct *task;
@@ -150,20 +148,23 @@ struct workqueue_thread {
 	struct list_head work_list;
 };
 
-typedef struct workqueue_struct {
+struct wrap_workqueue_struct {
 	u8 singlethread;
 	u8 qon;
 	int num_cpus;
 	struct workqueue_thread threads[0];
-} workqueue_struct_t;
+};
 
-typedef struct {
+struct wrap_work_struct {
 	struct list_head list;
 	void (*func)(void *data);
 	void *data;
 	/* whether/on which thread scheduled */
 	struct workqueue_thread *thread;
-} work_struct_t;
+};
+
+#define work_struct wrap_work_struct
+#define workqueue_struct wrap_workqueue_struct
 
 #define initialize_work(work, pfunc, pdata)			\
 	do {							\
@@ -183,22 +184,20 @@ typedef struct {
 #undef flush_workqueue
 #define flush_workqueue wrap_flush_wq
 
-workqueue_struct_t *wrap_create_wq(const char *name, u8 singlethread, u8 freeze);
-void wrap_destroy_wq_on(workqueue_struct_t *workq, int cpu);
-void wrap_destroy_wq(workqueue_struct_t *workq);
-int wrap_queue_work_on(workqueue_struct_t *workq, work_struct_t *work,
+struct workqueue_struct *wrap_create_wq(const char *name, u8 singlethread,
+					u8 freeze);
+void wrap_destroy_wq_on(struct workqueue_struct *workq, int cpu);
+void wrap_destroy_wq(struct workqueue_struct *workq);
+int wrap_queue_work_on(struct workqueue_struct *workq, struct work_struct *work,
 		       int cpu);
-int wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work);
-void wrap_cancel_work(work_struct_t *work);
-void wrap_flush_wq_on(workqueue_struct_t *workq, int cpu);
-void wrap_flush_wq(workqueue_struct_t *workq);
+int wrap_queue_work(struct workqueue_struct *workq, struct work_struct *work);
+void wrap_cancel_work(struct work_struct *work);
+void wrap_flush_wq_on(struct workqueue_struct *workq, int cpu);
+void wrap_flush_wq(struct workqueue_struct *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 
 #else // WRAP_WQ
-
-typedef struct workqueue_struct workqueue_struct_t;
-typedef struct work_struct work_struct_t;
 
 #if defined(INIT_WORK_NAR) || defined(INIT_DELAYED_WORK_DEFERRABLE)
 #define initialize_work(work, func, data) INIT_WORK(work, func)
@@ -213,7 +212,7 @@ typedef void *worker_param_t;
 
 #endif // WRAP_WQ
 
-struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
+struct nt_thread *wrap_worker_init(struct workqueue_struct *wq);
 
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
 #define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
@@ -538,14 +537,14 @@ struct wrap_device {
 	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
-extern workqueue_struct_t *ndis_wq;
+extern struct workqueue_struct *ndis_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 
-extern workqueue_struct_t *wrapndis_wq;
+extern struct workqueue_struct *wrapndis_wq;
 #define schedule_wrapndis_work(work_struct)	\
 	queue_work(wrapndis_wq, (work_struct))
 
-extern workqueue_struct_t *ntos_wq;
+extern struct workqueue_struct *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
 #define schedule_work(work_struct) queue_work(ntos_wq, (work_struct))
 

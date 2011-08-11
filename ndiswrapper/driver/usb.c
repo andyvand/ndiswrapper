@@ -95,7 +95,7 @@ static inline int wrap_cancel_urb(struct wrap_urb *wrap_urb)
 static struct nt_list wrap_urb_complete_list;
 static spinlock_t wrap_urb_complete_list_lock;
 
-static work_struct_t wrap_urb_complete_work;
+static struct work_struct wrap_urb_complete_work;
 static void wrap_urb_complete_worker(worker_param_t dummy);
 
 static void kill_all_urbs(struct wrap_device *wd, int complete)
