@@ -27,7 +27,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp);
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp);
 
-workqueue_struct_t *wrapndis_wq;
+struct workqueue_struct *wrapndis_wq;
 
 static struct nt_thread *wrapndis_worker_thread;
 static int set_packet_filter(struct ndis_device *wnd,

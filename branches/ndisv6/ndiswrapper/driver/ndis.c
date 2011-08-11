@@ -23,9 +23,9 @@
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
-workqueue_struct_t *ndis_wq;
+struct workqueue_struct *ndis_wq;
 static void ndis_worker(worker_param_t dummy);
-static work_struct_t ndis_work;
+static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
 static spinlock_t ndis_work_list_lock;
 static struct nt_thread *ndis_worker_thread;

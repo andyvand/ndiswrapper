@@ -43,7 +43,7 @@ spinlock_t ntoskernel_lock;
 static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
-static work_struct_t kdpc_work;
+static struct work_struct kdpc_work;
 static void kdpc_worker(worker_param_t dummy);
 
 static struct nt_list kdpc_list;
@@ -61,7 +61,7 @@ struct bus_driver {
 
 static struct nt_list bus_driver_list;
 
-static work_struct_t ntos_work;
+static struct work_struct ntos_work;
 static struct nt_list ntos_work_list;
 static spinlock_t ntos_work_lock;
 static void ntos_work_worker(worker_param_t dummy);
@@ -85,7 +85,7 @@ WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
-workqueue_struct_t *ntos_wq;
+struct workqueue_struct *ntos_wq;
 
 #ifdef WRAP_PREEMPT
 DEFINE_PER_CPU(irql_info_t, irql_info);
@@ -2469,7 +2469,7 @@ wstdcall void WIN_FUNC(_purecall,0)
 }
 
 struct worker_init_struct {
-	work_struct_t work;
+	struct work_struct work;
 	struct completion completion;
 	struct nt_thread *nt_thread;
 };
@@ -2487,7 +2487,7 @@ static void wrap_worker_init_func(worker_param_t param)
 	complete(&worker_init_struct->completion);
 }
 
-struct nt_thread *wrap_worker_init(workqueue_struct_t *wq)
+struct nt_thread *wrap_worker_init(struct workqueue_struct *wq)
 {
 	struct worker_init_struct worker_init_struct;
 
