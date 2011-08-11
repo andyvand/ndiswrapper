@@ -136,24 +136,7 @@ do {							\
 
 #ifdef WRAP_WQ
 
-struct workqueue_thread {
-	spinlock_t lock;
-	struct task_struct *task;
-	struct completion *completion;
-	char name[16];
-	int pid;
-	/* whether any work_structs pending? <0 implies quit */
-	s8 pending;
-	/* list of work_structs pending */
-	struct list_head work_list;
-};
-
-struct wrap_workqueue_struct {
-	u8 singlethread;
-	u8 qon;
-	int num_cpus;
-	struct workqueue_thread threads[0];
-};
+struct wrap_workqueue_struct;
 
 struct wrap_work_struct {
 	struct list_head list;
@@ -174,25 +157,21 @@ struct wrap_work_struct {
 	} while (0)
 
 #undef create_singlethread_workqueue
-#define create_singlethread_workqueue(name) wrap_create_wq(name, 1, 0)
+#define create_singlethread_workqueue(wq) wrap_create_wq(wq, 1, 0)
 #undef create_workqueue
-#define create_workqueue(name) wrap_create_wq(name, 0, 0)
+#define create_workqueue(wq) wrap_create_wq(wq, 0, 0)
 #undef destroy_workqueue
-#define destroy_workqueue wrap_destroy_wq
+#define destroy_workqueue(wq) wrap_destroy_wq(wq)
 #undef queue_work
-#define queue_work wrap_queue_work
+#define queue_work(wq, work) wrap_queue_work(wq, work)
 #undef flush_workqueue
-#define flush_workqueue wrap_flush_wq
+#define flush_workqueue(wq) wrap_flush_wq(wq)
 
 struct workqueue_struct *wrap_create_wq(const char *name, u8 singlethread,
 					u8 freeze);
-void wrap_destroy_wq_on(struct workqueue_struct *workq, int cpu);
 void wrap_destroy_wq(struct workqueue_struct *workq);
-int wrap_queue_work_on(struct workqueue_struct *workq, struct work_struct *work,
-		       int cpu);
 int wrap_queue_work(struct workqueue_struct *workq, struct work_struct *work);
 void wrap_cancel_work(struct work_struct *work);
-void wrap_flush_wq_on(struct workqueue_struct *workq, int cpu);
 void wrap_flush_wq(struct workqueue_struct *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
