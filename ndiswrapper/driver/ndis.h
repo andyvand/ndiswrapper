@@ -857,7 +857,7 @@ struct ndis_device {
 	BOOLEAN iw_stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 
-	work_struct_t tx_work;
+	struct work_struct tx_work;
 	struct ndis_packet *tx_ring[TX_RING_SIZE];
 	u8 tx_ring_start;
 	u8 tx_ring_end;
@@ -892,7 +892,7 @@ struct ndis_device {
 	mac_address mac;
 	struct proc_dir_entry *procfs_iface;
 
-	work_struct_t ndis_work;
+	struct work_struct ndis_work;
 	unsigned long ndis_pending_work;
 	UINT attributes;
 	int iw_auth_wpa_version;
