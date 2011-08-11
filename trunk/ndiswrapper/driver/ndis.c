@@ -26,11 +26,11 @@
 #define MAX_ALLOCATED_NDIS_BUFFERS TX_RING_SIZE
 
 static void ndis_worker(worker_param_t dummy);
-static work_struct_t ndis_work;
+static struct work_struct ndis_work;
 static struct nt_list ndis_work_list;
 static spinlock_t ndis_work_list_lock;
 
-workqueue_struct_t *ndis_wq;
+struct workqueue_struct *ndis_wq;
 static struct nt_thread *ndis_worker_thread;
 
 static void *ndis_get_routine_address(char *name);
