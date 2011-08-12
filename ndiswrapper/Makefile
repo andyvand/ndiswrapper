@@ -7,7 +7,7 @@ distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec \
 				   ndiswrapper.8 loadndisdriver.8
-DIST_SUBDIRS=utils driver
+SUBDIRS = utils driver
 
 ifeq ($(wildcard /usr/share/man)$(wildcard /usr/man),/usr/man)
 mandir = /usr/man
@@ -18,29 +18,30 @@ endif
 KVERS ?= $(shell uname -r)
 
 .PHONY: all
+all: $(SUBDIRS)
 
-all:
-	+$(MAKE) -C driver
-	+$(MAKE) -C utils
+.PHONY: $(SUBDIRS)
+$(SUBDIRS):
+	$(MAKE) -C $@
 
 .PHONY: install
 install:
-	+$(MAKE) -C driver install
-	+$(MAKE) -C utils install
+	$(MAKE) -C driver install
+	$(MAKE) -C utils install
 	mkdir -p -m 0755 $(DESTDIR)$(mandir)/man8
 	install -m 644 ndiswrapper.8 $(DESTDIR)$(mandir)/man8
 	install -m 644 loadndisdriver.8 $(DESTDIR)$(mandir)/man8
 
 .PHONY: clean distclean
 clean:
-	+$(MAKE) -C driver clean
-	+$(MAKE) -C utils clean
+	$(MAKE) -C driver clean
+	$(MAKE) -C utils clean
 	rm -f *~
 	rm -fr ${distdir} ${distdir}.tar.gz patch-stamp
 
 distclean: clean
-	+$(MAKE) -C driver distclean
-	+$(MAKE) -C utils distclean
+	$(MAKE) -C driver distclean
+	$(MAKE) -C utils distclean
 	rm -f .\#*
 
 uninstall:
@@ -55,15 +56,15 @@ dist:
 	@for file in $(DISTFILES); do \
 	  cp $$file $(distdir)/$$file || exit 1; \
 	done
-	for subdir in $(DIST_SUBDIRS); do \
+	for subdir in $(SUBDIRS); do \
 	  if test "$$subdir" = .; then :; else \
 	    test -d $(distdir)/$$subdir \
 	    || mkdir $(distdir)/$$subdir \
 	    || exit 1; \
 	  fi; \
 	done
-	+$(MAKE) -C driver distdir=../${distdir}/driver dist
-	+$(MAKE) -C utils distdir=../${distdir}/utils dist
+	$(MAKE) -C driver distdir=../${distdir}/driver dist
+	$(MAKE) -C utils distdir=../${distdir}/utils dist
 
 	# Update version in dist rpm spec file
 	sed "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(DRIVER_VERSION)\}/" \
