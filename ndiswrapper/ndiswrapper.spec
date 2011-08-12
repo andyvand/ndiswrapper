@@ -1,13 +1,11 @@
 # Define ndiswrapper_version only if it is not already defined.
-%{!?ndiswrapper_version: %define ndiswrapper_version 1.60}
+%{!?ndiswrapper_version: %define ndiswrapper_version svn}
 %{!?ndiswrapper_release: %define ndiswrapper_release 1}
 
 # Define kernel version if not already defined
 %{!?kernel: %define kernel %(uname -r)}
 %{!?ksrc: %define ksrc /lib/modules/%{kernel}/source}
-%{!?_inst_dir: %define _inst_dir /lib/modules/%{kernel}/misc}
-
-%define _sbinrootdir /sbin
+%{!?inst_dir: %define inst_dir /lib/modules/%{kernel}/misc}
 
 Summary: ndiswrapper allows you to use windows XP drivers for that WLAN card without proper Linux drivers.
 Name: ndiswrapper
@@ -46,26 +44,23 @@ make all KVERS=%{kernel} KSRC=%{ksrc}
 
 %install
 
-%define inst_dir $RPM_BUILD_ROOT%{_inst_dir}
-%define sbindir $RPM_BUILD_ROOT%{_sbinrootdir}
-%define usrsbindir $RPM_BUILD_ROOT%{_sbindir}
-%define mandir $RPM_BUILD_ROOT%{_mandir}
-
 rm -rf $RPM_BUILD_ROOT
-make install DIST_DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbindir=%{sbindir} usrsbindir=%{usrsbindir} mandir=%{mandir}
+make all install DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} \
+	KVERS=%{kernel} KSRC=%{ksrc} sbindir=/sbin \
+	usrsbindir=%{_sbindir} mandir=%{_mandir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
-%defattr(0755,root,root)
-%{_sbinrootdir}/loadndisdriver
-%{_sbindir}/ndiswrapper*
+%defattr(-,root,root)
+/sbin/*
+%{_sbindir}/*
 %{_mandir}/man8/*
 %doc README AUTHORS ChangeLog INSTALL
 
 %files -n kernel-module-%{name}-%{kernel}
-%{_inst_dir}/ndiswrapper.*
+%{inst_dir}/*
 
 %post -n kernel-module-%{name}-%{kernel}
 if [ "`uname -r`" = "%{kernel}" ] ; then
