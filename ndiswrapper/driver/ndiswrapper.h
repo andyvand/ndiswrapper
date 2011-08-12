@@ -19,8 +19,8 @@
 #define DRIVER_VERSION "1.99alpha"
 #define UTILS_VERSION "1.9"
 
-#define DRIVER_NAME "ndiswrapper"
-#define DRIVER_CONFIG_DIR "/etc/ndiswrapper"
+#define DRIVER_NAME "ndis6wrapper"
+#define DRIVER_CONFIG_DIR "/etc/ndis6wrapper"
 
 #define SSID_MAX_WPA_IE_LEN 40
 #define NDIS_ESSID_MAX_SIZE 32
@@ -75,7 +75,7 @@
 /* DEBUG macros */
 
 #define MSG(level, fmt, ...)				\
-	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
+	printk(level DRIVER_NAME " (%s:%d): " fmt "\n",	\
 	       __func__, __LINE__ , ## __VA_ARGS__)
 
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
