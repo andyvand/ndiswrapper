@@ -9,8 +9,11 @@ DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec \
 				   ndiswrapper.8 loadndisdriver.8
 DIST_SUBDIRS=utils driver
 
-DESTDIR =
-mandir = $(DESTDIR)$(shell [ -d /usr/man/man8 ] && echo /usr/man || echo /usr/share/man )
+ifeq ($(wildcard /usr/share/man)$(wildcard /usr/man),/usr/man)
+mandir = /usr/man
+else
+mandir = /usr/share/man
+endif
 
 KVERS ?= $(shell uname -r)
 
@@ -24,9 +27,9 @@ all:
 install:
 	+$(MAKE) -C driver install
 	+$(MAKE) -C utils install
-	mkdir -p -m 0755 $(mandir)/man8
-	install -m 644 ndiswrapper.8 $(mandir)/man8
-	install -m 644 loadndisdriver.8 $(mandir)/man8
+	mkdir -p -m 0755 $(DESTDIR)$(mandir)/man8
+	install -m 644 ndiswrapper.8 $(DESTDIR)$(mandir)/man8
+	install -m 644 loadndisdriver.8 $(DESTDIR)$(mandir)/man8
 
 .PHONY: clean distclean
 clean:
@@ -41,27 +44,10 @@ distclean: clean
 	rm -f .\#*
 
 uninstall:
-	@echo "NOTE: Not all installed files are removed, as different" \
-		"distributions install ndiswrapper files at different places."
-	@echo "Run uninstall as many times as necessary until no" \
-		"\"removing\" messages appear below."
-	@if [ "x$(shell which loadndisdriver)" != "x" ]; then \
-		echo "removing $(shell which loadndisdriver)"; \
-		/bin/rm -f $(shell which loadndisdriver); \
-	fi
-	@if [ "x$(shell which ndiswrapper)" != "x" ]; then \
-		echo "removing $(shell which ndiswrapper)"; \
-		/bin/rm -f $(shell which ndiswrapper); \
-	fi
-	@if [ "x$(shell which ndiswrapper-buginfo)" != "x" ]; then \
-		echo "removing $(shell which ndiswrapper-buginfo)"; \
-		/bin/rm -f $(shell which ndiswrapper-buginfo); \
-	fi
-	@for module in $(shell find /lib/modules/$(KVERS) -type f | \
-			grep 'ndiswrapper.\(\(ko\)\|\(o\)\)'$); do \
-		echo "removing $$module"; \
-		/bin/rm -f $$module; \
-	done
+	rm -f $(DESTDIR)$(mandir)/man8/ndiswrapper.8
+	rm -f $(DESTDIR)$(mandir)/man8/loadndisdriver.8
+	$(MAKE) -C driver uninstall
+	$(MAKE) -C utils uninstall
 
 dist:
 	@rm -rf ${distdir}
