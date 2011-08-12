@@ -40,8 +40,8 @@
 
 #define SETTING_LEN (MAX_SETTING_NAME_LEN + MAX_SETTING_VALUE_LEN + 2)
 
-static const char confdir[] = "/etc/ndis6wrapper";
-static const char ioctl_file[] = "/dev/ndiswrapper";
+static const char confdir[] = DRIVER_CONFIG_DIR;
+static const char ioctl_file[] = "/dev/" DRIVER_NAME;
 static int debug;
 
 #ifndef UTILS_VERSION
