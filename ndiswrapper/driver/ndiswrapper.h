@@ -75,7 +75,7 @@
 /* DEBUG macros */
 
 #define MSG(level, fmt, ...)				\
-	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
+	printk(level DRIVER_NAME " (%s:%d): " fmt "\n",	\
 	       __func__, __LINE__ , ## __VA_ARGS__)
 
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)

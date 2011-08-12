@@ -563,7 +563,7 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 	interrupt->synch_irql = synch_irql;
 	interrupt->mode = mode;
 	if (request_irq(vector, io_irq_isr, shared ? IRQF_SHARED : 0,
-			"ndiswrapper", interrupt)) {
+			DRIVER_NAME, interrupt)) {
 		WARNING("request for irq %d failed", vector);
 		kfree(interrupt);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
