@@ -2507,7 +2507,7 @@ int ntoskernel_init(void)
 		return -ENOMEM;
 	}
 	mdl_cache =
-		wrap_kmem_cache_create("wrap_mdl",
+		wrap_kmem_cache_create(DRIVER_NAME "_mdl",
 				       sizeof(struct wrap_mdl) + MDL_CACHE_SIZE,
 				       0, 0);
 	TRACE2("%p", mdl_cache);
