@@ -1,5 +1,5 @@
 # Define ndiswrapper_version only if it is not already defined.
-%{!?ndiswrapper_version: %define ndiswrapper_version 1.0rc1}
+%{!?ndiswrapper_version: %define ndiswrapper_version svn}
 %{!?ndiswrapper_release: %define ndiswrapper_release 1}
 
 # Define kernel version if not already defined
@@ -54,13 +54,13 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root)
-/sbin/loadndisdriver
-%{_sbindir}/ndiswrapper*
+/sbin/*
+%{_sbindir}/*
 %{_mandir}/man8/*
 %doc README AUTHORS ChangeLog INSTALL
 
 %files -n kernel-module-%{name}-%{kernel}
-%{inst_dir}/ndiswrapper.*
+%{inst_dir}/*
 
 %post -n kernel-module-%{name}-%{kernel}
 if [ "`uname -r`" = "%{kernel}" ] ; then
