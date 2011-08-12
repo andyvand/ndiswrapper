@@ -57,13 +57,13 @@ my $modconf;
 if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
     if ($2 > 4) {
 	if (-d "/etc/modprobe.d") {
-	    $modconf = "/etc/modprobe.d/ndiswrapper.conf";
+	    $modconf = "/etc/modprobe.d/ndis6wrapper.conf";
 	} else {
 	    $modconf = "/etc/modprobe.conf";
 	}
     } else {
 	if (-d "/etc/modutils") {
-	    $modconf = "/etc/modutils/ndiswrapper";
+	    $modconf = "/etc/modutils/ndis6wrapper";
 	} else {
 	    $modconf = "/etc/modules.conf";
 	}
@@ -77,8 +77,8 @@ $dbg_file = "/dev/null";
 
 # "-D" is for development/debugging only
 if ($ARGV[0] eq "-D") {
-    $dbg_file = "/tmp/ndiswrapper.dbg";
-    $confdir = "/tmp/ndiswrapper";
+    $dbg_file = "/tmp/ndis6wrapper.dbg";
+    $confdir = "/tmp/ndis6wrapper";
     shift;
 }
 
@@ -107,8 +107,8 @@ close(DBG);
 exit($res);
 
 sub usage() {
-    print "install/manage Windows drivers for ndiswrapper\n\n" .
-        "usage: ndiswrapper OPTION\n" .
+    print "install/manage Windows drivers for ndis6wrapper\n\n" .
+        "usage: ndis6wrapper OPTION\n" .
 	"-i inffile       install driver described by 'inffile'\n" .
 	"-a devid driver  use installed 'driver' for 'devid' (dangerous)\n" .
 	"-r driver        remove 'driver'\n" .
@@ -145,7 +145,7 @@ sub check_version {
 	$res = -1;
     }
     $module_utils_version = 0;
-    open(MODINFO, "modinfo ndiswrapper |");
+    open(MODINFO, "modinfo ndis6wrapper |");
     while (my $line = <MODINFO>) {
 	if ($line =~ /utils_version:.*read only:\s([0-9\.]+)/) {
 	    $module_utils_version = $1;
@@ -163,7 +163,7 @@ sub check_version {
     printf "utils version: '%s', utils version needed by module: '%s'\n",
       $utils_version, $module_utils_version;
     printf "module details:\n";
-    system("modinfo ndiswrapper | grep -E '^(version|vermagic|filename)'");
+    system("modinfo ndis6wrapper | grep -E '^(version|vermagic|filename)'");
 
     if ($res) {
 	printf "\nYou may need to upgrade driver and/or utils to latest " .
@@ -785,9 +785,9 @@ sub generate_module_device_map {
     if (-d "/etc/modprobe.d") {
 	$device_map = $modconf;
     } elsif (-d "/etc/modules.d") {
-	$device_map = "/etc/modules.d/ndiswrapper";
+	$device_map = "/etc/modules.d/ndis6wrapper";
     } else {
-	$device_map = "/etc/ndiswrapper/ndiswrapper";
+	$device_map = "/etc/ndis6wrapper/ndis6wrapper";
     }
 
     open(DEVMAP, "| sort >$device_map") or
@@ -824,9 +824,9 @@ sub generate_module_device_map {
 			next;
 		    }
 		    if ($mode == 0) {
-			printf DEVMAP "alias %s ndiswrapper\n", $devstring;
+			printf DEVMAP "alias %s ndis6wrapper\n", $devstring;
 		    } else {
-			printf DEVMAP "install %s /sbin/modprobe ndiswrapper\n",
+			printf DEVMAP "install %s /sbin/modprobe ndis6wrapper\n",
 			  $devstring;
 		    }
 		}
@@ -860,13 +860,13 @@ sub add_module_alias {
 
     open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
     while (my $line = <MODPROBE>) {
-	if ($line =~ /^alias\s.+\sndiswrapper/) {
+	if ($line =~ /^alias\s.+\sndis6wrapper/) {
 	    printf "module configuration already contains alias directive\n\n";
 	    $alias = 1;
-	} elsif ($line =~ /^install\s.*ndiswrapper/) {
+	} elsif ($line =~ /^install\s.*ndis6wrapper/) {
 	    warn "module configuration contains directive $line;" .
 	      "you should delete that";
-	} elsif ($line =~ /^post-install\s+ndiswrapper/) {
+	} elsif ($line =~ /^post-install\s+ndis6wrapper/) {
 	    warn "module configuration contains directive $line;" .
 	      "you should delete that";
 	}
@@ -877,8 +877,8 @@ sub add_module_alias {
 	return 0;
     }
 
-    printf "adding \"alias wlan0 ndiswrapper\" to $modconf ...\n";
-    system("echo \"alias wlan0 ndiswrapper\" >>$modconf") == 0 or
+    printf "adding \"alias wlan0 ndis6wrapper\" to $modconf ...\n";
+    system("echo \"alias wlan0 ndis6wrapper\" >>$modconf") == 0 or
       die "couldn't add module alias: $!";
     if (-x "/sbin/update-modules") {
 	system("/sbin/update-modules");
@@ -1009,7 +1009,7 @@ sub install_status {
 	    next if $line !~ /$devstring/;
 	    $alt = (split(' ', $line))[-1];
 	    chomp($alt);
-	    if (length($alt) gt 0 and $alt ne "ndiswrapper") {
+	    if (length($alt) gt 0 and $alt ne "ndis6wrapper") {
 		$ret .= " (alternate driver: $alt)";
 		last;
 	    }
