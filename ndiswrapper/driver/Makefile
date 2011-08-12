@@ -195,7 +195,7 @@ clean:
 	rm -rf .tmp_versions
 
 install: config_check modules
-	mkdir -p $(DESTDIR)$(INST_DIR)
+	mkdir -p -m 0755 $(DESTDIR)$(INST_DIR)
 	install -m 0644 $(MODULE) $(DESTDIR)$(INST_DIR)
 ifndef DESTDIR
 	-/sbin/depmod -a $(KVERS)
