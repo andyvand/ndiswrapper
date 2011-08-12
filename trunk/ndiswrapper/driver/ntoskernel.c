@@ -2385,7 +2385,9 @@ noregparm ULONG WIN_FUNC(DbgPrint,12)
 wstdcall void WIN_FUNC(KeBugCheck,1)
 	(ULONG code)
 {
-	TODO();
+	ERROR("Unrecoverable error reported by the driver");
+	ERROR("code: 0x%x\n", code);
+	dump_stack();
 	return;
 }
 
@@ -2393,9 +2395,10 @@ wstdcall void WIN_FUNC(KeBugCheckEx,5)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
 {
-	INFO("code: 0x%x, params: 0x%lx 0x%lx 0x%lx 0x%lx\n", code, param1,
-	     param2, param3, param4);
-	TODO();
+	ERROR("Unrecoverable error reported by the driver");
+	ERROR("code: 0x%x, params: 0x%lx 0x%lx 0x%lx 0x%lx\n", code, param1,
+	      param2, param3, param4);
+	dump_stack();
 	return;
 }
 
