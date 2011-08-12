@@ -42,13 +42,7 @@ ifeq (,$(KVERS))
 $(error Cannot find UTS_RELEASE in $(VERSION_H), has 'make modules_prepare' been called?)
 endif
 
-ifdef DIST_DESTDIR
-DESTDIR = $(DIST_DESTDIR)
-else
-DESTDIR ?= /
-endif
-
-INST_DIR ?= $(shell echo $(DESTDIR)/lib/modules/$(KVERS)/misc | sed 's^//^/^g')
+INST_DIR = /lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
@@ -201,11 +195,16 @@ clean:
 	rm -rf .tmp_versions
 
 install: config_check modules
-	echo $(INST_DIR)
-	mkdir -p $(INST_DIR)
-	install -m 0644 $(MODULE) $(INST_DIR)
-ifndef DIST_DESTDIR
-	-/sbin/depmod -a $(KVERS) -b $(DESTDIR)
+	mkdir -p $(DESTDIR)$(INST_DIR)
+	install -m 0644 $(MODULE) $(DESTDIR)$(INST_DIR)
+ifndef DESTDIR
+	-/sbin/depmod -a $(KVERS)
+endif
+
+uninstall:
+	rm -f $(DESTDIR)$(INST_DIR)/$(MODULE)
+ifndef DESTDIR
+	-/sbin/depmod -a $(KVERS)
 endif
 
 dist:
