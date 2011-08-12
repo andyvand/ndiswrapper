@@ -20,9 +20,11 @@ distclean: clean
 	rm -f .\#*
 
 install: all
-	install -D -m 755 loadndisdriver $(DESTDIR)$(sbindir)
-	install -D -m 755 ndiswrapper $(DESTDIR)$(usrsbindir)
-	install -D -m 755 ndiswrapper-buginfo $(DESTDIR)$(usrsbindir)
+	mkdir -p -m 755 $(DESTDIR)$(sbindir)
+	mkdir -p -m 755 $(DESTDIR)$(usrsbindir)
+	install -m 755 loadndisdriver $(DESTDIR)$(sbindir)
+	install -m 755 ndiswrapper $(DESTDIR)$(usrsbindir)
+	install -m 755 ndiswrapper-buginfo $(DESTDIR)$(usrsbindir)
 	@echo
 	@echo "NOTE: Windows driver configuration file format has changed since" \
 	      "1.5. You must re-install Windows drivers if they were" \
