@@ -164,6 +164,9 @@ wstdcall void WIN_FUNC(IoFreeIrp,1)
 	(struct irp *irp)
 {
 	IOENTER("irp = %p", irp);
+	if (!irp)
+		return;
+
 	if (irp->flags & IRP_SYNCHRONOUS_API)
 		IoDequeueThreadIrp(irp);
 	kfree(irp);
