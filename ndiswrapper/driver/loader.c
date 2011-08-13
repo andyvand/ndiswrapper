@@ -85,7 +85,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 
 	if (!wrap_driver) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DRIVER,
-#if defined(DEBUG) && DEBUG >= 1
+#if DEBUG >= 1
 				"1",
 #else
 				"0",
@@ -245,7 +245,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 
 	if (!driver->bin_files[i].data) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_BIN_FILE,
-#if defined(DEBUG) && DEBUG >= 1
+#if DEBUG >= 1
 				"1",
 #else
 				"0",
@@ -691,7 +691,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	    sprintf(subdevice, "%04x", load_device->subdevice) == 4 &&
 	    sprintf(bus, "%04x", load_device->bus) == 4) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICE,
-#if defined(DEBUG) && DEBUG >= 1
+#if DEBUG >= 1
 				"1",
 #else
 				"0",

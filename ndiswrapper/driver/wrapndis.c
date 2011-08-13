@@ -2057,7 +2057,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		free_netdev(net_dev);
 		return STATUS_RESOURCES;
 	}
-#if defined(DEBUG) && DEBUG >= 6
+#if DEBUG >= 6
 	/* poison nmb so if a driver accesses uninitialized pointers, we
 	 * know what it is */
 	for (i = 0; i < sizeof(*nmb) / sizeof(unsigned long); i++)

@@ -2389,7 +2389,7 @@ wstdcall NTSTATUS WIN_FUNC(WmiQueryTraceInformation,4)
 noregparm ULONG WIN_FUNC(DbgPrint,12)
 	(char *format, ...)
 {
-#ifdef DEBUG
+#if DEBUG >= 1
 	va_list args;
 	static char buf[100];
 
