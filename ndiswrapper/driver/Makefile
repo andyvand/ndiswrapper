@@ -90,11 +90,6 @@ ifdef ALLOC_DEBUG
 EXTRA_CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
-# emulate (pseudo) preemption
-ifdef WRAP_PREEMPT
-EXTRA_CFLAGS += -DWRAP_PREEMPT
-endif
-
 OBJS = crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
 
