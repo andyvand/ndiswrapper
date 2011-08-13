@@ -1108,3 +1108,11 @@ wstdcall void WIN_FUNC(IoInvalidateDeviceState,1)
 	INFO("%p", pdo);
 	TODO();
 }
+
+wstdcall NTSTATUS WIN_FUNC(IoUnregisterPlugPlayNotification,1)
+	(void *notification_entry)
+{
+	TRACE2("%p", notification_entry);
+	TODO();
+	IOEXIT(return STATUS_SUCCESS);
+}
