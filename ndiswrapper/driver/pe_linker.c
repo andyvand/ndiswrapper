@@ -542,7 +542,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 	int i;
 	struct pe_image *pe;
 
-#ifdef DEBUG
+#if DEBUG >= 1
 	/* Sanity checks */
 	CHECK_SZ(IMAGE_SECTION_HEADER, IMAGE_SIZEOF_SECTION_HEADER);
 	CHECK_SZ(IMAGE_FILE_HEADER, IMAGE_SIZEOF_FILE_HEADER);

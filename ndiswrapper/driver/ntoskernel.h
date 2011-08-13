@@ -617,7 +617,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	if (info->task == current) {
 		assert(info->count > 0);
 		assert(mutex_is_locked(&info->lock));
-#if defined(CONFIG_SMP) && defined(DEBUG)
+#if defined(CONFIG_SMP) && DEBUG >= 1
 		do {
 			cpumask_t cpumask;
 			cpumask = cpumask_of_cpu(smp_processor_id());
