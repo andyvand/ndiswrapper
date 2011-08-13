@@ -83,7 +83,14 @@
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 #define TODO() WARNING("not fully implemented (yet)")
 
-#define TRACE(fmt, ...) do { } while (0)
+#define TRACE(level, fmt, ...)				       \
+do {								       \
+	if (debug >= level)					       \
+		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME, \
+		       __func__, __LINE__ , ## __VA_ARGS__);       \
+} while (0)
+#define TRACE0(fmt, ...) TRACE(0, fmt , ## __VA_ARGS__)
+
 #define TRACE1(fmt, ...) do { } while (0)
 #define TRACE2(fmt, ...) do { } while (0)
 #define TRACE3(fmt, ...) do { }  while (0)
@@ -97,13 +104,6 @@
 extern int debug;
 
 #if defined DEBUG
-#undef TRACE
-#define TRACE(level, fmt, ...)				       \
-do {								       \
-	if (debug >= level)					       \
-		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME, \
-		       __func__, __LINE__ , ## __VA_ARGS__);       \
-} while (0)
 #undef DBG_BLOCK
 #define DBG_BLOCK(level) if (debug >= level)
 #endif
@@ -138,6 +138,7 @@ do {								       \
 #define TRACE6(fmt, ...) TRACE(6, fmt , ## __VA_ARGS__)
 #endif
 
+#define ENTER0(fmt, ...) TRACE0("Enter " fmt , ## __VA_ARGS__)
 #define ENTER1(fmt, ...) TRACE1("Enter " fmt , ## __VA_ARGS__)
 #define ENTER2(fmt, ...) TRACE2("Enter " fmt , ## __VA_ARGS__)
 #define ENTER3(fmt, ...) TRACE3("Enter " fmt , ## __VA_ARGS__)
@@ -145,6 +146,7 @@ do {								       \
 #define ENTER5(fmt, ...) TRACE5("Enter " fmt , ## __VA_ARGS__)
 #define ENTER6(fmt, ...) TRACE6("Enter " fmt , ## __VA_ARGS__)
 
+#define EXIT0(stmt) do { TRACE0("Exit"); stmt; } while(0)
 #define EXIT1(stmt) do { TRACE1("Exit"); stmt; } while(0)
 #define EXIT2(stmt) do { TRACE2("Exit"); stmt; } while(0)
 #define EXIT3(stmt) do { TRACE3("Exit"); stmt; } while(0)
@@ -153,9 +155,9 @@ do {								       \
 #define EXIT6(stmt) do { TRACE6("Exit"); stmt; } while(0)
 
 #if defined(USB_DEBUG)
-#define USBTRACE TRACE1
-#define USBENTER ENTER1
-#define USBEXIT EXIT1
+#define USBTRACE TRACE0
+#define USBENTER ENTER0
+#define USBEXIT EXIT0
 #else
 #define USBTRACE(fmt, ...) do { } while (0)
 #define USBENTER(fmt, ...)
@@ -163,9 +165,9 @@ do {								       \
 #endif
 
 #if defined(EVENT_DEBUG)
-#define EVENTTRACE TRACE1
-#define EVENTENTER ENTER1
-#define EVENTEXIT EXIT1
+#define EVENTTRACE TRACE0
+#define EVENTENTER ENTER0
+#define EVENTEXIT EXIT0
 #else
 #define EVENTTRACE(fmt, ...) do { } while (0)
 #define EVENTENTER(fmt, ...)
@@ -173,9 +175,9 @@ do {								       \
 #endif
 
 #if defined(TIMER_DEBUG)
-#define TIMERTRACE TRACE1
-#define TIMERENTER ENTER1
-#define TIMEREXIT EXIT1
+#define TIMERTRACE TRACE0
+#define TIMERENTER ENTER0
+#define TIMEREXIT EXIT0
 #else
 #define TIMERTRACE(fmt, ...) do { } while (0)
 #define TIMERENTER(fmt, ...)
@@ -183,9 +185,9 @@ do {								       \
 #endif
 
 #if defined(IO_DEBUG)
-#define IOTRACE TRACE1
-#define IOENTER ENTER1
-#define IOEXIT EXIT1
+#define IOTRACE TRACE0
+#define IOENTER ENTER0
+#define IOEXIT EXIT0
 #else
 #define IOTRACE(fmt, ...) do { } while (0)
 #define IOENTER(fmt, ...)
@@ -193,9 +195,9 @@ do {								       \
 #endif
 
 #if defined(WORK_DEBUG)
-#define WORKTRACE TRACE1
-#define WORKENTER ENTER1
-#define WORKEXIT EXIT1
+#define WORKTRACE TRACE0
+#define WORKENTER ENTER0
+#define WORKEXIT EXIT0
 #else
 #define WORKTRACE(fmt, ...) do { } while (0)
 #define WORKENTER(fmt, ...)
