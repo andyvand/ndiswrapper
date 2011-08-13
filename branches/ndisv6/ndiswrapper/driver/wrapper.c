@@ -23,12 +23,7 @@ char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 int hangcheck_interval;
 static char *utils_version = UTILS_VERSION;
-
-#if defined(DEBUG) && (DEBUG > 0)
 int debug = DEBUG;
-#else
-int debug = 0;
-#endif
 
 module_param(if_name, charp, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "

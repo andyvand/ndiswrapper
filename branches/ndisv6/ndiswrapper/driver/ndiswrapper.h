@@ -91,51 +91,53 @@ do {								       \
 } while (0)
 #define TRACE0(fmt, ...) TRACE(0, fmt , ## __VA_ARGS__)
 
-#define TRACE1(fmt, ...) do { } while (0)
-#define TRACE2(fmt, ...) do { } while (0)
-#define TRACE3(fmt, ...) do { }  while (0)
-#define TRACE4(fmt, ...) do { } while (0)
-#define TRACE5(fmt, ...) do { } while (0)
-#define TRACE6(fmt, ...) do { } while (0)
-
-/* for a block of code */
-#define DBG_BLOCK(level) while (0)
-
 extern int debug;
 
-#if defined DEBUG
-#undef DBG_BLOCK
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+
+/* for a block of code */
+#if DEBUG >= 1
 #define DBG_BLOCK(level) if (debug >= level)
+#else
+#define DBG_BLOCK(level) while (0)
 #endif
 
-#if defined(DEBUG) && DEBUG >= 1
-#undef TRACE1
+#if DEBUG >= 1
 #define TRACE1(fmt, ...) TRACE(1, fmt , ## __VA_ARGS__)
+#else
+#define TRACE1(fmt, ...) do { } while (0)
 #endif
 
-#if defined(DEBUG) && DEBUG >= 2
-#undef TRACE2
+#if DEBUG >= 2
 #define TRACE2(fmt, ...) TRACE(2, fmt , ## __VA_ARGS__)
+#else
+#define TRACE2(fmt, ...) do { } while (0)
 #endif
 
-#if defined(DEBUG) && DEBUG >= 3
-#undef TRACE3
+#if DEBUG >= 3
 #define TRACE3(fmt, ...) TRACE(3, fmt , ## __VA_ARGS__)
+#else
+#define TRACE3(fmt, ...) do { } while (0)
 #endif
 
-#if defined(DEBUG) && DEBUG >= 4
-#undef TRACE4
+#if DEBUG >= 4
 #define TRACE4(fmt, ...) TRACE(4, fmt , ## __VA_ARGS__)
+#else
+#define TRACE4(fmt, ...) do { } while (0)
 #endif
 
-#if defined(DEBUG) && DEBUG >= 5
-#undef TRACE5
+#if DEBUG >= 5
 #define TRACE5(fmt, ...) TRACE(5, fmt , ## __VA_ARGS__)
+#else
+#define TRACE5(fmt, ...) do { } while (0)
 #endif
 
-#if defined(DEBUG) && DEBUG >= 6
-#undef TRACE6
+#if DEBUG >= 6
 #define TRACE6(fmt, ...) TRACE(6, fmt , ## __VA_ARGS__)
+#else
+#define TRACE6(fmt, ...) do { } while (0)
 #endif
 
 #define ENTER0(fmt, ...) TRACE0("Enter " fmt , ## __VA_ARGS__)
@@ -204,7 +206,7 @@ extern int debug;
 #define WORKEXIT(stmt) stmt
 #endif
 
-#if defined DEBUG
+#if DEBUG >= 1
 #define assert(expr)							\
 do {									\
 	if (!(expr)) {							\
