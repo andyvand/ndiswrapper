@@ -60,32 +60,32 @@ ifdef DEBUG
 EXTRA_CFLAGS += -DDEBUG=$(DEBUG) -g
 endif
 
-# to debug timers, add option "TIMER_DEBUG=1 DEBUG=<n>"
+# to debug timers, add option "TIMER_DEBUG=1"
 ifdef TIMER_DEBUG
 EXTRA_CFLAGS += -DTIMER_DEBUG
 endif
 
-# to debug event layer, add option "EVENT_DEBUG=1 DEBUG=<n>"
+# to debug event layer, add option "EVENT_DEBUG=1"
 ifdef EVENT_DEBUG
 EXTRA_CFLAGS += -DEVENT_DEBUG
 endif
 
-# to debug USB layer, add option "USB_DEBUG=1 DEBUG=<n>"
+# to debug USB layer, add option "USB_DEBUG=1"
 ifdef USB_DEBUG
 EXTRA_CFLAGS += -DUSB_DEBUG
 endif
 
-# to debug I/O layer, add option "IO_DEBUG=1 DEBUG=<n>"
+# to debug I/O layer, add option "IO_DEBUG=1"
 ifdef IO_DEBUG
 EXTRA_CFLAGS += -DIO_DEBUG
 endif
 
-# to debug worker threads
+# to debug worker threads, add option "WORK_DEBUG=1"
 ifdef WORK_DEBUG
 EXTRA_CFLAGS += -DWORK_DEBUG
 endif
 
-# to debug memory allocation issues
+# to debug memory allocation, add option "ALLOC_DEBUG=<n>" where <n> is 1 to 3
 ifdef ALLOC_DEBUG
 EXTRA_CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
