@@ -30,27 +30,27 @@ int debug = DEBUG;
 int debug = 0;
 #endif
 
-WRAP_MODULE_PARM_STRING(if_name, 0400);
+module_param(if_name, charp, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
 		 "(default: wlan%d)");
-WRAP_MODULE_PARM_INT(proc_uid, 0600);
+module_param(proc_uid, int, 0600);
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc "
 		 "(default: 0).");
-WRAP_MODULE_PARM_INT(proc_gid, 0600);
+module_param(proc_gid, int, 0600);
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc "
 		 "(default: 0).");
-WRAP_MODULE_PARM_INT(debug, 0600);
+module_param(debug, int, 0600);
 MODULE_PARM_DESC(debug, "debug level");
 
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
-WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
+module_param(hangcheck_interval, int, 0600);
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
-WRAP_MODULE_PARM_STRING(utils_version, 0400);
+module_param(utils_version, charp, 0400);
 MODULE_PARM_DESC(utils_version, "Compatible version of utils "
 		 "(read only: " UTILS_VERSION ")");
 
