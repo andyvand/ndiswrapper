@@ -187,14 +187,6 @@ typedef void (*work_handler)(void *work);
 
 #endif // WRAP_WQ
 
-#ifdef module_param
-#define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
-#define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
-#else
-#define WRAP_MODULE_PARM_INT(name, perm) MODULE_PARM(name, "i")
-#define WRAP_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
-#endif
-
 #ifndef LOCK_PREFIX
 #ifdef LOCK
 #define LOCK_PREFIX LOCK
