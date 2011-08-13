@@ -1668,6 +1668,25 @@ wstdcall BOOLEAN WIN_FUNC(KeSynchronizeExecution,3)
 	return ret;
 }
 
+wstdcall BOOLEAN WIN_FUNC(KeRegisterBugCheckReasonCallback,4)
+	(void *callback_record, void *callback_routine, UINT reason,
+	 char *component)
+{
+	TRACE1("callback_record: %p, callback_routine: %p, reason: %d, "
+	       "component: %s", callback_record, callback_routine, reason,
+	       component);
+	TODO();
+	return FALSE;
+}
+
+wstdcall BOOLEAN WIN_FUNC(KeDeregisterBugCheckReasonCallback,1)
+	(void *callback_record)
+{
+	TRACE1("callback_record: %p", callback_record);
+	TODO();
+	return TRUE;
+}
+
 wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
