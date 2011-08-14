@@ -2402,6 +2402,23 @@ noregparm ULONG WIN_FUNC(DbgPrint,12)
 	return STATUS_SUCCESS;
 }
 
+__attribute__((format(printf, 3, 4)))
+noregparm ULONG WIN_FUNC(DbgPrintEx,12)
+	(ULONG component_id, ULONG severity, char *format, ...)
+{
+#if DEBUG >= 1
+	va_list args;
+	static char buf[100];
+
+	va_start(args, format);
+	vsnprintf(buf, sizeof(buf), format, args);
+	TRACE1("component_id: %d, severity: %d\n", component_id, severity);
+	printk(KERN_DEBUG "%s (%s): %s", DRIVER_NAME, __func__, buf);
+	va_end(args);
+#endif
+	return STATUS_SUCCESS;
+}
+
 wstdcall void WIN_FUNC(KeBugCheck,1)
 	(ULONG code)
 {
