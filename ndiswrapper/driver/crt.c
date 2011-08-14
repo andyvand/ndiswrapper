@@ -270,6 +270,19 @@ noregparm INT WIN_FUNC(_win__vsnprintf,4)
 	EXIT2(return i);
 }
 
+noregparm INT WIN_FUNC(_win__vsnwprintf,4)
+	(wchar_t *str, SIZE_T size, const wchar_t *format, va_list ap)
+{
+	int ret;
+
+	TODO();		/* format expansion not implemented */
+	_win_wcsncpy(str, format, size);
+	ret = _win_wcslen(format);
+	if (ret >= size)
+		ret = -1;
+	return ret;
+}
+
 noregparm char *WIN_FUNC(_win_strncpy,3)
 	(char *dst, char *src, SIZE_T n)
 {
