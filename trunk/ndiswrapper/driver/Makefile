@@ -184,12 +184,15 @@ config_check:
 modules:
 	$(MAKE) -C $(KBUILD) M=$(SRC_DIR)
 
+$(MODULE):
+	$(MAKE) modules
+
 clean:
 	rm -f *.o *.ko .*.cmd *.mod.c *.symvers modules.order *~ .\#*
 	rm -f *_exports.h win2lin_stubs.h
 	rm -rf .tmp_versions
 
-install: config_check modules
+install: config_check $(MODULE)
 	mkdir -p -m 0755 $(DESTDIR)$(INST_DIR)
 	install -m 0644 $(MODULE) $(DESTDIR)$(INST_DIR)
 ifndef DESTDIR
