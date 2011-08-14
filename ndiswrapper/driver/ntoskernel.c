@@ -2397,6 +2397,7 @@ wstdcall NTSTATUS WIN_FUNC(WmiQueryTraceInformation,4)
 }
 
 /* this function can't be wstdcall as it takes variable number of args */
+__attribute__((format(printf, 1, 2)))
 noregparm ULONG WIN_FUNC(DbgPrint,12)
 	(char *format, ...)
 {
