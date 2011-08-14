@@ -1115,6 +1115,17 @@ wstdcall void WIN_FUNC(IoInvalidateDeviceState,1)
 	TODO();
 }
 
+wstdcall NTSTATUS WIN_FUNC(IoRegisterPlugPlayNotification,7)
+	(UINT category, ULONG flags, void *data, struct driver_object *object,
+	 void *callback, void *context, void **notification_entry)
+{
+	TRACE2("category: %d, flags 0x%x, data: %p, object: %p, callback: %p, "
+	       "context: %p, notification_entry: %p", category, flags, data,
+	       object, callback, context, notification_entry);
+	TODO();
+	IOEXIT(return STATUS_SUCCESS);
+}
+
 wstdcall NTSTATUS WIN_FUNC(IoUnregisterPlugPlayNotification,1)
 	(void *notification_entry)
 {
