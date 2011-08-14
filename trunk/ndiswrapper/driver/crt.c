@@ -158,6 +158,7 @@ do { \
 
 #endif /* !CONFIG_X86_64 */
 
+__attribute__((format(printf, 2, 3)))
 noregparm INT WIN_FUNC(_win_sprintf,12)
 	(char *buf, const char *format, ...)
 {
@@ -200,6 +201,7 @@ noregparm INT WIN_FUNC(_win_vsprintf,3)
 	EXIT2(return i);
 }
 
+__attribute__((format(printf, 3, 4)))
 noregparm INT WIN_FUNC(_win_snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
@@ -217,6 +219,7 @@ noregparm INT WIN_FUNC(_win_snprintf,12)
 	return res;
 }
 
+__attribute__((format(printf, 3, 4)))
 noregparm INT WIN_FUNC(_win__snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
