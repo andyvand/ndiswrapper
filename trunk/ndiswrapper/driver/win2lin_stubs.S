@@ -101,7 +101,7 @@ In Linux it should look like:
 # Determine the address of the n'th windows argument after an extra linux stack
 # frame has been created to hold m arguments (i.e. rsp has been decremented).
 # If less then six arguments are used, then no extra stack frame is created
-# and m=6 must be used to obtain the correct address (see win2lin_arg5 and 
+# and m=6 must be used to obtain the correct address (see win2lin_arg5 and
 # win2lin_arg6).
 # explanation:
 # When using this macro, %rsp points to the last argument of the extra linux
@@ -241,7 +241,7 @@ win2lin7:
 	mov	%r11, win2lin_lin_arg(7)
 
 	call_lin_func
-	
+
 	free_stack(7)
 
 	win2lin_epilog
@@ -307,7 +307,7 @@ win2lin12:
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
-	
+
 	call_lin_func
 
 	free_stack(12)
@@ -318,7 +318,7 @@ win2lin12:
 
 #define win2lin(name, argc)			\
 ENTRY(win2lin_ ## name ## _ ## argc)		\
-	lea	name(%rip), %r10 ; 		\
+	lea	name(%rip), %r10 ;		\
 	jmp	win2lin ## argc
 
 #include "win2lin_stubs.h"
