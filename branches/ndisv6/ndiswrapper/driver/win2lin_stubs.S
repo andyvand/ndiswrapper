@@ -280,7 +280,7 @@ win2lin12:
 
 #define win2lin(name, argc)			\
 ENTRY(win2lin_ ## name ## _ ## argc)		\
-	lea	name(%rip), %r10 ; 		\
+	lea	name(%rip), %r10 ;		\
 	jmp	win2lin ## argc
 
 #include "win2lin_stubs.h"
