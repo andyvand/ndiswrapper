@@ -1262,8 +1262,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 				power_levels->levels[i];
 		}
 	}
-	if (power_levels)
-		kfree(power_levels);
+	kfree(power_levels);
 
 	range->we_version_compiled = WIRELESS_EXT;
 	range->we_version_source = 18;
@@ -1299,8 +1298,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 				(data_rates->tx_rates[i] & 0x7f) * 500000;
 		}
 	}
-	if (data_rates)
-		kfree(data_rates);
+	kfree(data_rates);
 
 	range->num_channels = (sizeof(freq_chan) / sizeof(freq_chan[0]));
 

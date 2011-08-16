@@ -452,8 +452,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 		if (driver->bin_files[i].data)
 			vfree(driver->bin_files[i].data);
 	}
-	if (driver->bin_files)
-		kfree(driver->bin_files);
+	kfree(driver->bin_files);
 	RtlFreeUnicodeString(&drv_obj->name);
 	RemoveEntryList(&driver->list);
 	nt_list_for_each_safe(cur, next, &driver->settings) {

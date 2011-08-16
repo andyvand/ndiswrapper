@@ -189,8 +189,7 @@ static void remove_pdo(struct device_object *pdo)
 		usb_exit_device(wd);
 #endif
 	}
-	if (wd->resource_list)
-		kfree(wd->resource_list);
+	kfree(wd->resource_list);
 	wd->resource_list = NULL;
 	return;
 }
