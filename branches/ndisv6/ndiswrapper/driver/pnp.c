@@ -412,7 +412,7 @@ static NTSTATUS pnp_set_device_power_state(struct wrap_device *wd,
 	EXIT1(return status);
 }
 
-NTSTATUS pnp_start_device(struct wrap_device *wd)
+static NTSTATUS pnp_start_device(struct wrap_device *wd)
 {
 	struct device_object *fdo;
 	struct device_object *pdo;
@@ -437,7 +437,8 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	EXIT1(return status);
 }
 
-NTSTATUS pnp_stop_device(struct wrap_device *wd)
+#if 0
+static NTSTATUS pnp_stop_device(struct wrap_device *wd)
 {
 	struct device_object *pdo;
 	NTSTATUS status;
@@ -455,8 +456,9 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 		WARNING("status: %08X", status);
 	EXIT2(return status);
 }
+#endif
 
-NTSTATUS pnp_remove_device(struct wrap_device *wd)
+static NTSTATUS pnp_remove_device(struct wrap_device *wd)
 {
 	struct device_object *pdo, *fdo;
 	struct driver_object *fdo_drv_obj;
