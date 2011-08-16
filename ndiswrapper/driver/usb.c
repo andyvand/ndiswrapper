@@ -195,8 +195,7 @@ static void wrap_free_urb(struct urb *urb)
 				urb->transfer_buffer_length,
 				urb->transfer_buffer, urb->transfer_dma);
 	}
-	if (urb->setup_packet)
-		kfree(urb->setup_packet);
+	kfree(urb->setup_packet);
 	if (IRP_WRAP_DEVICE(irp)->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		RemoveEntryList(&wrap_urb->list);

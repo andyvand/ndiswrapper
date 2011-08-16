@@ -1567,8 +1567,7 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	    wnd->physical_medium == NdisPhysicalMediumNative802_11) {
 		up(&wnd->ndis_comm_mutex);
 		mp_set(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-		if (wnd->phy_types)
-			kfree(wnd->phy_types);
+		kfree(wnd->phy_types);
 		if (down_interruptible(&wnd->ndis_comm_mutex))
 			WARNING("couldn't obtain ndis_comm_mutex");
 	}
@@ -1592,8 +1591,7 @@ static int ndis_remove_device(struct ndis_device *wnd)
 		NdisFreeNetBufferPool(wnd->tx_buffer_pool);
 		wnd->tx_buffer_pool = NULL;
 	}
-	if (wnd->phy_types)
-		kfree(wnd->phy_types);
+	kfree(wnd->phy_types);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	free_netdev(wnd->net_dev);
