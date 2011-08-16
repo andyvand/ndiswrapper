@@ -69,6 +69,10 @@
 #define mutex_is_locked(m) (atomic_read(m.count) == 0)
 #endif /* Linux < 2.6.16 */
 
+#ifndef __packed
+#define __packed __attribute__((packed))
+#endif
+
 /* pci functions in 2.6 kernels have problems allocating dma buffers,
  * but seem to work fine with dma functions
  */
