@@ -985,7 +985,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 static USBD_STATUS wrap_reset_port(struct irp *irp)
 {
-	no_warn_unused int ret, lock = 0;
+	int ret, lock = 0;
 	struct wrap_device *wd;
 
 	wd = IRP_WRAP_DEVICE(irp);

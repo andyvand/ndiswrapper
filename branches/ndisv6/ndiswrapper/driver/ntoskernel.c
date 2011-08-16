@@ -1610,8 +1610,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 {
 	struct nt_thread *thread;
 	struct thread_trampoline_info thread_info;
-	no_warn_unused struct task_struct *task;
-	no_warn_unused int pid;
+	struct task_struct *task;
 
 	ENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
 	       "client_id = %p, func = %p, context = %p", phandle, access,

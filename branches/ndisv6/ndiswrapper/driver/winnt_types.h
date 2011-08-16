@@ -138,8 +138,6 @@
 
 #endif
 
-#define no_warn_unused __attribute__((unused))
-
 typedef u8	BOOLEAN;
 typedef u8	BYTE;
 typedef u8	*LPBYTE;
