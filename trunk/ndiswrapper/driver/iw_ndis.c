@@ -1149,7 +1149,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	if (bssid->length > sizeof(*bssid)) {
 		unsigned char *iep = (unsigned char *)bssid_ex->ies +
 			sizeof(struct ndis_fixed_ies);
-		no_warn_unused unsigned char *end = iep + bssid_ex->ie_length;
+		unsigned char *end = iep + bssid_ex->ie_length;
 
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
 			unsigned char ielen = 2 + iep[1];
