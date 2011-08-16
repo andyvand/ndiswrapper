@@ -429,9 +429,8 @@ static NTSTATUS pnp_start_device(struct wrap_device *wd)
 		wd->resource_list;
 	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_START_DEVICE, &irp_sl);
 	fdo = IoGetAttachedDevice(pdo);
-	if (status == STATUS_SUCCESS)
-		fdo->drv_obj->drv_ext->count++;
-	else
+	fdo->drv_obj->drv_ext->count++;
+	if (status != STATUS_SUCCESS)
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
 	EXIT1(return status);
