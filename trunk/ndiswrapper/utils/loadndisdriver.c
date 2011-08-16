@@ -402,7 +402,10 @@ static int get_device(char *driver_name, int vendor, int device, int subvendor,
 		ld->subdevice = 0;
 		ret = 0;
 	}
-	chdir("..");
+	if (chdir(confdir)) {
+		ERROR("couldn't chdir to %s: %s", confdir, strerror(errno));
+		return -EINVAL;
+	}
 	if (ret)
 		ld->vendor = 0;
 	else {
