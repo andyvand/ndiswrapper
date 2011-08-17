@@ -826,6 +826,25 @@ void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
 	}
 }
 
+static int ndis_net_dev_init(struct net_device *net_dev)
+{
+	struct ndis_device *wnd = netdev_priv(net_dev);
+
+	ENTER1("%p", wnd);
+	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
+	wrap_procfs_add_ndis_device(wnd);
+	EXIT1(return 0);
+}
+
+static void ndis_net_dev_uninit(struct net_device *net_dev)
+{
+	struct ndis_device *wnd = netdev_priv(net_dev);
+
+	ENTER1("%p", wnd);
+	wrap_procfs_remove_ndis_device(wnd);
+	EXIT1(return);
+}
+
 static int ndis_net_dev_open(struct net_device *net_dev)
 {
 	ENTER1("%p", netdev_priv(net_dev));
@@ -1750,6 +1769,8 @@ static struct notifier_block netdev_notifier = {
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 static const struct net_device_ops ndis_netdev_ops = {
+	.ndo_init = ndis_net_dev_init,
+	.ndo_uninit = ndis_net_dev_uninit,
 	.ndo_open = ndis_net_dev_open,
 	.ndo_stop = ndis_net_dev_close,
 	.ndo_start_xmit = tx_skbuff,
@@ -1805,6 +1826,8 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	net_dev->netdev_ops = &ndis_netdev_ops;
 #else
+	net_dev->init = ndis_net_dev_init;
+	net_dev->uninit = ndis_net_dev_uninit;
 	net_dev->open = ndis_net_dev_open;
 	net_dev->hard_start_xmit = tx_skbuff;
 	net_dev->stop = ndis_net_dev_close;
@@ -1850,7 +1873,6 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
 	}
-	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	memset(buf, 0, buf_len);
 	status = mp_query(wnd, OID_GEN_VENDOR_DESCRIPTION, buf, buf_len);
 	if (status != NDIS_STATUS_SUCCESS) {
@@ -1944,7 +1966,6 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	if (status == NDIS_STATUS_SUCCESS)
 		set_media_state(wnd, *((int *)buf));
 	kfree(buf);
-	wrap_procfs_add_ndis_device(wnd);
 	hangcheck_add(wnd);
 	add_iw_stats_timer(wnd);
 	EXIT1(return NDIS_STATUS_SUCCESS);
@@ -1994,7 +2015,6 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	}
 	spin_unlock_bh(&wnd->tx_ring_lock);
 	up(&wnd->tx_ring_mutex);
-	wrap_procfs_remove_ndis_device(wnd);
 	mp_halt(wnd);
 	ndis_exit_device(wnd);
 
