@@ -75,11 +75,11 @@ In Linux it should look like:
 
 */
 
-#
-# setup for Windows to Linux function call
-#
-
 	.text
+
+/*
+ * Registers %rdi and %rsi must be preserved on Windows, but not on Linux.
+ */
 
 .macro win2lin_prolog
 	push	%rsi
@@ -91,40 +91,72 @@ In Linux it should look like:
 	pop	%rsi
 .endm
 
-# when Windows function calls Linux function, the function address is in %r10
+/*
+ * Allocate stack frame for Linux arguments.
+ *
+ * First 6 arguments are passed through registers, so we need space for
+ * argument 7 and above.  The arguments should be copied onto stack after
+ * the space has been reserved.
+ */
+
+.macro reserve_stack argtotal
+	sub $(\argtotal - 6) * 8, %rsp
+	.endm
+
+.macro free_stack argtotal
+	add $(\argtotal - 6) * 8, %rsp
+	.endm
+
+/*
+ * Call Linux function.  win2lin macro puts its address to %r10.
+ */
 
 .macro call_lin_func
-	xor	%rax, %rax	# rax indicates number of SSE regs
+	xor	%rax, %rax	/* number of arguments in SSE registers */
 	call	*%r10
 .endm
 
-# Determine the address of the n'th windows argument after an extra linux stack
-# frame has been created to hold m arguments (i.e. rsp has been decremented).
-# If less then six arguments are used, then no extra stack frame is created
-# and m=6 must be used to obtain the correct address (see win2lin_arg5 and
-# win2lin_arg6).
-# explanation:
-# When using this macro, %rsp points to the last argument of the extra linux
-# stack frame (or to the pushed %rdi from the prolog, if less than 6 arguments
-# are used).
-# With respect to the two entries from the prolog, the return address of the
-# windows stack frame is at (2+m-6)*8(%rsp)
-# So the n'th argument (or its shadow/spill space)
-# is at (n+2 + (m-6))*8(%rsp)
+/*
+ * win2lin_win_arg(N, ARGTOTAL) gives the address of the Windows argument
+ * N out of ARGTOTAL after the stack has been prepared for the Linux function
+ * call.
+ *
+ * When calling the Linux function, two registers (%rdi and %rsi) are pushed
+ * to the stack in win2lin_prolog.  When passing more than 6 arguments,
+ * arguments starting with argument 7 are pushed to the stack as well.
+ *
+ * When called from Windows, the Nth argument is at (N * 8)(%rsp).  We add two
+ * 8-byte positions for the saved registers (%rdi and %rsi) and (ARGTOTAL - 6)
+ * for the arguments to be passed on stack to the Linux function.
+ *
+ * If there are 6 and less arguments, ARGTOTAL must be 6.  N must be at least
+ * 5, as arguments 1 to 4 are passed in registers.
+ */
+#define win2lin_win_arg(arg, argtotal) ((arg + 2 + (argtotal - 6)) * 8)(%rsp)
 
-#define win2lin_win_arg(n,m) (n+2 + (m-6))*8(%rsp)
+/*
+ * win2lin_lin_arg(N) gives the address of the Nth linux argument of the extra
+ * linux stack frame.  When more than 6 arguments are used, %rsp points to the
+ * 7th argument.  The Nth argument is therefore at ((N - 7) * 8)(%rsp).
+ */
+#define win2lin_lin_arg(n) ((n - 7) * 8)(%rsp)
 
+/* Copy arguments 1 - 4 */
 #define win2lin_arg1 mov %rcx, %rdi
 #define win2lin_arg2 mov %rdx, %rsi
 #define win2lin_arg3 mov %r8, %rdx
 #define win2lin_arg4 mov %r9, %rcx
 
-# Attention: win2lin_arg5 and win2lin_arg6 require %rsp to point to the last
-# entry of the prolog. So they must be used before reserving extra stack space
-# with reserve_stack!
-
-#define win2lin_arg5 mov win2lin_win_arg(5,6), %r8
-#define win2lin_arg6 mov win2lin_win_arg(6,6), %r9
+/*
+ * Copy arguments 5 - 6.
+ *
+ * Arguments 5 and 6 must be copied after arguments 3 and 4 to prevent
+ * clobbering %r8 and %r9.  win2lin_arg5 and win2lin_arg6 must be used
+ * only between win2lin_prolog and reserving the extra stack space for the
+ * arguments.
+ */
+#define win2lin_arg5 mov win2lin_win_arg(5, 6), %r8
+#define win2lin_arg6 mov win2lin_win_arg(6, 6), %r9
 
 	.type	win2lin0, @function
 win2lin0:
@@ -203,26 +235,6 @@ win2lin6:
 	ret
 	.size	win2lin6, .-win2lin6
 
-# Allocate stack frame for Linux arguments.
-# First 6 args are passed through registers, so we need space for 7 and above.
-# The arguments should be copied onto stack after the space has been reserved.
-
-.macro reserve_stack n
-	sub $(\n-6)*8, %rsp
-	.endm
-
-.macro free_stack n
-	add $(\n-6)*8, %rsp
-	.endm
-
-
-# Determine the address of the n'th linux argument of the extra linux stackframe
-# When an extra linux stack frame is used (more than 6 arguments), then %rsp
-# points to the 7th argument. The m'th argument is at (m-7)*8(%rsp)
-
-#define win2lin_lin_arg(m) (m-7)*8(%rsp)
-
-
 	.type	win2lin7, @function
 win2lin7:
 	win2lin_prolog
@@ -236,8 +248,8 @@ win2lin7:
 
 	reserve_stack(7)
 
-	# copy windows argument 7 onto stack for Linux function
-	mov	win2lin_win_arg(7,7), %r11
+	/* Copy Windows argument 7 onto stack for the Linux function */
+	mov	win2lin_win_arg(7, 7), %r11
 	mov	%r11, win2lin_lin_arg(7)
 
 	call_lin_func
@@ -261,7 +273,7 @@ win2lin8:
 
 	reserve_stack(8)
 
-	# copy windows arguments 7 and 8 onto stack for Linux function
+	/* Copy Windows arguments 7 and 8 onto stack for the Linux function */
 	mov	win2lin_win_arg(7,8), %r11
 	mov	%r11, win2lin_lin_arg(7)
 	mov	win2lin_win_arg(8,8), %r11
@@ -275,6 +287,10 @@ win2lin8:
 	ret
 	.size	win2lin8, .-win2lin8
 
+/*
+ * We assume here that we never need to handle more than 12 arguments.
+ * Copy 12 arguments even if we need less.
+ */
 	.type	win2lin9, @function
 win2lin9:
 win2lin10:
@@ -284,25 +300,27 @@ win2lin12:
 
 	reserve_stack(12)
 
-	# since we destroy rsi and rdi here, first copy windows
-	# arguments 7 through 12 onto stack for Linux function
-	mov	%rcx, %r11		# save rcx
-	lea	win2lin_win_arg(7,12), %rsi	# source (windows arg 7 and up)
-	lea	win2lin_lin_arg(7), %rdi	# = destination
-	mov	$6, %rcx			# 6 arguments
+	/* Copy Windows arguments 7 through 12 onto stack */
+	mov	%rcx, %r11			/* save %rcx */
+	lea	win2lin_win_arg(7, 12), %rsi	/* source */
+	lea	win2lin_lin_arg(7), %rdi	/* destination */
+	mov	$6, %rcx			/* 6 arguments */
 	rep
 	movsq
-	mov	%r11, %rcx		# restore rcx
+	mov	%r11, %rcx			/* restore %rcx */
 
-	# transfer args 1 - 4
+	/* Copy arguments 1 - 4 */
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
 
-	# Cannot use win2lin_arg5 and win2lin_arg5 after reserve_stack
-	mov win2lin_win_arg(5,12), %r8
-	mov win2lin_win_arg(6,12), %r9
+	/*
+	 * Copy arguments 5 and 6. Cannot use win2lin_arg5 and win2lin_arg6
+	 * after reserve_stack.
+	 */
+	mov win2lin_win_arg(5, 12), %r8
+	mov win2lin_win_arg(6, 12), %r9
 
 	call_lin_func
 
@@ -319,4 +337,4 @@ ENTRY(win2lin_ ## name ## _ ## argc)		\
 
 #include "win2lin_stubs.h"
 
-#endif // CONFIG_X86_64
+#endif	/* CONFIG_X86_64 */
