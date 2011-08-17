@@ -282,14 +282,6 @@ win2lin11:
 win2lin12:
 	win2lin_prolog
 
-	# arg5 and arg6 must be transferred before reserving stack space,
-	# because the macros rely on %rsp pointing to the last argument from
-	# the prolog
-	# args 1 to 4 are transferred after the movsq as we destroy rsi and
-	# rdi (=lin args 1 and 2) there
-	win2lin_arg5
-	win2lin_arg6
-
 	reserve_stack(12)
 
 	# since we destroy rsi and rdi here, first copy windows
@@ -307,6 +299,10 @@ win2lin12:
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
+
+	# Cannot use win2lin_arg5 and win2lin_arg5 after reserve_stack
+	mov win2lin_win_arg(5,12), %r8
+	mov win2lin_win_arg(6,12), %r9
 
 	call_lin_func
 

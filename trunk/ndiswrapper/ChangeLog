@@ -3,7 +3,8 @@ Version 1.57 2011-08-17
 * Added support for Linux 2.6.35 - Linux 3.1
 * Kernels as old as 2.6.14 are now supported
 * IW_AUTH_MFP implemented
-* Fixed argument passing in x86_64
+* Reserve stack before copying arguments when calling from Windows to Linux
+  on x86_64
 * Fixed a kernel panic if there are many devices for one driver and one
   fails to initialize
 * Fixed a kernel panic with Marvell USB if ndiswrapper is reloaded
