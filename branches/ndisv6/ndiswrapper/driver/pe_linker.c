@@ -231,9 +231,9 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 					   ~IMAGE_ORDINAL_FLAG) + 2), char *);
 		}
 
-		ret = get_export(symname, &adr);
-		if (ret < 0) {
+		if (get_export(symname, &adr) < 0) {
 			ERROR("unknown symbol: %s:'%s'", dll, symname);
+			ret = -1;
 		} else {
 			DBGLINKER("found symbol: %s:%s: addr: %p, rva = %Lu",
 				  dll, symname, adr, (uint64_t)address_tbl[i]);
