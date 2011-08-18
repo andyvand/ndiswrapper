@@ -13,6 +13,7 @@
  *
  */
 
+#include <linux/proc_fs.h>
 #include "ndis.h"
 #include "iw_ndis.h"
 #include "pnp.h"
@@ -456,7 +457,6 @@ static int ndis_net_dev_init(struct net_device *net_dev)
 	struct ndis_device *wnd = netdev_priv(net_dev);
 
 	ENTER1("%p", wnd);
-	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	wrap_procfs_add_ndis_device(wnd);
 	EXIT1(return 0);
 }
@@ -585,24 +585,22 @@ static struct ethtool_ops ndis_ethtool_ops = {
 static int notifier_event(struct notifier_block *notifier, unsigned long event,
 			  void *ptr)
 {
-	struct net_device *net_dev = (struct net_device *)ptr;
-	struct ndis_device *wnd;
+	struct net_device *net_dev = ptr;
 
-	if (net_dev->ethtool_ops != &ndis_ethtool_ops)
-		return NOTIFY_DONE;
+	ENTER2("0x%lx", event);
+	if (net_dev->ethtool_ops == &ndis_ethtool_ops
+	    && event == NETDEV_CHANGENAME) {
+		struct ndis_device *wnd = netdev_priv(net_dev);
 
-	wnd = netdev_priv(net_dev);
-	/* called with rtnl lock held, so no need to lock */
-	if (event == NETDEV_CHANGENAME) {
-		wrap_procfs_remove_ndis_device(wnd);
-		printk(KERN_INFO "%s: changing interface name from '%s' to "
-		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
-		memcpy(wnd->netdev_name, net_dev->name,
-		       sizeof(wnd->netdev_name));
-		wrap_procfs_add_ndis_device(wnd);
-		return NOTIFY_OK;
+		/* called with rtnl lock held, so no need to lock */
+		if (likely(wnd->procfs_iface)) {
+			printk(KERN_INFO "%s: changing interface name from "
+			       "'%s' to '%s'\n", DRIVER_NAME,
+			       wnd->procfs_iface->name, net_dev->name);
+			wrap_procfs_remove_ndis_device(wnd);
+			wrap_procfs_add_ndis_device(wnd);
+		}
 	}
-	TRACE2("%s: %lx", wnd->netdev_name, event);
 	return NOTIFY_DONE;
 }
 

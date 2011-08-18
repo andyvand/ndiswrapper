@@ -295,10 +295,10 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		return -ENOMEM;
 
 	if (wnd->procfs_iface) {
-		ERROR("%s already registered?", wnd->netdev_name);
+		ERROR("%s already registered?", wnd->procfs_iface->name);
 		return -EINVAL;
 	}
-	wnd->procfs_iface = proc_mkdir(wnd->netdev_name, wrap_procfs_entry);
+	wnd->procfs_iface = proc_mkdir(wnd->net_dev->name, wrap_procfs_entry);
 	if (wnd->procfs_iface == NULL) {
 		ERROR("couldn't create proc directory");
 		return -ENOMEM;
@@ -364,7 +364,7 @@ err_encr:
 err_stats:
 	remove_proc_entry("hw", wnd->procfs_iface);
 err_hw:
-	remove_proc_entry(wnd->netdev_name, wrap_procfs_entry);
+	remove_proc_entry(wnd->procfs_iface->name, wrap_procfs_entry);
 	wnd->procfs_iface = NULL;
 	return -ENOMEM;
 }
@@ -380,7 +380,7 @@ void wrap_procfs_remove_ndis_device(struct ndis_device *wnd)
 	remove_proc_entry("encr", procfs_iface);
 	remove_proc_entry("settings", procfs_iface);
 	if (wrap_procfs_entry)
-		remove_proc_entry(wnd->netdev_name, wrap_procfs_entry);
+		remove_proc_entry(procfs_iface->name, wrap_procfs_entry);
 }
 
 static int procfs_read_debug(char *page, char **start, off_t off,

@@ -1354,7 +1354,6 @@ struct ndis_device {
 	enum ndis_physical_medium physical_medium;
 	u32 ndis_wolopts;
 	struct nt_slist wrap_timer_slist;
-	char netdev_name[IFNAMSIZ];
 	ULONG frame_length;
 	int drv_ndis_version;
 };
