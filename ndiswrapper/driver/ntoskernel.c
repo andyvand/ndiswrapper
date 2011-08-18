@@ -68,6 +68,7 @@ static void ntos_work_worker(struct work_struct *dummy);
 spinlock_t irp_cancel_lock;
 static NT_SPIN_LOCK nt_list_lock;
 static struct nt_slist wrap_timer_slist;
+CCHAR cpu_count;
 
 /* compute ticks (100ns) since 1601 until when system booted into
  * wrap_ticks_to_boot */
@@ -80,7 +81,7 @@ static void update_user_shared_data_proc(unsigned long data);
 #endif
 
 WIN_SYMBOL_MAP("KeTickCount", &jiffies)
-
+WIN_SYMBOL_MAP("KeNumberProcessors", &cpu_count)
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
 struct workqueue_struct *ntos_wq;
@@ -2517,6 +2518,8 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
+
+	cpu_count = num_online_cpus();
 
 #ifdef WRAP_PREEMPT
 	do {
