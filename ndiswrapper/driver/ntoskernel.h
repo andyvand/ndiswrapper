@@ -1112,6 +1112,7 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 extern spinlock_t ntoskernel_lock;
 extern spinlock_t irp_cancel_lock;
 extern struct nt_list object_list;
+extern CCHAR cpu_count;
 #ifdef CONFIG_X86_64
 extern struct kuser_shared_data kuser_shared_data;
 #endif
