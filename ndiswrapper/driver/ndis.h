@@ -910,7 +910,6 @@ struct ndis_device {
 	struct nt_slist wrap_timer_slist;
 	int drv_ndis_version;
 	struct ndis_pnp_capabilities pnp_capa;
-	char netdev_name[IFNAMSIZ];
 };
 
 BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx) wstdcall;
