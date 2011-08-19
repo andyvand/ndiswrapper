@@ -1571,10 +1571,12 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 buffer_pool_err:
 	wnd->tx_buffer_pool = NULL;
+	unregister_netdev(net_dev);
+	wnd->max_tx_packets = 0;
 err_register:
 	kfree(buf);
 err_start:
-	ndis_remove_device(wnd);
+	mp_halt(wnd);
 	EXIT1(return NDIS_STATUS_FAILURE);
 }
 
