@@ -1979,10 +1979,12 @@ buffer_pool_err:
 		wnd->tx_packet_pool = NULL;
 	}
 packet_pool_err:
+	unregister_netdev(net_dev);
+	wnd->max_tx_packets = 0;
 err_register:
 	kfree(buf);
 err_start:
-	ndis_remove_device(wnd);
+	mp_halt(wnd);
 	EXIT1(return NDIS_STATUS_FAILURE);
 }
 
