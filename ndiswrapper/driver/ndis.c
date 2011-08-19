@@ -2341,6 +2341,13 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 	TODO();
 }
 
+wstdcall void WIN_FUNC(NdisMQueueDpc,4)
+	(void *interrupt_handle, ULONG message_id, ULONG target_cpus,
+	 void *mp_dpc_ctx)
+{
+	TODO();
+}
+
 /* ndis_init_device is called for each device */
 int ndis_init_device(struct ndis_device *wnd)
 {
