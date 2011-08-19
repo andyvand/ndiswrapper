@@ -1526,9 +1526,9 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 	wnd->tx_buffer_list_pool =
 		NdisAllocateNetBufferListPool(wnd->nmb, &nbl_pool_params);
-	if (res != NDIS_STATUS_SUCCESS) {
-		ERROR("couldn't allocate buffer pool");
-		goto buffer_pool_err;
+	if (!wnd->tx_buffer_list_pool) {
+		ERROR("couldn't allocate buffer list pool");
+		goto buffer_pool_list_err;
 	}
 	TRACE3("%p", wnd->tx_buffer_list_pool);
 	memset(&nb_pool_params, 0, sizeof(nb_pool_params));
@@ -1540,6 +1540,10 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 	wnd->tx_buffer_pool = NdisAllocateNetBufferPool(wnd->nmb,
 							&nb_pool_params);
+	if (!wnd->tx_buffer_pool) {
+		ERROR("couldn't allocate buffer pool");
+		goto buffer_pool_err;
+	}
 	TRACE1("pool: %p", wnd->tx_buffer_pool);
 
 	if (mp_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &n) ==
@@ -1570,7 +1574,9 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	EXIT1(return NDIS_STATUS_SUCCESS);
 
 buffer_pool_err:
-	wnd->tx_buffer_pool = NULL;
+	NdisFreeNetBufferListPool(wnd->tx_buffer_list_pool);
+	wnd->tx_buffer_list_pool = NULL;
+buffer_pool_list_err:
 	unregister_netdev(net_dev);
 	wnd->max_tx_packets = 0;
 err_register:
