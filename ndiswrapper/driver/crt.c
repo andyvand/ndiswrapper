@@ -489,6 +489,12 @@ noregparm int WIN_FUNC(_win_atoi,1)
 	return i;
 }
 
+noregparm int WIN_FUNC(_win_isdigit,1)
+	(int c)
+{
+	return isdigit(c);
+}
+
 noregparm int WIN_FUNC(_win_isprint,1)
 	(int c)
 {
