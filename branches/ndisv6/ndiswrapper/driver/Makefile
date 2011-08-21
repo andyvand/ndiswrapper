@@ -93,8 +93,7 @@ endif
 OBJS = crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
 	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
 
-EXPORTS = crt_exports.h hal_exports.h ndis_exports.h ntoskernel_exports.h \
-	ntoskernel_io_exports.h rtl_exports.h
+EXPORT_SRCS = crt.c hal.c ndis.c ntoskernel.c ntoskernel_io.c rtl.c
 
 STUB_SRCS = crt.c hal.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c rtl.c wrapndis.c
@@ -113,7 +112,7 @@ endif
 endif
 
 ifdef ENABLE_USB
-EXPORTS += usb_exports.h
+EXPORT_SRCS += usb.c
 STUB_SRCS += usb.c
 OBJS += usb.o
 EXTRA_CFLAGS += -DENABLE_USB
@@ -131,11 +130,11 @@ all: config_check modules
 quiet_cmd_mkexport = MKEXPORT $@
 cmd_mkexport = $(SHELL) $(obj)/mkexport.sh $< $@
 
-extra-y += $(EXPORTS)
+extra-y += $(EXPORT_SRCS:.c=_exports.h)
 %_exports.h: %.c $(obj)/mkexport.sh FORCE
 	$(call if_changed,mkexport)
 
-$(addprefix $(obj)/,$(EXPORTS:_exports.h=.o)): %.o: %_exports.h
+$(addprefix $(obj)/,$(EXPORT_SRCS:.c=.o)): %.o: %_exports.h
 
 ifeq ($(CONFIG_X86_64),y)
 quiet_cmd_mkstubs = MKSTUBS $@
