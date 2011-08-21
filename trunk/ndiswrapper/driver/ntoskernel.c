@@ -143,7 +143,7 @@ void *allocate_object(ULONG size, enum common_object_type type,
 	return body;
 }
 
-void free_object(void *object)
+static void free_object(void *object)
 {
 	struct common_object_header *hdr;
 
