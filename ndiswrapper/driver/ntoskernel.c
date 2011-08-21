@@ -2478,12 +2478,6 @@ wstdcall void WIN_FUNC(_purecall,0)
 	TODO();
 }
 
-wstdcall void WIN_FUNC(__chkstk,0)
-	(void)
-{
-	TODO();
-}
-
 struct worker_init_struct {
 	struct work_struct work;
 	struct completion completion;
