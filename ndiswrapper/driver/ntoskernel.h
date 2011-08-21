@@ -912,7 +912,6 @@ int ntoskernel_init_device(struct wrap_device *wd);
 void ntoskernel_exit_device(struct wrap_device *wd);
 void *allocate_object(ULONG size, enum common_object_type type,
 		      struct unicode_string *name);
-void free_object(void *object);
 
 int usb_init(void);
 void usb_exit(void);
