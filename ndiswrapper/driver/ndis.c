@@ -1870,6 +1870,12 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	EXIT1(return);
 }
 
+wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
+	(struct unicode_string *dst, struct unicode_string *src)
+{
+	EXIT2(return RtlUpcaseUnicodeString(dst, src, FALSE));
+}
+
 wstdcall void WIN_FUNC(NdisMRegisterAdapterShutdownHandler,3)
 	(struct ndis_mp_block *nmb, void *ctx, void *func)
 {
