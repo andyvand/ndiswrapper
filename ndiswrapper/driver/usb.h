@@ -361,16 +361,24 @@ void wrap_resume_urbs(struct wrap_device *wd);
 void USBD_InterfaceGetUSBDIVersion(void *context,
 				   struct usbd_version_info *version_info,
 				   ULONG *hcd_capa) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceGetUSBDIVersion, 3);
 BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceIsDeviceHighSpeed, 1);
 void USBD_InterfaceReference(void *context) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceReference, 1);
 void USBD_InterfaceDereference(void *context) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceDereference, 1);
 NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceQueryBusTime, 2);
 NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
 				       union nt_urb *nt_urb) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceSubmitIsoOutUrb, 2);
 NTSTATUS USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 					   ULONG *buf_length,
 					   ULONG *buf_actual_length) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceQueryBusInformation, 5);
 NTSTATUS USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
 				ULONG p1, ULONG p2) wstdcall;
+WIN_FUNC_DECL(USBD_InterfaceLogEntry, 5);
 
 #endif /* USB_H */
