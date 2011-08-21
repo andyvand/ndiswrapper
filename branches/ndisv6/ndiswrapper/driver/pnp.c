@@ -279,20 +279,26 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 		usb_intf = (struct usbd_bus_interface_usbdi *)
 			irp_sl->params.query_intf.intf;
 		usb_intf->Context = wd;
-		usb_intf->InterfaceReference = USBD_InterfaceReference;
-		usb_intf->InterfaceDereference = USBD_InterfaceDereference;
-		usb_intf->GetUSBDIVersion = USBD_InterfaceGetUSBDIVersion;
-		usb_intf->QueryBusTime = USBD_InterfaceQueryBusTime;
-		usb_intf->SubmitIsoOutUrb = USBD_InterfaceSubmitIsoOutUrb;
+		usb_intf->InterfaceReference =
+			WIN_FUNC_PTR(USBD_InterfaceReference, 1);
+		usb_intf->InterfaceDereference =
+			WIN_FUNC_PTR(USBD_InterfaceDereference, 1);
+		usb_intf->GetUSBDIVersion =
+			WIN_FUNC_PTR(USBD_InterfaceGetUSBDIVersion, 3);
+		usb_intf->QueryBusTime =
+			WIN_FUNC_PTR(USBD_InterfaceQueryBusTime, 2);
+		usb_intf->SubmitIsoOutUrb =
+			WIN_FUNC_PTR(USBD_InterfaceSubmitIsoOutUrb, 2);
 		usb_intf->QueryBusInformation =
-			USBD_InterfaceQueryBusInformation;
+			WIN_FUNC_PTR(USBD_InterfaceQueryBusInformation, 5);
 		if (irp_sl->params.query_intf.version >=
 		    USB_BUSIF_USBDI_VERSION_1)
 			usb_intf->IsDeviceHighSpeed =
-				USBD_InterfaceIsDeviceHighSpeed;
+				WIN_FUNC_PTR(USBD_InterfaceIsDeviceHighSpeed, 1);
 		if (irp_sl->params.query_intf.version >=
 		    USB_BUSIF_USBDI_VERSION_2)
-			usb_intf->LogEntry = USBD_InterfaceLogEntry;
+			usb_intf->LogEntry =
+				WIN_FUNC_PTR(USBD_InterfaceLogEntry, 5);
 		status = STATUS_SUCCESS;
 #else
 		status = STATUS_NOT_IMPLEMENTED;
