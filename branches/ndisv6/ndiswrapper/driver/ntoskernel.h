@@ -1093,6 +1093,9 @@ LONG RtlCompareUnicodeString(const struct unicode_string *s1,
 			     BOOLEAN case_insensitive) wstdcall;
 void RtlCopyUnicodeString(struct unicode_string *dst,
 			  struct unicode_string *src) wstdcall;
+NTSTATUS RtlUpcaseUnicodeString(struct unicode_string *dst,
+				struct unicode_string *src,
+				BOOLEAN alloc) wstdcall;
 void KeInitializeTimer(struct nt_timer *nt_timer) wstdcall;
 void KeInitializeTimerEx(struct nt_timer *nt_timer,
 			 enum timer_type type) wstdcall;
