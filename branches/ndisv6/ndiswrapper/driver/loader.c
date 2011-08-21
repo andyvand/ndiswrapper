@@ -585,6 +585,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	    start_wrap_driver(wrap_driver) ||
 	    add_wrap_driver(wrap_driver)) {
 		unload_wrap_driver(wrap_driver);
+		ObDereferenceObject(drv_obj);
 		EXIT1(return -EINVAL);
 	} else {
 		printk(KERN_INFO "%s: driver %s (%s) loaded\n",
