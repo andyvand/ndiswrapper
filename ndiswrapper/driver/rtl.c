@@ -706,6 +706,14 @@ wstdcall void WIN_FUNC(RtlRaiseException,1)
 	TODO();
 }
 
+wstdcall BOOLEAN WIN_FUNC(RtlIsServicePackVersionInstalled,1)
+	(ULONG Version)
+{
+	/* Assume we have all service packs */
+	TRACE1("version: %d", version);
+	return TRUE;
+}
+
 int rtl_init(void)
 {
 	return 0;
