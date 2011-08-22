@@ -537,25 +537,25 @@ wstdcall u64 WIN_FUNC(_aullrem,2)
 	return a % b;
 }
 
-__attribute__((regparm(3))) s64 WIN_FUNC(_allshl,2)
+regparm3 s64 WIN_FUNC(_allshl,2)
 	(s64 a, u8 b)
 {
 	return a << b;
 }
 
-__attribute__((regparm(3))) u64 WIN_FUNC(_aullshl,2)
+regparm3 u64 WIN_FUNC(_aullshl,2)
 	(u64 a, u8 b)
 {
 	return a << b;
 }
 
-__attribute__((regparm(3))) s64 WIN_FUNC(_allshr,2)
+regparm3 s64 WIN_FUNC(_allshr,2)
 	(s64 a, u8 b)
 {
 	return a >> b;
 }
 
-__attribute__((regparm(3))) u64 WIN_FUNC(_aullshr,2)
+regparm3 u64 WIN_FUNC(_aullshr,2)
 	(u64 a, u8 b)
 {
 	return a >> b;
