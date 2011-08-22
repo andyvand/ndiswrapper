@@ -9,7 +9,7 @@ exec >"$output"
 
 echo "/* automatically generated from src */";
 
-sed -n -e '/^\(wstdcall\|wfastcall\|noregparm\|__attribute__\)/{
+sed -n -e '/^\(wstdcall\|wfastcall\|noregparm\|regparm3\|__attribute__\)/{
 :more
 N
 s/\([^{]\)$/\1/

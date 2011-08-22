@@ -120,12 +120,14 @@
 #define wstdcall
 #define wfastcall
 #define noregparm
+#define regparm3
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000UL
 
 #else
 
 #define noregparm __attribute__((regparm(0)))
+#define regparm3 __attribute__((regparm(3)))
 #define wstdcall __attribute__((__stdcall__, regparm(0)))
 #if defined(__GNUC__) && ((__GNUC__ == 3 && __GNUC_MINOR__ > 3) || __GNUC__ > 3)
 #undef fastcall
