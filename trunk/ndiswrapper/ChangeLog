@@ -7,7 +7,6 @@ Version 1.57-rc1 2011-08-22
   on x86_64
 * Fixed a kernel panic if there are many devices for one driver and one
   fails to initialize
-* Fixed a kernel panic with Marvell USB if ndiswrapper is reloaded
 * Fixed support for AVM Fritz USB
 * Loading drivers with unknown symbols is disallowed, it's a certain crash
 * Fixed procfs registration if the network device is renamed
