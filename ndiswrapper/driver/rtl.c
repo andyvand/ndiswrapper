@@ -1,5 +1,6 @@
 /*
  *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +23,7 @@ wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
 	size_t i;
 	char *x, *y;
 
+	ENTER1("%p %p %zd", a, b, len);
 	x = (char *)a;
 	y = (char *)b;
 	/* MSDN says this should return number of bytes that compare as
