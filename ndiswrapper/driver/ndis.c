@@ -320,12 +320,12 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 	}
 	switch(param->type) {
 	case NdisParameterInteger:
-		snprintf(setting->value, sizeof(u32), "%u", param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
+		snprintf(setting->value, MAX_SETTING_VALUE_LEN, "%u",
+			 param->data.integer);
 		break;
 	case NdisParameterHexInteger:
-		snprintf(setting->value, sizeof(u32), "%x", param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
+		snprintf(setting->value, MAX_SETTING_VALUE_LEN, "%x",
+			 param->data.integer);
 		break;
 	case NdisParameterString:
 		ansi.buf = setting->value;
