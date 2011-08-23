@@ -47,20 +47,20 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 	res = mp_query(wnd, OID_802_11_STATISTICS, &stats, sizeof(stats));
 	if (!res) {
 
-		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
-		p += sprintf(p, "tx_multicast_frames=%Lu\n",
+		p += sprintf(p, "tx_frames=%llu\n", stats.tx_frag);
+		p += sprintf(p, "tx_multicast_frames=%llu\n",
 			     stats.tx_multi_frag);
-		p += sprintf(p, "tx_failed=%Lu\n", stats.failed);
-		p += sprintf(p, "tx_retry=%Lu\n", stats.retry);
-		p += sprintf(p, "tx_multi_retry=%Lu\n", stats.multi_retry);
-		p += sprintf(p, "tx_rtss_success=%Lu\n", stats.rtss_succ);
-		p += sprintf(p, "tx_rtss_fail=%Lu\n", stats.rtss_fail);
-		p += sprintf(p, "ack_fail=%Lu\n", stats.ack_fail);
-		p += sprintf(p, "frame_duplicates=%Lu\n", stats.frame_dup);
-		p += sprintf(p, "rx_frames=%Lu\n", stats.rx_frag);
-		p += sprintf(p, "rx_multicast_frames=%Lu\n",
+		p += sprintf(p, "tx_failed=%llu\n", stats.failed);
+		p += sprintf(p, "tx_retry=%llu\n", stats.retry);
+		p += sprintf(p, "tx_multi_retry=%llu\n", stats.multi_retry);
+		p += sprintf(p, "tx_rtss_success=%llu\n", stats.rtss_succ);
+		p += sprintf(p, "tx_rtss_fail=%llu\n", stats.rtss_fail);
+		p += sprintf(p, "ack_fail=%llu\n", stats.ack_fail);
+		p += sprintf(p, "frame_duplicates=%llu\n", stats.frame_dup);
+		p += sprintf(p, "rx_frames=%llu\n", stats.rx_frag);
+		p += sprintf(p, "rx_multicast_frames=%llu\n",
 			     stats.rx_multi_frag);
-		p += sprintf(p, "fcs_errors=%Lu\n", stats.fcs_err);
+		p += sprintf(p, "fcs_errors=%llu\n", stats.fcs_err);
 	}
 
 	if (p - page > count) {

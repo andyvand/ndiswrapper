@@ -487,7 +487,7 @@ static int iw_get_ap_address(struct net_device *dev,
 	TRACE2("%d, %d", assoc_list->num_entries, assoc_list->num_total_entries);
 	assoc_info = &assoc_list->assoc_info[0];
 	TRACE2("ap: " MACSTRSEP ", " MACSTRSEP
-	       ", %d, %d, %d, %Ld, %Lu, %Lu, %Lu, %Lu",
+	       ", %d, %d, %d, %lld, %llu, %llu, %llu, %llu",
 	       MAC2STR(assoc_info->peer_mac), MAC2STR(assoc_info->bssid),
 	       assoc_info->assoc_id, assoc_info->assoc_state,
 	       assoc_info->power_mode,
@@ -975,7 +975,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
-	sprintf(buf, "time=%Lu", bss->time_stamp);
+	sprintf(buf, "time=%llu", bss->time_stamp);
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
 

@@ -637,15 +637,15 @@ static void update_wireless_stats(struct ndis_device *wnd)
 		return;
 	mac_stats = &ndis_stats->mac_ucast_stats;
 	(void)mac_stats;
-	TRACE2("%Lu, %Lu, %Lu, %Lu", mac_stats->tx_frames,
+	TRACE2("%llu, %llu, %llu, %llu", mac_stats->tx_frames,
 		  mac_stats->rx_frames, mac_stats->tx_failure_frames,
 		  mac_stats->rx_failure_frames);
 
 	phy_stats = &ndis_stats->phy_stats[wnd->phy_id];
-	TRACE2("%Lu, %Lu, %Lu, %Lu, %Lu, %Lu : "
-		  "%Lu, %Lu, %Lu, %Lu : "
-		  "%Lu, %Lu, %Lu, %Lu : "
-		  "%Lu, %Lu, %Lu, %Lu",
+	TRACE2("%llu, %llu, %llu, %llu, %llu, %llu : "
+		  "%llu, %llu, %llu, %llu : "
+		  "%llu, %llu, %llu, %llu : "
+		  "%llu, %llu, %llu, %llu",
 		  phy_stats->tx_frames, phy_stats->multicast_tx_frames,
 		  phy_stats->failed, phy_stats->retry,
 		  phy_stats->multiple_retry, phy_stats->max_tx_lifetime_exceeded,

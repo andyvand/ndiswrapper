@@ -787,7 +787,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
 	(void __iomem **virt, struct ndis_mp_block *nmb,
 	 NDIS_PHY_ADDRESS phy_addr, UINT len)
 {
-	ENTER2("%Lx, %d", phy_addr, len);
+	ENTER2("%llx, %d", phy_addr, len);
 	*virt = MmMapIoSpace(phy_addr, len, MmCached);
 	if (*virt == NULL) {
 		ERROR("ioremap failed");
@@ -2159,7 +2159,7 @@ wstdcall void WIN_FUNC(NdisGetCurrentSystemTime,1)
 	(LARGE_INTEGER *time)
 {
 	*time = ticks_1601();
-	TRACE5("%Lu, %lu", *time, jiffies);
+	TRACE5("%llu, %lu", *time, jiffies);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterIoPortRange,4)
