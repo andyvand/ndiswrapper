@@ -372,7 +372,7 @@ sub parse_install {
     $classguid =~ s/^\s*{//;
     $classguid =~ s/}\s*$//;
 
-    printf CONF "NdisVersion|0x50001\n";
+    printf CONF "NdisVersion|0x60000\n";
     printf CONF "Environment|1\n";
     printf CONF "class_guid|%s\n", $classguid;
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
