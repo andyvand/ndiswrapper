@@ -707,7 +707,7 @@ wstdcall void WIN_FUNC(RtlRaiseException,1)
 }
 
 wstdcall BOOLEAN WIN_FUNC(RtlIsServicePackVersionInstalled,1)
-	(ULONG Version)
+	(ULONG version)
 {
 	/* Assume we have all service packs */
 	TRACE1("version: %d", version);
