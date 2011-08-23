@@ -937,7 +937,7 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 	struct net_buffer *buffer;
 
 	/* TODO: use pool */
-	ENTER3("%p, %d, %p, %u, %lu", pool, pool->count, mdl,
+	ENTER3("%p, %d, %p, %u, %zu", pool, pool->count, mdl,
 	       data_offset, data_length);
 	spin_lock_bh(&pool->lock);
 	if (pool->count) {
@@ -1418,7 +1418,7 @@ wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferAndNetBufferList,
 {
 	struct net_buffer_list *buffer_list;
 
-	ENTER3("%p, %u, %u, %p, %u, %lu", pool, ctx_size, backfill,
+	ENTER3("%p, %u, %u, %p, %u, %zu", pool, ctx_size, backfill,
 		    mdl_chain, data_offset, data_length);
 	buffer_list = NdisAllocateNetBufferList(pool, ctx_size, backfill);
 	if (!buffer_list) {
