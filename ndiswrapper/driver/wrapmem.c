@@ -278,7 +278,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	void *addr;
 	struct alloc_info *info;
 
-	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
+	ENTER4("pool_type: %d, size: %zu, tag: %u", pool_type, size, tag);
 	addr = (ExAllocatePoolWithTag)(pool_type, size, tag);
 	if (!addr)
 		return NULL;

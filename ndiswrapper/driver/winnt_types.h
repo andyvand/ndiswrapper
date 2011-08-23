@@ -176,7 +176,7 @@ typedef CHAR KPROCESSOR_MODE;
  * platform, which is same as 'unsigned long' in Linux */
 typedef unsigned long ULONG_PTR;
 
-typedef ULONG_PTR SIZE_T;
+typedef size_t SIZE_T;
 typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 

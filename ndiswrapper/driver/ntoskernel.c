@@ -805,7 +805,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 {
 	void *addr;
 
-	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type, size, tag);
+	ENTER4("pool_type: %d, size: %zu, tag: 0x%x", pool_type, size, tag);
 	assert_irql(_irql_ <= DISPATCH_LEVEL);
 	if (size < PAGE_SIZE)
 		addr = kmalloc(size, irql_gfp());
@@ -813,18 +813,18 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		if (irql_gfp() & GFP_ATOMIC) {
 			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
-			TRACE1("%p, %lu", addr, size);
+			TRACE1("%p, %zu", addr, size);
 		} else {
 			addr = vmalloc(size);
-			TRACE1("%p, %lu", addr, size);
+			TRACE1("%p, %zu", addr, size);
 		}
 	}
 
 	DBG_BLOCK(1) {
 		if (addr)
-			TRACE4("addr: %p, %lu", addr, size);
+			TRACE4("addr: %p, %zu", addr, size);
 		else
-			TRACE1("failed: %lu", size);
+			TRACE1("failed: %zu", size);
 	}
 
 	return addr;
@@ -856,7 +856,7 @@ wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
-	ENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
+	ENTER3("lookaside: %p, size: %zu, flags: %u, head: %p, "
 	       "alloc: %p, free: %p", lookaside, size, flags,
 	       lookaside, alloc_func, free_func);
 
@@ -1714,11 +1714,11 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	void *addr;
 	gfp_t flags;
 
-	ENTER2("%lu, 0x%lx, 0x%lx, 0x%lx, %d", size, (long)lowest,
+	ENTER2("%zu, 0x%lx, 0x%lx, 0x%lx, %d", size, (long)lowest,
 	       (long)highest, (long)boundary, cache_type);
 	flags = irql_gfp();
 	addr = wrap_get_free_pages(flags, size);
-	TRACE2("%p, %lu, 0x%x", addr, size, flags);
+	TRACE2("%p, %zu, 0x%x", addr, size, flags);
 	if (addr && ((virt_to_phys(addr) + size) <= highest))
 		EXIT2(return addr);
 #ifdef CONFIG_X86_64
@@ -1735,14 +1735,14 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 		flags |= __GFP_HIGHMEM;
 #endif
 	addr = wrap_get_free_pages(flags, size);
-	TRACE2("%p, %lu, 0x%x", addr, size, flags);
+	TRACE2("%p, %zu, 0x%x", addr, size, flags);
 	return addr;
 }
 
 wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
-	TRACE2("%p, %lu", base, size);
+	TRACE2("%p, %zu", base, size);
 	free_pages((unsigned long)base, get_order(size));
 }
 
@@ -1771,14 +1771,14 @@ wstdcall void __iomem *WIN_FUNC(MmMapIoSpace,3)
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	TRACE1("%Lx, %lu, %p", phys_addr, size, virt);
+	TRACE1("%Lx, %zu, %p", phys_addr, size, virt);
 	return virt;
 }
 
 wstdcall void WIN_FUNC(MmUnmapIoSpace,2)
 	(void __iomem *addr, SIZE_T size)
 {
-	ENTER1("%p, %lu", addr, size);
+	ENTER1("%p, %zu", addr, size);
 	iounmap(addr);
 	return;
 }
