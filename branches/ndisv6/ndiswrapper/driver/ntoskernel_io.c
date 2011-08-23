@@ -37,10 +37,9 @@ wstdcall int WIN_FUNC(IoIsWdmVersionAvailable,2)
 	(UCHAR major, UCHAR minor)
 {
 	IOENTER("%d, %x", major, minor);
-	if (major == 1 &&
-	    (minor == 0x30 || // Windows 2003
-	     minor == 0x20 || // Windows XP
-	     minor == 0x10)) // Windows 2000
+
+	/* Windows Vista, Windows Server 2008, Windows 7 */
+	if (major == 6 && minor == 0)
 		IOEXIT(return TRUE);
 	IOEXIT(return FALSE);
 }
