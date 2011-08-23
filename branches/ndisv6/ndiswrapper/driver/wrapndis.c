@@ -1600,9 +1600,9 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	}
 	set_bit(SHUTDOWN, &wnd->ndis_pending_work);
 	wnd->tx_ok = 0;
+	netif_carrier_off(wnd->net_dev);
 	if (wnd->max_tx_packets)
 		unregister_netdev(wnd->net_dev);
-	netif_carrier_off(wnd->net_dev);
 	mp_halt(wnd);
 	ndis_exit_device(wnd);
 
