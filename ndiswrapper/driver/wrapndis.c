@@ -447,7 +447,7 @@ static int setup_tx_sg_list(struct ndis_device *wnd, struct sk_buff *skb,
 		oob_data->wrap_tx_sg_list.nent = 1;
 		oob_data->ext.info[ScatterGatherListPacketInfo] =
 			&oob_data->wrap_tx_sg_list;
-		TRACE3("%Lx, %u", sg_element->address, sg_element->length);
+		TRACE3("%llx, %u", sg_element->address, sg_element->length);
 		return 0;
 	}
 	sg_list = kmalloc(sizeof(*sg_list) +
@@ -470,7 +470,7 @@ static int setup_tx_sg_list(struct ndis_device *wnd, struct sk_buff *skb,
 			pci_map_page(wnd->wd->pci.pdev, frag->page,
 				     frag->page_offset, frag->size,
 				     PCI_DMA_TODEVICE);
-		TRACE3("%Lx, %u", sg_element->address, sg_element->length);
+		TRACE3("%llx, %u", sg_element->address, sg_element->length);
 	}
 	oob_data->ext.info[ScatterGatherListPacketInfo] = sg_list;
 	return 0;
@@ -490,7 +490,7 @@ static void free_tx_sg_list(struct ndis_device *wnd,
 	if (sg_list->nent == 1)
 		EXIT3(return);
 	for (i = 1; i < sg_list->nent; i++, sg_element++) {
-		TRACE3("%Lx, %u", sg_element->address, sg_element->length);
+		TRACE3("%llx, %u", sg_element->address, sg_element->length);
 		pci_unmap_page(wnd->wd->pci.pdev, sg_element->address,
 			       sg_element->length, PCI_DMA_TODEVICE);
 	}

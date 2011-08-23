@@ -218,7 +218,7 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 
 	for (i = 0; lookup_tbl[i]; i++) {
 		if (IMAGE_SNAP_BY_ORDINAL(lookup_tbl[i])) {
-			ERROR("ordinal import not supported: %Lu",
+			ERROR("ordinal import not supported: %llu",
 			      (uint64_t)lookup_tbl[i]);
 			return -1;
 		}
@@ -232,7 +232,7 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 			ERROR("unknown symbol: %s:'%s'", dll, symname);
 			ret = -1;
 		} else {
-			DBGLINKER("found symbol: %s:%s: addr: %p, rva = %Lu",
+			DBGLINKER("found symbol: %s:%s: addr: %p, rva = %llu",
 				  dll, symname, adr, (uint64_t)address_tbl[i]);
 			address_tbl[i] = (ULONG_PTR)adr;
 		}
@@ -341,7 +341,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 		size = (fixup_block->SizeOfBlock -
 			sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
-		DBGLINKER("found %Lu relocations in this block",
+		DBGLINKER("found %llu relocations in this block",
 			  (uint64_t)size);
 
 		for (i = 0; i < size; i++) {

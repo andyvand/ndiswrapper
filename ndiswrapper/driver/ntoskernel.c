@@ -532,7 +532,7 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
 {
 	unsigned long expires_hz, repeat_hz;
 
-	TIMERENTER("%p, %Ld, %d", nt_timer, duetime_ticks, period_ms);
+	TIMERENTER("%p, %lld, %d", nt_timer, duetime_ticks, period_ms);
 	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat_hz = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(nt_timer, expires_hz, repeat_hz, kdpc);
@@ -542,7 +542,7 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimer,3)
 	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 	 struct kdpc *kdpc)
 {
-	TIMERENTER("%p, %Ld, %p", nt_timer, duetime_ticks, kdpc);
+	TIMERENTER("%p, %lld, %p", nt_timer, duetime_ticks, kdpc);
 	return KeSetTimerEx(nt_timer, duetime_ticks, 0, kdpc);
 }
 
@@ -1342,7 +1342,7 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 		ERROR("invalid wait_mode %d", wait_mode);
 
 	timeout = SYSTEM_TIME_TO_HZ(*interval);
-	EVENTTRACE("%p, %Ld, %ld", current, *interval, timeout);
+	EVENTTRACE("%p, %lld, %ld", current, *interval, timeout);
 	if (timeout <= 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 
@@ -1375,7 +1375,7 @@ wstdcall void WIN_FUNC(KeQuerySystemTime,1)
 	(LARGE_INTEGER *time)
 {
 	*time = ticks_1601();
-	TRACE5("%Lu, %lu", *time, jiffies);
+	TRACE5("%llu, %lu", *time, jiffies);
 }
 
 wstdcall void WIN_FUNC(KeQueryTickCount,1)
@@ -1752,7 +1752,7 @@ wstdcall void __iomem *WIN_FUNC(MmMapIoSpace,3)
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	TRACE1("%Lx, %zu, %p", phys_addr, size, virt);
+	TRACE1("%llx, %zu, %p", phys_addr, size, virt);
 	return virt;
 }
 
@@ -2511,7 +2511,7 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += (u64)now.tv_sec * TICKSPERSEC;
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
-	TRACE2("%Lu", wrap_ticks_to_boot);
+	TRACE2("%llu", wrap_ticks_to_boot);
 
 	cpu_count = num_online_cpus();
 
