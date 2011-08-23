@@ -814,7 +814,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
 {
 	struct ndis_device *wnd = nmb->wnd;
 
-	ENTER2("%Lx, %d", phy_addr, len);
+	ENTER2("%llx, %d", phy_addr, len);
 	*virt = MmMapIoSpace(phy_addr, len, MmCached);
 	if (*virt == NULL) {
 		ERROR("ioremap failed");
@@ -1041,7 +1041,7 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr = wnd->dma_map_addr[index];
 	phy_addr_array[0].length = MmGetMdlByteCount(buf);
-	TRACE4("%Lx, %d, %d", phy_addr_array[0].phy_addr,
+	TRACE4("%llx, %d, %d", phy_addr_array[0].phy_addr,
 	       phy_addr_array[0].length, index);
 	*array_size = 1;
 }
@@ -1091,7 +1091,7 @@ wstdcall void WIN_FUNC(NdisMFreeSharedMemory,5)
 	 void *virt, NDIS_PHY_ADDRESS addr)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
-	ENTER3("%p, %Lx, %u", virt, addr, size);
+	ENTER3("%p, %llx, %u", virt, addr, size);
 	PCI_DMA_FREE_COHERENT(wd->pci.pdev, size, virt, addr);
 	EXIT3(return);
 }
@@ -2246,7 +2246,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_mp_block *nmb,
 						 NormalPagePriority);
 		TRACE3("%d, %d", length, total_length);
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
-		TRACE3("0x%x, 0x%x, %Lu", packet->private.flags,
+		TRACE3("0x%x, 0x%x, %llu", packet->private.flags,
 		       packet->private.packet_flags, oob_data->time_rxed);
 		skb = dev_alloc_skb(total_length);
 		if (skb) {
@@ -2556,7 +2556,7 @@ wstdcall void WIN_FUNC(NdisGetCurrentSystemTime,1)
 	(LARGE_INTEGER *time)
 {
 	*time = ticks_1601();
-	TRACE5("%Lu, %lu", *time, jiffies);
+	TRACE5("%llu, %lu", *time, jiffies);
 }
 
 wstdcall LONG WIN_FUNC(NdisInterlockedDecrement,1)
