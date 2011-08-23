@@ -192,6 +192,8 @@ clean:
 	rm -rf .tmp_versions
 
 install: config_check $(MODULE)
+	@/sbin/modinfo $(MODULE) | grep -q "^vermagic: *$(KVERS) " || \
+		{ echo "$(MODULE)" is not for Linux $(KVERS); exit 1; }
 	mkdir -p -m 0755 $(DESTDIR)$(INST_DIR)
 	install -m 0644 $(MODULE) $(DESTDIR)$(INST_DIR)
 ifndef DESTDIR
