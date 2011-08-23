@@ -2396,6 +2396,24 @@ wstdcall NTSTATUS WIN_FUNC(WmiQueryTraceInformation,4)
 	EXIT2(return STATUS_SUCCESS);
 }
 
+wstdcall NTSTATUS WIN_FUNC(WdfVersionBind,4)
+	(struct driver_object *drv_obj, char *reg_path, ULONG *wdf_version,
+	 void *drv_globals)
+{
+	ENTER1("drv_obj: %p, reg_path: %p, wdf_version: 0x%x, drv_globals: %p",
+	       drv_obj, reg_path, *wdf_version, drv_globals);
+	TODO();
+	EXIT1(return STATUS_NOT_IMPLEMENTED);
+}
+
+wstdcall NTSTATUS WIN_FUNC(WdfVersionUnbind,3)
+	(ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3)
+{
+	ENTER1("0x%lx 0x%lx 0x%lx", arg1, arg2, arg3);
+	TODO();
+	EXIT1(return STATUS_NOT_IMPLEMENTED);
+}
+
 /* this function can't be wstdcall as it takes variable number of args */
 __attribute__((format(printf, 1, 2)))
 noregparm ULONG WIN_FUNC(DbgPrint,12)
