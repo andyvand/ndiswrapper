@@ -404,14 +404,12 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 	}
 	switch(param->type) {
 	case NdisParameterInteger:
-		snprintf(setting->value, sizeof(u32), "%u",
+		snprintf(setting->value, MAX_SETTING_VALUE_LEN, "%u",
 			 param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NdisParameterHexInteger:
-		snprintf(setting->value, sizeof(u32), "%x",
+		snprintf(setting->value, MAX_SETTING_VALUE_LEN, "%x",
 			 param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NdisParameterString:
 		ansi.buf = setting->value;
@@ -424,11 +422,6 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 		if (ansi.length == ansi.max_length)
 			ansi.length--;
 		setting->value[ansi.length] = 0;
-		break;
-	case NdisParameterBinary:
-		snprintf(setting->value, sizeof(u32), "%u",
-			 param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
 		break;
 	default:
 		TRACE2("unknown setting type: %d", param->type);
