@@ -1995,9 +1995,9 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	wnd->tx_ok = 0;
+	netif_carrier_off(wnd->net_dev);
 	if (wnd->max_tx_packets)
 		unregister_netdev(wnd->net_dev);
-	netif_carrier_off(wnd->net_dev);
 	/* if device is suspended, but resume failed, tx_ring_mutex
 	 * may already be locked */
 	if (down_trylock(&wnd->tx_ring_mutex))
