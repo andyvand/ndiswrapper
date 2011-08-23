@@ -803,27 +803,37 @@ static int set_packet_filter(struct ndis_device *wnd, ULONG packet_filter)
 
 void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
 {
-	ENTER2("state: 0x%x", state);
-	if (state == NdisMediaStateConnected) {
-		netif_carrier_on(wnd->net_dev);
+	struct net_device *net_dev = wnd->net_dev;
+
+	ENTER2("state: 0x%x, carrier %d", state, netif_carrier_ok(net_dev));
+	switch (state) {
+	case NdisMediaStateConnected:
+		if (netif_carrier_ok(net_dev))
+			return;
+		netif_carrier_on(net_dev);
 		wnd->tx_ok = 1;
-		if (netif_queue_stopped(wnd->net_dev))
-			netif_wake_queue(wnd->net_dev);
+		if (netif_queue_stopped(net_dev))
+			netif_wake_queue(net_dev);
 		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 			set_bit(LINK_STATUS_ON, &wnd->ndis_pending_work);
 			schedule_wrapndis_work(&wnd->ndis_work);
 		}
-	} else if (state == NdisMediaStateDisconnected) {
-		netif_carrier_off(wnd->net_dev);
-		netif_stop_queue(wnd->net_dev);
+		break;
+	case NdisMediaStateDisconnected:
+		if (!netif_carrier_ok(net_dev))
+			return;
+		netif_carrier_off(net_dev);
+		netif_stop_queue(net_dev);
 		wnd->tx_ok = 0;
 		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 			memset(&wnd->essid, 0, sizeof(wnd->essid));
 			set_bit(LINK_STATUS_OFF, &wnd->ndis_pending_work);
 			schedule_wrapndis_work(&wnd->ndis_work);
 		}
-	} else {
+		break;
+	default:
 		WARNING("invalid media state: 0x%x", state);
+		break;
 	}
 }
 
@@ -847,7 +857,14 @@ static void ndis_net_dev_uninit(struct net_device *net_dev)
 
 static int ndis_net_dev_open(struct net_device *net_dev)
 {
-	ENTER1("%p", netdev_priv(net_dev));
+	int status, res;
+	struct ndis_device *wnd = netdev_priv(net_dev);
+
+	ENTER1("%p", wnd);
+	res = mp_query_int(wnd, OID_GEN_MEDIA_CONNECT_STATUS, &status);
+	if (res == NDIS_STATUS_SUCCESS && status >= NdisMediaStateConnected &&
+	    status <= NdisMediaStateDisconnected)
+		set_media_state(wnd, status);
 	netif_start_queue(net_dev);
 	netif_poll_enable(net_dev);
 	EXIT1(return 0);
@@ -1964,9 +1981,6 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 		set_default_iw_params(wnd);
 	}
-	status = mp_query_int(wnd, OID_GEN_MEDIA_CONNECT_STATUS, (int *)buf);
-	if (status == NDIS_STATUS_SUCCESS)
-		set_media_state(wnd, *((int *)buf));
 	kfree(buf);
 	hangcheck_add(wnd);
 	add_iw_stats_timer(wnd);
