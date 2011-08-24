@@ -1201,7 +1201,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_device *wnd = netdev_priv(dev);
-	unsigned int i, list_len, needed;
+	unsigned int i, buf_len, needed, data_len;
 	NDIS_STATUS res;
 	struct ndis_bssid_list *bssid_list = NULL;
 	char *event = extra;
@@ -1211,42 +1211,47 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	/* try with space for a few scan items */
-	list_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;
-	bssid_list = kzalloc(list_len, GFP_KERNEL);
-	if (!bssid_list) {
-		ERROR("couldn't allocate memory");
-		return -ENOMEM;
-	}
-	/* some drivers don't set bssid_list->num_items to 0 if
-	   OID_802_11_BSSID_LIST returns no items (prism54 driver, e.g.,) */
+	buf_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;
 
-	needed = 0;
-	res = mp_query_info(wnd, OID_802_11_BSSID_LIST,
-			    bssid_list, list_len, NULL, &needed);
-	if (res == NDIS_STATUS_INVALID_LENGTH ||
-	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
-		/* now try with required space */
-		kfree(bssid_list);
-		list_len = needed;
-		bssid_list = kzalloc(list_len, GFP_KERNEL);
+	/* Try many times, as the needed space may grow between queries */
+	for (i = 0; i < 10; i++) {
+		bssid_list = kzalloc(buf_len, GFP_KERNEL);
 		if (!bssid_list) {
-			ERROR("couldn't allocate memory");
+			ERROR("couldn't allocate %u bytes for scan results",
+			      buf_len);
 			return -ENOMEM;
 		}
 
-		res = mp_query(wnd, OID_802_11_BSSID_LIST,
-			       bssid_list, list_len);
+		needed = 0;
+		data_len = 0;
+		res = mp_query_info(wnd, OID_802_11_BSSID_LIST, bssid_list,
+				    buf_len, &data_len, &needed);
+		TRACE2("try %d: given %d bytes, needed %d, written %d",
+		       i, buf_len, needed, data_len);
+		if (needed <= buf_len)
+			break;
+		kfree(bssid_list);
+		buf_len = needed;
 	}
 	if (res) {
 		WARNING("getting BSSID list failed (%08X)", res);
 		kfree(bssid_list);
 		EXIT2(return -EOPNOTSUPP);
 	}
-	TRACE2("%d", bssid_list->num_items);
+
+	/* some drivers don't set bssid_list->num_items to 0 if
+	   OID_802_11_BSSID_LIST returns no items (prism54 driver, e.g.,) */
+	TRACE2("items: %d", bssid_list->num_items);
 	cur_item = &bssid_list->bssid[0];
 	for (i = 0; i < bssid_list->num_items; i++) {
+		TRACE2("item %d: len %d, remaining data %d",
+		       i, cur_item->length, data_len);
+		/* drop truncated items */
+		if (cur_item->length > data_len)
+			break;
 		event = ndis_translate_scan(dev, info, event,
 					    extra + IW_SCAN_MAX_DATA, cur_item);
+		data_len -= cur_item->length;
 		cur_item = (struct ndis_wlan_bssid *)((char *)cur_item +
 						      cur_item->length);
 	}
