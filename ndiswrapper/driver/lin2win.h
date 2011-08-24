@@ -52,6 +52,8 @@
 		: outputs()						\
 		: [fptr] "r" (func)					\
 		: clobbers());						\
+	if (0)								\
+		func();							\
 	_ret;								\
 })
 
@@ -69,6 +71,8 @@
 		: outputs()						\
 		: "c" (arg1), [fptr] "r" (func)				\
 		: clobbers());						\
+	if (0)								\
+		func(arg1);						\
 	_ret;								\
 })
 
@@ -86,6 +90,8 @@
 		: outputs()						\
 		: "c" (arg1), "d" (arg2), [fptr] "r" (func)		\
 		: clobbers());						\
+	if (0)								\
+		func(arg1, arg2);					\
 	_ret;								\
 })
 
@@ -104,6 +110,8 @@
 		: "c" (arg1), "d" (arg2), "r" (r8),			\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
+	if (0)								\
+		func(arg1, arg2, arg3);					\
 	_ret;								\
 })
 
@@ -122,6 +130,8 @@
 		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
+	if (0)								\
+		func(arg1, arg2, arg3, arg4);				\
 	_ret;								\
 })
 
@@ -142,6 +152,8 @@
 		  [rarg5] "ri" ((u64)arg5),				\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
+	if (0)								\
+		func(arg1, arg2, arg3, arg4, arg5);			\
 	_ret;								\
 })
 
@@ -163,6 +175,8 @@
 		  [rarg5] "ri" ((u64)arg5), [rarg6] "ri" ((u64)arg6),	\
 		  [fptr] "r" (func)					\
 		: clobbers());						\
+	if (0)								\
+		func(arg1, arg2, arg3, arg4, arg5, arg6);		\
 	_ret;								\
 })
 
