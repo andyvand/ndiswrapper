@@ -444,15 +444,14 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	 * freed, so we use slack_kmalloc so it gets freed when driver
 	 * is unloaded */
 	if (nmb)
-		wrap_timer = kmalloc(sizeof(*wrap_timer), irql_gfp());
+		wrap_timer = kzalloc(sizeof(*wrap_timer), irql_gfp());
 	else
-		wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
+		wrap_timer = slack_kzalloc(sizeof(*wrap_timer));
 	if (!wrap_timer) {
 		ERROR("couldn't allocate memory for timer");
 		return;
 	}
 
-	memset(wrap_timer, 0, sizeof(*wrap_timer));
 	init_timer(&wrap_timer->timer);
 	wrap_timer->timer.data = (unsigned long)wrap_timer;
 	wrap_timer->timer.function = timer_proc;

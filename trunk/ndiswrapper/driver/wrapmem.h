@@ -37,6 +37,7 @@ enum alloc_type { ALLOC_TYPE_KMALLOC_ATOMIC, ALLOC_TYPE_KMALLOC_NON_ATOMIC,
 int wrapmem_init(void);
 void wrapmem_exit(void);
 void *slack_kmalloc(size_t size);
+void *slack_kzalloc(size_t size);
 void slack_kfree(void *ptr);
 void wrapmem_info(void);
 
