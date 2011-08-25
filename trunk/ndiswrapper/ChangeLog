@@ -5,6 +5,8 @@ Version 1.57-rc1 2011-08-22
 * IW_AUTH_MFP implemented
 * Reserve stack before copying arguments when calling from Windows to Linux
   on x86_64
+* Fixed memory corruption on module unload seen with Atheros and Marvell USB
+  devices
 * Fixed a kernel panic if there are many devices for one driver and one
   fails to initialize
 * Fixed support for AVM Fritz USB
