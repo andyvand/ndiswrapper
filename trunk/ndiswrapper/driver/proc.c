@@ -64,8 +64,8 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 	}
 
 	if (p - page > count) {
-		ERROR("wrote %lu bytes (limit is %u)\n",
-		      (unsigned long)(p - page), count);
+		ERROR("wrote %td bytes (limit is %u)\n",
+		      p - page, count);
 		*eof = 1;
 	}
 
@@ -122,8 +122,8 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		     "adhoc" : (infra_mode == Ndis802_11Infrastructure) ?
 		     "managed" : "auto");
 	if (p - page > count) {
-		WARNING("wrote %lu bytes (limit is %u)",
-			(unsigned long)(p - page), count);
+		WARNING("wrote %td bytes (limit is %u)",
+			p - page, count);
 		*eof = 1;
 	}
 
@@ -243,8 +243,8 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 		p += sprintf(p, "packet_filter: 0x%08x\n", packet_filter);
 	}
 	if (p - page > count) {
-		WARNING("wrote %lu bytes (limit is %u)",
-			(unsigned long)(p - page), count);
+		WARNING("wrote %td bytes (limit is %u)",
+			p - page, count);
 		*eof = 1;
 	}
 
@@ -265,7 +265,7 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 
 	p += sprintf(p, "hangcheck_interval=%d\n",
 		     hangcheck_interval == 0 ?
-		     (int)(wnd->hangcheck_interval / HZ) : -1);
+		     (wnd->hangcheck_interval / HZ) : -1);
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {
 		p += sprintf(p, "%s=%s\n", setting->name, setting->value);

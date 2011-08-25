@@ -1694,8 +1694,8 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	void *addr;
 	gfp_t flags;
 
-	ENTER2("%zu, 0x%lx, 0x%lx, 0x%lx, %d", size, (long)lowest,
-	       (long)highest, (long)boundary, cache_type);
+	ENTER2("%zu, 0x%llx, 0x%llx, 0x%llx, %d", size, lowest,
+	       highest, boundary, cache_type);
 	flags = irql_gfp();
 	addr = wrap_get_free_pages(flags, size);
 	TRACE2("%p, %zu, 0x%x", addr, size, flags);
@@ -2155,7 +2155,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteFile,9)
 	else
 		offset = fo->current_byte_offset;
 	if (length + offset > file->size) {
-		WARNING("%lu, %u", length + offset, (unsigned int)file->size);
+		WARNING("%lu, %zu", length + offset, file->size);
 		/* TODO: implement writing past end of current size */
 		iosb->status = STATUS_FAILURE;
 		iosb->info = 0;
@@ -2558,7 +2558,7 @@ int ntoskernel_init(void)
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = update_user_shared_data_proc;
-	shared_data_timer.data = (unsigned long)0;
+	shared_data_timer.data = 0;
 #endif
 	return 0;
 }
