@@ -967,11 +967,10 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 //		EXIT2(return NDIS_STATUS_RESOURCES);
 	}
 
-	wnd->dma_map_addr = kmalloc(basemap * sizeof(*(wnd->dma_map_addr)),
+	wnd->dma_map_addr = kzalloc(basemap * sizeof(*(wnd->dma_map_addr)),
 				    GFP_KERNEL);
 	if (!wnd->dma_map_addr)
 		EXIT2(return NDIS_STATUS_RESOURCES);
-	memset(wnd->dma_map_addr, 0, basemap * sizeof(*(wnd->dma_map_addr)));
 	wnd->dma_map_count = basemap;
 	TRACE2("%u", wnd->dma_map_count);
 	EXIT2(return NDIS_STATUS_SUCCESS);
