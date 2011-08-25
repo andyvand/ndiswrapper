@@ -966,6 +966,9 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 		else
 			wnd->net_dev->features |= NETIF_F_HIGHDMA;
 #endif
+	} else {
+		ERROR("dmasize %d not supported", dmasize);
+		EXIT2(return NDIS_STATUS_NOT_SUPPORTED);
 	}
 	/* since memory for buffer is allocated with kmalloc, buffer
 	 * is physically contiguous, so entire map will fit in one
@@ -2612,17 +2615,18 @@ wstdcall struct nt_list *WIN_FUNC(NdisInterlockedRemoveHeadList,2)
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
-	(struct ndis_mp_block *nmb, BOOLEAN dma_size, ULONG max_phy_map)
+	(struct ndis_mp_block *nmb, BOOLEAN dma64_supported, ULONG max_phy_map)
 {
 	struct ndis_device *wnd = nmb->wnd;
-	ENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
+	ENTER2("dma64_supported=%d, maxtransfer=%u", dma64_supported,
+	       max_phy_map);
 	if (!wrap_is_pci_bus(wnd->wd->dev_bus)) {
 		ERROR("used on a non-PCI device");
 		return NDIS_STATUS_NOT_SUPPORTED;
 	}
 #ifdef CONFIG_X86_64
-	if (dma_size != NDIS_DMA_64BITS) {
-		TRACE1("DMA size is not 64-bits");
+	if (!dma64_supported) {
+		TRACE1("64-bit DMA size is not supported");
 		if (pci_set_dma_mask(wnd->wd->pci.pdev, DMA_BIT_MASK(32)) ||
 		    pci_set_consistent_dma_mask(wnd->wd->pci.pdev,
 						DMA_BIT_MASK(32)))
