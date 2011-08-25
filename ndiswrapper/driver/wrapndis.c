@@ -183,7 +183,7 @@ static NDIS_STATUS mp_pnp_event(struct ndis_device *wnd,
 			power_profile = NdisPowerProfileAcOnLine;
 		LIN2WIN4(mp->pnp_event_notify, wnd->nmb->mp_ctx,
 			 NdisDevicePnPEventPowerProfileChanged,
-			 &power_profile, (ULONG)sizeof(power_profile));
+			 &power_profile, sizeof(power_profile));
 		return NDIS_STATUS_SUCCESS;
 	default:
 		WARNING("event %d not yet implemented", event);
@@ -1309,7 +1309,7 @@ static void get_encryption_capa(struct ndis_device *wnd, char *buf,
 	ndis_key.index = 0xC0000001;
 	ndis_key.struct_size = sizeof(ndis_key);
 	res = mp_set(wnd, OID_802_11_ADD_KEY, &ndis_key, ndis_key.struct_size);
-	TRACE2("%08X, %lu", res, (unsigned long)sizeof(ndis_key));
+	TRACE2("%08X, %zu", res, sizeof(ndis_key));
 	if (res && res != NDIS_STATUS_INVALID_DATA)
 		EXIT1(return);
 	res = mp_query(wnd, OID_802_11_ASSOCIATION_INFORMATION,

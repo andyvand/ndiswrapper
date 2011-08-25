@@ -361,11 +361,11 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 	switch(type) {
 	case NdisParameterInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 0);
-		TRACE2("0x%x", (ULONG)param->data.integer);
+		TRACE2("0x%x", param->data.integer);
 		break;
 	case NdisParameterHexInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 16);
-		TRACE2("0x%x", (ULONG)param->data.integer);
+		TRACE2("0x%x", param->data.integer);
 		break;
 	case NdisParameterString:
 		RtlInitAnsiString(&ansi, setting->value);
@@ -378,7 +378,7 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 		break;
 	case NdisParameterBinary:
 		param->data.integer = simple_strtol(setting->value, NULL, 2);
-		TRACE2("0x%x", (ULONG)param->data.integer);
+		TRACE2("0x%x", param->data.integer);
 		break;
 	default:
 		ERROR("unknown type: %d", type);
@@ -1035,8 +1035,8 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 		return;
 	}
 	if (wnd->dma_map_addr[index]) {
-		TRACE2("buffer %p at %d is already mapped: %lx", buf, index,
-		       (unsigned long)wnd->dma_map_addr[index]);
+		TRACE2("buffer %p at %d is already mapped: %llx", buf, index,
+		       (unsigned long long)wnd->dma_map_addr[index]);
 //		*array_size = 1;
 		return;
 	}
@@ -1075,7 +1075,7 @@ wstdcall void WIN_FUNC(NdisMCompleteBufferPhysicalMapping,3)
 		      index, wnd->dma_map_count);
 		return;
 	}
-	TRACE4("%lx", (unsigned long)wnd->dma_map_addr[index]);
+	TRACE4("%llx", (unsigned long long)wnd->dma_map_addr[index]);
 	if (wnd->dma_map_addr[index]) {
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, wnd->dma_map_addr[index],
 				     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);

@@ -1145,7 +1145,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
 
-	TRACE2("%d, %u", bssid->length, (unsigned int)sizeof(*bssid));
+	TRACE2("%d, %zu", bssid->length, sizeof(*bssid));
 	if (bssid->length > sizeof(*bssid)) {
 		unsigned char *iep = (unsigned char *)bssid_ex->ies +
 			sizeof(struct ndis_fixed_ies);
