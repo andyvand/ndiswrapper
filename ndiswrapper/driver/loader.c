@@ -149,8 +149,7 @@ static int load_sys_files(struct wrap_driver *driver,
 		strncpy(pe_image->name, load_driver->sys_files[i].name,
 			sizeof(pe_image->name));
 		pe_image->name[sizeof(pe_image->name)-1] = 0;
-		TRACE1("image size: %lu bytes",
-		       (unsigned long)load_driver->sys_files[i].size);
+		TRACE1("image size: %zu bytes", load_driver->sys_files[i].size);
 
 #ifdef CONFIG_X86_64
 #ifdef PAGE_KERNEL_EXECUTABLE

@@ -70,7 +70,7 @@ void *slack_kmalloc(size_t size)
 	struct slack_alloc_info *info;
 	gfp_t flags;
 
-	ENTER4("size = %lu", (unsigned long)size);
+	ENTER4("size = %zu", size);
 
 	if (irql_gfp() & GFP_ATOMIC)
 		flags = GFP_ATOMIC;
