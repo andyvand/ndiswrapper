@@ -171,6 +171,7 @@ wstdcall void WIN_FUNC(IoFreeIrp,1)
 
 	if (irp->flags & IRP_SYNCHRONOUS_API)
 		IoDequeueThreadIrp(irp);
+	IoCancelIrp(irp);
 	kfree(irp);
 
 	IOEXIT(return);
