@@ -107,6 +107,14 @@ void slack_kfree(void *ptr)
 	EXIT4(return);
 }
 
+void *slack_kzalloc(size_t size)
+{
+	void *ptr = slack_kmalloc(size);
+	if (ptr)
+		memset(ptr, 0, size);
+	return ptr;
+}
+
 #if defined(ALLOC_DEBUG)
 void *wrap_kmalloc(size_t size, gfp_t flags, const char *file, int line)
 {
