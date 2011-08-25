@@ -354,7 +354,8 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 			status = mp_set_int(wnd, OID_PNP_ENABLE_WAKE_UP,
 					    wnd->ndis_wolopts);
 			TRACE2("0x%x, 0x%x", status, wnd->ndis_wolopts);
-			if (status == NDIS_STATUS_SUCCESS) {
+			if (status == NDIS_STATUS_SUCCESS &&
+			    wrap_is_pci_bus(wnd->wd->dev_bus)) {
 				if (wnd->ndis_wolopts)
 					wnd->wd->pci.wake_state =
 						PowerDeviceD3;
