@@ -679,6 +679,10 @@ wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
+	if (!wrap_is_pci_bus(wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return 0;
+	}
 	for (i = 0; i < len; i++)
 		if (pci_read_config_byte(wd->pci.pdev, offset + i, &buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
@@ -703,6 +707,10 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
+	if (!wrap_is_pci_bus(wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return 0;
+	}
 	for (i = 0; i < len; i++)
 		if (pci_write_config_byte(wd->pci.pdev, offset + i, buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
@@ -931,6 +939,10 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 	struct ndis_device *wnd = nmb->wnd;
 
 	ENTER2("%p, %d %d %d %d", wnd, dmachan, dmasize, basemap, max_buf_size);
+	if (!wrap_is_pci_bus(wnd->wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return NDIS_STATUS_NOT_SUPPORTED;
+	}
 	if (wnd->dma_map_count > 0) {
 		WARNING("%s: map registers already allocated: %u",
 			wnd->net_dev->name, wnd->dma_map_count);
@@ -1006,6 +1018,10 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 	struct ndis_device *wnd = nmb->wnd;
 
 	ENTER3("%p, %p, %u, %u", wnd, buf, index, wnd->dma_map_count);
+	if (!wrap_is_pci_bus(wnd->wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return;
+	}
 	if (unlikely(wnd->sg_dma_size || !write_to_dev ||
 		     index >= wnd->dma_map_count)) {
 		WARNING("invalid request: %d, %d, %d, %d", wnd->sg_dma_size,
@@ -1045,6 +1061,10 @@ wstdcall void WIN_FUNC(NdisMCompleteBufferPhysicalMapping,3)
 
 	ENTER3("%p, %p %u (%u)", wnd, buf, index, wnd->dma_map_count);
 
+	if (!wrap_is_pci_bus(wnd->wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return;
+	}
 	if (unlikely(wnd->sg_dma_size))
 		WARNING("buffer %p may have been unmapped already", buf);
 	if (index >= wnd->dma_map_count) {
@@ -1069,6 +1089,10 @@ wstdcall void WIN_FUNC(NdisMAllocateSharedMemory,5)
 	struct wrap_device *wd = nmb->wnd->wd;
 
 	ENTER3("size: %u, cached: %d", size, cached);
+	if (!wrap_is_pci_bus(wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return;
+	}
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &dma_addr);
 	if (*virt)
 		*phys = dma_addr;
@@ -1084,6 +1108,10 @@ wstdcall void WIN_FUNC(NdisMFreeSharedMemory,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ENTER3("%p, %llx, %u", virt, addr, size);
+	if (!wrap_is_pci_bus(wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return;
+	}
 	PCI_DMA_FREE_COHERENT(wd->pci.pdev, size, virt, addr);
 	EXIT3(return);
 }
@@ -2588,6 +2616,10 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
 {
 	struct ndis_device *wnd = nmb->wnd;
 	ENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
+	if (!wrap_is_pci_bus(wnd->wd->dev_bus)) {
+		ERROR("used on a non-PCI device");
+		return NDIS_STATUS_NOT_SUPPORTED;
+	}
 #ifdef CONFIG_X86_64
 	if (dma_size != NDIS_DMA_64BITS) {
 		TRACE1("DMA size is not 64-bits");
