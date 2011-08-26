@@ -218,7 +218,7 @@ static const char *network_type_to_name(enum ndis_dot11_phy_type type)
 		return "IEEE 802.11g";
 	default:
 		WARNING("invalid type: %d", type);
-		return "Unkown";
+		return "Unknown";
 	}
 }
 
