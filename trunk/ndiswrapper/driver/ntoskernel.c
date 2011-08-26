@@ -94,7 +94,7 @@ DEFINE_PER_CPU(irql_info_t, irql_info);
 static void update_user_shared_data_proc(unsigned long data)
 {
 	/* timer is supposed to be scheduled every 10ms, but bigger
-	 * intervals seem to work (tried upto 50ms) */
+	 * intervals seem to work (tried up to 50ms) */
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	*((ULONG64 *)&kuser_shared_data.interrupt_time) =
 		jiffies * TICKSPERSEC / HZ;
