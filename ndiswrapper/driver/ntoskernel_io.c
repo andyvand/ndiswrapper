@@ -114,12 +114,18 @@ wstdcall BOOLEAN WIN_FUNC(IoCancelIrp,1)
 	IOTRACE("%p", cancel_routine);
 	irp->cancel = TRUE;
 	if (cancel_routine) {
-		struct io_stack_location *irp_sl;
-		irp_sl = IoGetCurrentIrpStackLocation(irp);
-		IOTRACE("%p, %p", irp_sl, irp_sl->dev_obj);
+		struct device_object *dev_obj;
+
+		if (irp->current_location >= 0 &&
+		    irp->current_location < irp->stack_count)
+			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
+		else
+			dev_obj = NULL;
+		IOTRACE("current_location: %d, dev_obj: %p",
+			irp->current_location, dev_obj);
 		/* cancel_routine will release the spin lock */
 		__release(irp->cancel_irql);
-		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
+		LIN2WIN2(cancel_routine, dev_obj, irp);
 		/* in usb's cancel, irp->cancel is set to indicate
 		 * status of cancel */
 		IOEXIT(return xchg(&irp->cancel, TRUE));
