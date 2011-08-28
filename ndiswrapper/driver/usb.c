@@ -189,6 +189,7 @@ static void wrap_free_urb(struct urb *urb)
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
 	irp->cancel_routine = NULL;
+	IRP_WRAP_URB(irp) = NULL;
 	if (wrap_urb->flags & WRAP_URB_COPY_BUFFER) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
