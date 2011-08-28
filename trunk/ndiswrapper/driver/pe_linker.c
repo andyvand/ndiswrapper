@@ -489,6 +489,7 @@ static void fix_user_shared_data_addr(char *driver, unsigned long length)
 {
 	unsigned long i, n, max_addr, *addr;
 
+	TRACE1("fixing KI_USER_SHARED_DATA address in the driver");
 	n = length - sizeof(unsigned long);
 	max_addr = KI_USER_SHARED_DATA + sizeof(kuser_shared_data);
 	for (i = 0; i < n; i++) {
@@ -563,7 +564,6 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 			return -EINVAL;
 		}
 #if defined(CONFIG_X86_64)
-		INFO("fixing KI_USER_SHARED_DATA address in the driver");
 		fix_user_shared_data_addr(pe_image[i].image, pe_image[i].size);
 #endif
 		flush_icache_range(pe->image, pe->size);
