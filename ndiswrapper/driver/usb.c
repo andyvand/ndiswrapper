@@ -188,6 +188,7 @@ static void wrap_free_urb(struct urb *urb)
 	USBTRACE("freeing urb: %p", urb);
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
+	irp->cancel_routine = NULL;
 	if (wrap_urb->flags & WRAP_URB_COPY_BUFFER) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
@@ -308,6 +309,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		if (!urb->transfer_buffer) {
 			WARNING("couldn't allocate dma buf");
 			IoAcquireCancelSpinLock(&irp->cancel_irql);
+			irp->cancel_routine = NULL;
 			wrap_urb->state = URB_FREE;
 			wrap_urb->irp = NULL;
 			IRP_WRAP_URB(irp) = NULL;
