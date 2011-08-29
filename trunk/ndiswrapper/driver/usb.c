@@ -259,7 +259,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		if (cmpxchg(&wrap_urb->state, URB_FREE,
 			    URB_ALLOCATED) == URB_FREE) {
 			urb = wrap_urb->urb;
-			usb_init_urb(urb);
 			break;
 		}
 	}
