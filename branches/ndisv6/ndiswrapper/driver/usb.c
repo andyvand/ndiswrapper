@@ -195,7 +195,6 @@ static void wrap_free_urb(struct urb *urb)
 		usb_free_coherent(wd->usb.udev, urb->transfer_buffer_length,
 				  urb->transfer_buffer, urb->transfer_dma);
 	}
-	kfree(urb->setup_packet);
 	if (wd->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		RemoveEntryList(&wrap_urb->list);
