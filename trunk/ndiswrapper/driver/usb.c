@@ -182,26 +182,24 @@ static NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
 
 static void wrap_free_urb(struct urb *urb)
 {
-	struct irp *irp;
-	struct wrap_urb *wrap_urb;
+	struct wrap_urb *wrap_urb = urb->context;
+	struct irp *irp = wrap_urb->irp;
+	struct wrap_device *wd = IRP_WRAP_DEVICE(irp);
 
 	USBTRACE("freeing urb: %p", urb);
-	wrap_urb = urb->context;
-	irp = wrap_urb->irp;
 	irp->cancel_routine = NULL;
 	IRP_WRAP_URB(irp) = NULL;
 	if (wrap_urb->flags & WRAP_URB_COPY_BUFFER) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
-		usb_free_coherent(IRP_WRAP_DEVICE(irp)->usb.udev,
-				urb->transfer_buffer_length,
-				urb->transfer_buffer, urb->transfer_dma);
+		usb_free_coherent(wd->usb.udev, urb->transfer_buffer_length,
+				  urb->transfer_buffer, urb->transfer_dma);
 	}
 	kfree(urb->setup_packet);
-	if (IRP_WRAP_DEVICE(irp)->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
+	if (wd->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		RemoveEntryList(&wrap_urb->list);
-		IRP_WRAP_DEVICE(irp)->usb.num_alloc_urbs--;
+		wd->usb.num_alloc_urbs--;
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		usb_free_urb(urb);
 		kfree(wrap_urb);
@@ -228,15 +226,15 @@ void wrap_resume_urbs(struct wrap_device *wd)
 wstdcall void wrap_cancel_irp(struct device_object *dev_obj, struct irp *irp)
 {
 	struct urb *urb;
+	struct wrap_urb *wrap_urb = IRP_WRAP_URB(irp);
 
 	/* NB: this function is called holding Cancel spinlock */
 	USBENTER("irp: %p", irp);
-	urb = IRP_WRAP_URB(irp)->urb;
+	urb = wrap_urb->urb;
 	USBTRACE("canceling urb %p", urb);
 	if (wrap_cancel_urb(IRP_WRAP_URB(irp))) {
 		irp->cancel = FALSE;
-		ERROR("urb %p can't be canceled: %d", urb,
-		      IRP_WRAP_URB(irp)->state);
+		ERROR("urb %p can't be canceled: %d", urb, wrap_urb->state);
 	} else
 		USBTRACE("urb %p canceled", urb);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
@@ -331,19 +329,18 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 static USBD_STATUS wrap_submit_urb(struct irp *irp)
 {
 	int ret;
-	struct urb *urb;
-	union nt_urb *nt_urb;
+	struct wrap_urb *wrap_urb = IRP_WRAP_URB(irp);
+	struct urb *urb = wrap_urb->urb;
+	union nt_urb *nt_urb = IRP_URB(irp);
 
-	urb = IRP_WRAP_URB(irp)->urb;
-	nt_urb = IRP_URB(irp);
 #ifdef USB_DEBUG
-	if (IRP_WRAP_URB(irp)->state != URB_ALLOCATED) {
+	if (wrap_urb->state != URB_ALLOCATED) {
 		ERROR("urb %p is in wrong state: %d",
-		      urb, IRP_WRAP_URB(irp)->state);
+		      urb, wrap_urb->state);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		return NT_URB_STATUS(nt_urb);
 	}
-	IRP_WRAP_URB(irp)->id = pre_atomic_add(urb_id, 1);
+	wrap_urb->id = pre_atomic_add(urb_id, 1);
 #endif
 	DUMP_WRAP_URB(IRP_WRAP_URB(irp), USB_DIR_OUT);
 	irp->io_status.status = STATUS_PENDING;
@@ -352,7 +349,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	IoMarkIrpPending(irp);
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
 	USBTRACE("%p", urb);
-	IRP_WRAP_URB(irp)->state = URB_SUBMITTED;
+	wrap_urb->state = URB_SUBMITTED;
 	ret = usb_submit_urb(urb, irql_gfp());
 	if (ret) {
 		USBTRACE("ret: %d", ret);
@@ -480,11 +477,10 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 	unsigned int pipe;
 	struct usbd_bulk_or_intr_transfer *bulk_int_tx;
 	USBD_STATUS status;
-	struct usb_device *udev;
-	union nt_urb *nt_urb;
+	struct wrap_device *wd = IRP_WRAP_DEVICE(irp);
+	struct usb_device *udev = wd->usb.udev;
+	union nt_urb *nt_urb = IRP_URB(irp);
 
-	nt_urb = IRP_URB(irp);
-	udev = IRP_WRAP_DEVICE(irp)->usb.udev;
 	bulk_int_tx = &nt_urb->bulk_int_transfer;
 	pipe_handle = bulk_int_tx->pipe_handle;
 	USBTRACE("flags: 0x%x, length: %u, buffer: %p, handle: %p",
@@ -545,14 +541,13 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	u8 req_type;
 	unsigned int pipe;
 	struct usbd_vendor_or_class_request *vc_req;
-	struct usb_device *udev;
-	union nt_urb *nt_urb;
 	USBD_STATUS status;
 	struct urb *urb;
 	struct usb_ctrlrequest *dr;
+	struct wrap_device *wd = IRP_WRAP_DEVICE(irp);
+	struct usb_device *udev = wd->usb.udev;
+	union nt_urb *nt_urb = IRP_URB(irp);
 
-	nt_urb = IRP_URB(irp);
-	udev = IRP_WRAP_DEVICE(irp)->usb.udev;
 	vc_req = &nt_urb->vendor_class_request;
 	USBTRACE("bits: %x, req: %x, val: %08x, index: %08x, flags: %x,"
 		 "buf: %p, len: %d", vc_req->reserved_bits, vc_req->request,
