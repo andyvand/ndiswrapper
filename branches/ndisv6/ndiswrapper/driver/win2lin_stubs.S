@@ -78,52 +78,13 @@ In Linux it should look like:
 	.text
 
 /*
- * Registers %rdi and %rsi must be preserved on Windows, but not on Linux.
- */
-
-.macro win2lin_prolog
-	push	%rsi
-	push	%rdi
-.endm
-
-.macro win2lin_epilog
-	pop	%rdi
-	pop	%rsi
-.endm
-
-/*
- * Allocate stack frame for Linux arguments.
- *
- * First 6 arguments are passed through registers, so we need space for
- * argument 7 and above.  The arguments should be copied onto stack after
- * the space has been reserved.
- */
-
-.macro reserve_stack argtotal
-	sub $(\argtotal - 6) * 8, %rsp
-	.endm
-
-.macro free_stack argtotal
-	add $(\argtotal - 6) * 8, %rsp
-	.endm
-
-/*
- * Call Linux function.  win2lin macro puts its address to %r10.
- */
-
-.macro call_lin_func
-	xor	%rax, %rax	/* number of arguments in SSE registers */
-	call	*%r10
-.endm
-
-/*
  * win2lin_win_arg(N, ARGTOTAL) gives the address of the Windows argument
  * N out of ARGTOTAL after the stack has been prepared for the Linux function
  * call.
  *
  * When calling the Linux function, two registers (%rdi and %rsi) are pushed
- * to the stack in win2lin_prolog.  When passing more than 6 arguments,
- * arguments starting with argument 7 are pushed to the stack as well.
+ * to the stack.  When passing more than 6 arguments, arguments starting with
+ * argument 7 are pushed to the stack as well.
  *
  * When called from Windows, the Nth argument is at (N * 8)(%rsp).  We add two
  * 8-byte positions for the saved registers (%rdi and %rsi) and (ARGTOTAL - 6)
@@ -132,7 +93,7 @@ In Linux it should look like:
  * If there are 6 and less arguments, ARGTOTAL must be 6.  N must be at least
  * 5, as arguments 1 to 4 are passed in registers.
  */
-#define win2lin_win_arg(arg, argtotal) ((arg + 2 + (argtotal - 6)) * 8)(%rsp)
+#define win2lin_win_arg(n, argtotal) ((n + 2 + (argtotal - 6)) * 8)(%rsp)
 
 /*
  * win2lin_lin_arg(N) gives the address of the Nth linux argument of the extra
@@ -141,200 +102,109 @@ In Linux it should look like:
  */
 #define win2lin_lin_arg(n) ((n - 7) * 8)(%rsp)
 
-/* Copy arguments 1 - 4 */
-#define win2lin_arg1 mov %rcx, %rdi
-#define win2lin_arg2 mov %rdx, %rsi
-#define win2lin_arg3 mov %r8, %rdx
-#define win2lin_arg4 mov %r9, %rcx
-
-/*
- * Copy arguments 5 - 6.
- *
- * Arguments 5 and 6 must be copied after arguments 3 and 4 to prevent
- * clobbering %r8 and %r9.  win2lin_arg5 and win2lin_arg6 must be used
- * only between win2lin_prolog and reserving the extra stack space for the
- * arguments.
- */
-#define win2lin_arg5 mov win2lin_win_arg(5, 6), %r8
-#define win2lin_arg6 mov win2lin_win_arg(6, 6), %r9
-
-.macro win2lin0
-	win2lin_prolog
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin1
-	win2lin_prolog
-	win2lin_arg1
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin2
-	win2lin_prolog
-	win2lin_arg1
-	win2lin_arg2
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin3
-	win2lin_prolog
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin4
-	win2lin_prolog
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin5
-	win2lin_prolog
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
-	win2lin_arg5
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin6
-	win2lin_prolog
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
-	win2lin_arg5
-	win2lin_arg6
-	call_lin_func
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin7
-	win2lin_prolog
-
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
-	win2lin_arg5
-	win2lin_arg6
-
-	reserve_stack(7)
-
-	/* Copy Windows argument 7 onto stack for the Linux function */
-	mov	win2lin_win_arg(7, 7), %r11
-	mov	%r11, win2lin_lin_arg(7)
-
-	call_lin_func
-
-	free_stack(7)
-
-	win2lin_epilog
-	ret
-.endm
-
-.macro win2lin8
-	win2lin_prolog
-
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
-	win2lin_arg5
-	win2lin_arg6
-
-	reserve_stack(8)
-
-	/* Copy Windows arguments 7 and 8 onto stack for the Linux function */
-	mov	win2lin_win_arg(7,8), %r11
-	mov	%r11, win2lin_lin_arg(7)
-	mov	win2lin_win_arg(8,8), %r11
-	mov	%r11, win2lin_lin_arg(8)
-
-	call_lin_func
-
-	free_stack(8)
-
-	win2lin_epilog
-	ret
-.endm
-
-/*
- * We assume here that we never need to handle more than 12 arguments.
- * Copy 12 arguments even if we need less.
- */
-.macro win2lin12
-	win2lin_prolog
-
-	reserve_stack(12)
-
-	/* Copy Windows arguments 7 through 12 onto stack */
-	mov	%rcx, %r11			/* save %rcx */
-	lea	win2lin_win_arg(7, 12), %rsi	/* source */
-	lea	win2lin_lin_arg(7), %rdi	/* destination */
-	mov	$6, %rcx			/* 6 arguments */
-	rep
-	movsq
-	mov	%r11, %rcx			/* restore %rcx */
-
-	/* Copy arguments 1 - 4 */
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
+/* Declare function LONGNAME, call function SHORTNAME with ARGC arguments */
+.macro win2linm longname, shortname, argc
+	.type	\longname, @function
+	ENTRY(\longname)
 
 	/*
-	 * Copy arguments 5 and 6. Cannot use win2lin_arg5 and win2lin_arg6
-	 * after reserve_stack.
+	 * Registers %rdi and %rsi are volatile on Linux, but not on Windows,
+	 * so save them on the stack.
 	 */
-	mov win2lin_win_arg(5, 12), %r8
-	mov win2lin_win_arg(6, 12), %r9
+	push	%rsi
+	push	%rdi
 
-	call_lin_func
+	/* Allocate extra stack space for arguments 7 and up */
+	.if (\argc >= 7)
+		sub $(\argc - 6) * 8, %rsp
+	.endif
 
-	free_stack(12)
+	/*
+	 * Copy arguments 7 and up.  We do it early, before %rdi and %rsi
+	 * are used for arguments 1 and 2, so we don't have to save them.
+	 * We still need to save %rcx if using a string copy.
+	 */
+	.if (\argc <= 8)
+		/* If 7 or 8 arguments, copy them individually through %r11 */
+		.if (\argc >= 7)
+			mov	win2lin_win_arg(7, 7), %r11
+			mov	%r11, win2lin_lin_arg(7)
+		.endif
+		.if (\argc >= 8)
+			mov	win2lin_win_arg(8, 8), %r11
+			mov	%r11, win2lin_lin_arg(8)
+		.endif
+	.else
+		/* If 9 and more arguments, copy them in a loop */
+		mov	%rcx, %r11			/* save arg1 */
+		lea	win2lin_win_arg(7, \argc), %rsi	/* source */
+		lea	win2lin_lin_arg(7), %rdi	/* destination */
+		mov	$(\argc - 6), %ecx		/* arguments to copy */
+		rep	movsq
+		mov	%r11, %rdi			/* restore arg1 */
+	.endif
 
-	win2lin_epilog
+	/*
+	 * Argument 1 - %rcx on Windows, %rdi on Linux
+	 * Micro-optimization - if we used loop, arg1 is already in %rdi
+	 */
+	.if (\argc >= 1) && (\argc <= 8)
+		mov %rcx, %rdi
+	.endif
+
+	/* Argument 2 - %rdx on Windows, %rsi on Linux */
+	.if (\argc >= 2)
+		mov %rdx, %rsi
+	.endif
+
+	/* Argument 3 - %r8 on Windows, %rdx on Linux */
+	.if (\argc >= 3)
+		mov %r8, %rdx
+	.endif
+
+	/* Argument 4 - %r9 on Windows, %rcx on Linux */
+	.if (\argc >= 4)
+		mov %r9, %rcx
+	.endif
+
+	/* Arguments 5 and 6 - on stack on Windows, %r8 and %r9 on Linux */
+	.if (\argc >= 7)
+		mov win2lin_win_arg(5, \argc), %r8
+		mov win2lin_win_arg(6, \argc), %r9
+	.else
+		/*
+		 * If no extra stack is needed, Windows arguments are located
+		 * as if there are 6 arguments.
+		 */
+		.if (\argc >= 5)
+			mov win2lin_win_arg(5, 6), %r8
+		.endif
+		.if (\argc >= 6)
+			mov win2lin_win_arg(6, 6), %r9
+		.endif
+	.endif
+
+	/* %rax on Linux is the number of arguments in SSE registers (zero) */
+	xor	%rax, %rax
+
+	/* Call the function */
+	call	\shortname
+
+	/* Free stack stack space for arguments 7 and up */
+	.if (\argc >= 7)
+		add $(\argc - 6) * 8, %rsp
+	.endif
+
+	/* Restore saved registers */
+	pop	%rdi
+	pop	%rsi
+
+	/* Return to Windows code */
 	ret
+	.size	\longname, (. - \longname)
 .endm
 
-.macro win2lin9
-	win2lin12
-.endm
-
-.macro win2lin10
-	win2lin12
-.endm
-
-.macro win2lin11
-	win2lin12
-.endm
-
-#define win2lin(name, argc)					\
-	.type	win2lin_ ## name ## _ ## argc, @function;	\
-ENTRY(win2lin_ ## name ## _ ## argc)				\
-	lea	name(%rip), %r10;				\
-	win2lin ## argc;					\
-	.size	win2lin_ ## name ## _ ## argc, .-win2lin_ ## name ## _ ## argc
+#define win2lin(name, argc) win2linm win2lin_ ## name ## _ ## argc, name, argc
 
 #include "win2lin_stubs.h"
 
