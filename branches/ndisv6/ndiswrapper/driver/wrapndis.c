@@ -234,7 +234,7 @@ static void mp_halt(struct ndis_device *wnd)
 		return;
 	}
 	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver;
-	if (test_bit(HW_PRESENT, &wnd->wd->hw_status))
+	if (test_bit(HW_DISABLED, &wnd->wd->hw_status))
 		halt_action = NdisHaltDeviceDisabled;
 	else
 		halt_action = NdisHaltDeviceSurpriseRemoved;
@@ -964,7 +964,7 @@ NDIS_STATUS mp_pnp_event(struct ndis_device *wnd,
 	case NdisDevicePnPEventSurpriseRemoved:
 		net_event.buf = NULL;
 		net_event.buf_length = 0;
-		if (!test_bit(HW_PRESENT, &wnd->wd->hw_status))
+		if (!test_bit(HW_DISABLED, &wnd->wd->hw_status))
 			EXIT1(return NDIS_STATUS_SUCCESS);
 		if (wnd->attribute_flags & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
 			LIN2WIN2(ndis_driver->mp_driver.pnp_event_notify,
