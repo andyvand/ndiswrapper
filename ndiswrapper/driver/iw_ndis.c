@@ -34,8 +34,8 @@
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
-NDIS_STATUS set_essid(struct ndis_device *wnd,
-		      const char *ssid, int ssid_len)
+static NDIS_STATUS set_essid(struct ndis_device *wnd,
+			     const char *ssid, int ssid_len)
 {
 	struct ndis_dot11_ssid_list ssid_list;
 	NDIS_STATUS res;
@@ -1341,11 +1341,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 		range->enc_capa |= IW_ENC_CAPA_WPA2;
 
 	return 0;
-}
-
-int set_priv_filter(struct ndis_device *wnd, int flags)
-{
-	EXIT2(return 0);
 }
 
 static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
