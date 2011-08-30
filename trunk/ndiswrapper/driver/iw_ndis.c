@@ -37,7 +37,7 @@ static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 static const char *network_names[] = {"IEEE 802.11FH", "IEEE 802.11b",
 				      "IEEE 802.11a", "IEEE 802.11g", "Auto"};
 
-int set_essid(struct ndis_device *wnd, const char *ssid, int ssid_len)
+static int set_essid(struct ndis_device *wnd, const char *ssid, int ssid_len)
 {
 	NDIS_STATUS res;
 	struct ndis_essid req;
@@ -129,8 +129,8 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	EXIT2(return 0);
 }
 
-int set_infra_mode(struct ndis_device *wnd,
-		   enum ndis_infrastructure_mode mode)
+static int set_infra_mode(struct ndis_device *wnd,
+			  enum ndis_infrastructure_mode mode)
 {
 	NDIS_STATUS res;
 	unsigned int i;
@@ -570,8 +570,8 @@ static int iw_set_ap_address(struct net_device *dev,
 	EXIT2(return 0);
 }
 
-int set_iw_auth_mode(struct ndis_device *wnd, int wpa_version,
-		     int auth_80211_alg)
+static int set_iw_auth_mode(struct ndis_device *wnd, int wpa_version,
+			    int auth_80211_alg)
 {
 	NDIS_STATUS res;
 	ULONG auth_mode;
@@ -1176,7 +1176,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	EXIT2(return event);
 }
 
-int set_scan(struct ndis_device *wnd)
+static int set_scan(struct ndis_device *wnd)
 {
 	NDIS_STATUS res;
 
