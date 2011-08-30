@@ -168,7 +168,7 @@ static NDIS_STATUS mp_pnp_event(struct ndis_device *wnd,
 		       (wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK),
 		       mp->pnp_event_notify);
 		if ((wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK) &&
-		    !test_bit(HW_PRESENT, &wnd->wd->hw_status) &&
+		    !test_bit(HW_DISABLED, &wnd->wd->hw_status) &&
 		    mp->pnp_event_notify) {
 			TRACE1("calling surprise_removed");
 			LIN2WIN4(mp->pnp_event_notify, wnd->nmb->mp_ctx,
