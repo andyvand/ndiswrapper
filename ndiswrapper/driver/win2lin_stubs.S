@@ -158,35 +158,31 @@ In Linux it should look like:
 #define win2lin_arg5 mov win2lin_win_arg(5, 6), %r8
 #define win2lin_arg6 mov win2lin_win_arg(6, 6), %r9
 
-	.type	win2lin0, @function
-win2lin0:
+.macro win2lin0
 	win2lin_prolog
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin0, .-win2lin0
+.endm
 
-	.type	win2lin1, @function
-win2lin1:
+.macro win2lin1
 	win2lin_prolog
 	win2lin_arg1
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin1, .-win2lin1
+.endm
 
-	.type	win2lin2, @function
-win2lin2:
+.macro win2lin2
 	win2lin_prolog
 	win2lin_arg1
 	win2lin_arg2
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin2, .-win2lin2
+.endm
 
-	.type	win2lin3, @function
-win2lin3:
+.macro win2lin3
 	win2lin_prolog
 	win2lin_arg1
 	win2lin_arg2
@@ -194,10 +190,9 @@ win2lin3:
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin3, .-win2lin3
+.endm
 
-	.type	win2lin4, @function
-win2lin4:
+.macro win2lin4
 	win2lin_prolog
 	win2lin_arg1
 	win2lin_arg2
@@ -206,10 +201,9 @@ win2lin4:
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin4, .-win2lin4
+.endm
 
-	.type	win2lin5, @function
-win2lin5:
+.macro win2lin5
 	win2lin_prolog
 	win2lin_arg1
 	win2lin_arg2
@@ -219,10 +213,9 @@ win2lin5:
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin5, .-win2lin5
+.endm
 
-	.type	win2lin6, @function
-win2lin6:
+.macro win2lin6
 	win2lin_prolog
 	win2lin_arg1
 	win2lin_arg2
@@ -233,10 +226,9 @@ win2lin6:
 	call_lin_func
 	win2lin_epilog
 	ret
-	.size	win2lin6, .-win2lin6
+.endm
 
-	.type	win2lin7, @function
-win2lin7:
+.macro win2lin7
 	win2lin_prolog
 
 	win2lin_arg1
@@ -258,10 +250,9 @@ win2lin7:
 
 	win2lin_epilog
 	ret
-	.size	win2lin7, .-win2lin7
+.endm
 
-	.type	win2lin8, @function
-win2lin8:
+.macro win2lin8
 	win2lin_prolog
 
 	win2lin_arg1
@@ -285,17 +276,13 @@ win2lin8:
 
 	win2lin_epilog
 	ret
-	.size	win2lin8, .-win2lin8
+.endm
 
 /*
  * We assume here that we never need to handle more than 12 arguments.
  * Copy 12 arguments even if we need less.
  */
-	.type	win2lin9, @function
-win2lin9:
-win2lin10:
-win2lin11:
-win2lin12:
+.macro win2lin12
 	win2lin_prolog
 
 	reserve_stack(12)
@@ -328,12 +315,26 @@ win2lin12:
 
 	win2lin_epilog
 	ret
-	.size	win2lin9, .-win2lin9
+.endm
 
-#define win2lin(name, argc)			\
-ENTRY(win2lin_ ## name ## _ ## argc)		\
-	lea	name(%rip), %r10 ;		\
-	jmp	win2lin ## argc
+.macro win2lin9
+	win2lin12
+.endm
+
+.macro win2lin10
+	win2lin12
+.endm
+
+.macro win2lin11
+	win2lin12
+.endm
+
+#define win2lin(name, argc)					\
+	.type	win2lin_ ## name ## _ ## argc, @function;	\
+ENTRY(win2lin_ ## name ## _ ## argc)				\
+	lea	name(%rip), %r10;				\
+	win2lin ## argc;					\
+	.size	win2lin_ ## name ## _ ## argc, .-win2lin_ ## name ## _ ## argc
 
 #include "win2lin_stubs.h"
 
