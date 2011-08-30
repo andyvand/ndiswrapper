@@ -532,20 +532,16 @@ WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
 static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
 	struct kinterrupt *interrupt = data;
-	BOOLEAN ret;
 
 #ifdef CONFIG_DEBUG_SHIRQ
 	if (!interrupt->u.enabled)
-		EXIT1(return IRQ_NONE);
+		EXIT1(return IRQ_HANDLED);
 #endif
 	TRACE6("%p", interrupt);
 	nt_spin_lock(interrupt->actual_lock);
-	ret = LIN2WIN2(interrupt->isr, interrupt, interrupt->isr_ctx);
+	LIN2WIN2(interrupt->isr, interrupt, interrupt->isr_ctx);
 	nt_spin_unlock(interrupt->actual_lock);
-	if (ret == TRUE)
-		EXIT6(return IRQ_HANDLED);
-	else
-		EXIT6(return IRQ_NONE);
+	EXIT6(return IRQ_HANDLED);
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
