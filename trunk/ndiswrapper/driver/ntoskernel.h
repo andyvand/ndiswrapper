@@ -464,7 +464,7 @@ struct wrap_driver {
 };
 
 enum hw_status {
-	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED, HW_PRESENT,
+	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED, HW_DISABLED,
 };
 
 struct wrap_device {

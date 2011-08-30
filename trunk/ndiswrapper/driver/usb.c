@@ -251,6 +251,11 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 
 	USBENTER("irp: %p", irp);
 	wd = IRP_WRAP_DEVICE(irp);
+
+	/* Don't interfere with URB cleanup by the kernel */
+	if (test_bit(HW_DISABLED, &wd->hw_status))
+		return NULL;
+
 	alloc_flags = irql_gfp();
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = NULL;
@@ -258,6 +263,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		if (cmpxchg(&wrap_urb->state, URB_FREE,
 			    URB_ALLOCATED) == URB_FREE) {
 			urb = wrap_urb->urb;
+			usb_init_urb(urb);
 			break;
 		}
 	}
