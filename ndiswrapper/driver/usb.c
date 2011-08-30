@@ -1000,16 +1000,19 @@ static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 
 static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 {
-	union nt_urb *nt_urb;
-	struct usb_device *udev;
 	USBD_STATUS status;
-	struct wrap_device *wd;
+	struct wrap_device *wd = IRP_WRAP_DEVICE(irp);
+	struct usb_device *udev = wd->usb.udev;
+	union nt_urb *nt_urb = IRP_URB(irp);
 
-	wd = IRP_WRAP_DEVICE(irp);
-	udev = wd->usb.udev;
-	nt_urb = IRP_URB(irp);
 	USBENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
 		 nt_urb, irp, nt_urb->header.length, nt_urb->header.function);
+
+	if (test_bit(HW_DISABLED, &wd->hw_status)) {
+		status = USBD_STATUS_DEVICE_GONE;
+		NT_URB_STATUS(nt_urb) = status;
+		return status;
+	}
 
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
