@@ -487,7 +487,7 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 			     int count, int *eof, void *data)
 {
 	char *p = page;
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 	enum alloc_type type;
 #endif
 
@@ -496,10 +496,10 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		return 0;
 	}
 	p += sprintf(p, "%d\n", debug);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		p += sprintf(p, "total size of allocations in %d: %d\n",
-			     type, alloc_size(type));
+		p += sprintf(p, "total size of allocations in %s: %d\n",
+			     alloc_type_name[type], alloc_size(type));
 #endif
 	return p - page;
 }

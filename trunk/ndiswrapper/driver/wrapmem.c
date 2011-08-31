@@ -23,18 +23,23 @@ struct slack_alloc_info {
 	size_t size;
 };
 
+#if ALLOC_DEBUG > 1
 static struct nt_list allocs;
+#endif
+
 static struct nt_list slack_allocs;
 static spinlock_t alloc_lock;
 
-struct vmem_block {
-	struct nt_list list;
-	int size;
+#if ALLOC_DEBUG
+const char *alloc_type_name[ALLOC_TYPE_MAX] = {
+	"kmalloc_atomic",
+	"kmalloc_nonatomic",
+	"vmalloc_atomic",
+	"vmalloc_nonatomic",
+	"kmalloc_slack",
+	"pages"
 };
 
-static struct nt_list vmem_list;
-
-#if defined(ALLOC_DEBUG)
 struct alloc_info {
 	enum alloc_type type;
 	size_t size;
@@ -48,16 +53,6 @@ struct alloc_info {
 
 static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
 #endif
-
-void wrapmem_info(void)
-{
-#ifdef ALLOC_DEBUG
-	enum alloc_type type;
-	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		INFO("total size of allocations in %d: %d",
-		       type, atomic_read(&alloc_sizes[type]));
-#endif
-}
 
 /* allocate memory and add it to list of allocated pointers; if a
  * driver doesn't free this memory for any reason (buggy driver or we
@@ -83,7 +78,7 @@ void *slack_kmalloc(size_t size)
 	spin_lock_bh(&alloc_lock);
 	InsertTailList(&slack_allocs, &info->list);
 	spin_unlock_bh(&alloc_lock);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 	TRACE4("%p, %p", info, info + 1);
@@ -100,7 +95,7 @@ void slack_kfree(void *ptr)
 	spin_lock_bh(&alloc_lock);
 	RemoveEntryList(&info->list);
 	spin_unlock_bh(&alloc_lock);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 	kfree(info);
@@ -115,7 +110,7 @@ void *slack_kzalloc(size_t size)
 	return ptr;
 }
 
-#if defined(ALLOC_DEBUG)
+#if ALLOC_DEBUG
 void *wrap_kmalloc(size_t size, gfp_t flags, const char *file, int line)
 {
 	struct alloc_info *info;
@@ -308,16 +303,17 @@ int alloc_size(enum alloc_type type)
 
 int wrapmem_init(void)
 {
+#if ALLOC_DEBUG > 1
 	InitializeListHead(&allocs);
+#endif
 	InitializeListHead(&slack_allocs);
-	InitializeListHead(&vmem_list);
 	spin_lock_init(&alloc_lock);
 	return 0;
 }
 
 void wrapmem_exit(void)
 {
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 	enum alloc_type type;
 #endif
 	struct nt_list *ent;
@@ -331,16 +327,17 @@ void wrapmem_exit(void)
 		if (!ent)
 			break;
 		info = container_of(ent, struct slack_alloc_info, list);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 		kfree(info);
 	}
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
 		int n = atomic_read(&alloc_sizes[type]);
 		if (n)
-			WARNING("%d bytes of memory in %d leaking", n, type);
+			WARNING("%d bytes of memory in %s leaking", n,
+				alloc_type_name[type]);
 	}
 
 #if ALLOC_DEBUG > 1
@@ -354,10 +351,10 @@ void wrapmem_exit(void)
 			break;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-		WARNING("%p in %d of size %zu allocated at %s(%d) "
+		WARNING("%p in %s of size %zu allocated at %s(%d) "
 			"with tag 0x%08X leaking; freeing it now",
-			info + 1, info->type, info->size, info->file,
-			info->line, info->tag);
+			info + 1, alloc_type_name[info->type], info->size,
+			info->file, info->line, info->tag);
 		if (info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
 		    info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC)
 			kfree(info);
