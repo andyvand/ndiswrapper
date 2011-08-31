@@ -11,6 +11,8 @@ Version 1.57-rc1 2011-08-22
   fails to initialize
 * Fixed support for AVM Fritz USB
 * Loading drivers with unknown symbols is disallowed, it's a certain crash
+* Fixed some memory leaks
+* Memory usage information has been improved
 * Fixed procfs registration if the network device is renamed
 * Added more function stubs
 * Build system improved
