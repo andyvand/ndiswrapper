@@ -77,6 +77,11 @@ In Linux it should look like:
 
 	.text
 
+#define LINUX_REG_ARGS 6
+#define SAVED_REGS 2
+#define LOOP_THRESHOLD 9
+#define WORD_BYTES 8
+
 /*
  * win2lin_win_arg(N, ARGTOTAL) gives the address of the Windows argument
  * N out of ARGTOTAL after the stack has been prepared for the Linux function
@@ -93,14 +98,15 @@ In Linux it should look like:
  * If there are 6 and less arguments, ARGTOTAL must be 6.  N must be at least
  * 5, as arguments 1 to 4 are passed in registers.
  */
-#define win2lin_win_arg(n, argtotal) ((n + 2 + (argtotal - 6)) * 8)(%rsp)
+#define win2lin_win_arg(n, argtotal) \
+	((n + SAVED_REGS + (argtotal - LINUX_REG_ARGS)) * WORD_BYTES)(%rsp)
 
 /*
  * win2lin_lin_arg(N) gives the address of the Nth linux argument of the extra
  * linux stack frame.  When more than 6 arguments are used, %rsp points to the
  * 7th argument.  The Nth argument is therefore at ((N - 7) * 8)(%rsp).
  */
-#define win2lin_lin_arg(n) ((n - 7) * 8)(%rsp)
+#define win2lin_lin_arg(n) ((n - 1 - LINUX_REG_ARGS) * WORD_BYTES)(%rsp)
 
 /* Declare function LONGNAME, call function SHORTNAME with ARGC arguments */
 .macro win2linm longname, shortname, argc
@@ -115,8 +121,8 @@ In Linux it should look like:
 	push	%rdi
 
 	/* Allocate extra stack space for arguments 7 and up */
-	.if (\argc >= 7)
-		sub $(\argc - 6) * 8, %rsp
+	.if (\argc > LINUX_REG_ARGS)
+		sub $(\argc - LINUX_REG_ARGS) * WORD_BYTES, %rsp
 	.endif
 
 	/*
@@ -124,8 +130,8 @@ In Linux it should look like:
 	 * are used for arguments 1 and 2, so we don't have to save them.
 	 * We still need to save %rcx if using a string copy.
 	 */
-	.if (\argc <= 8)
-		/* If 7 or 8 arguments, copy them individually through %r11 */
+	.if (\argc < LOOP_THRESHOLD)
+		/* If a few arguments, copy them individually through %r11 */
 		.if (\argc >= 7)
 			mov	win2lin_win_arg(7, \argc), %r11
 			mov	%r11, win2lin_lin_arg(7)
@@ -135,20 +141,24 @@ In Linux it should look like:
 			mov	%r11, win2lin_lin_arg(8)
 		.endif
 	.else
-		/* If 9 and more arguments, copy them in a loop */
-		mov	%rcx, %r11			/* save arg1 */
-		lea	win2lin_win_arg(7, \argc), %rsi	/* source */
-		lea	win2lin_lin_arg(7), %rdi	/* destination */
-		mov	$(\argc - 6), %ecx		/* arguments to copy */
+		/* If there are many arguments, copy them in a loop */
+		/* Save arg1 to %r11 */
+		mov	%rcx, %r11
+		/* Source and destination */
+		lea	win2lin_win_arg(LINUX_REG_ARGS + 1, \argc), %rsi
+		lea	win2lin_lin_arg(LINUX_REG_ARGS + 1), %rdi
+		/* Number of arguments to copy (%ecx zero-extends to %rcx) */
+		mov	$(\argc - LINUX_REG_ARGS), %ecx
 		rep	movsq
-		mov	%r11, %rdi			/* restore arg1 */
+		/* Restore arg1 directly to %rdi */
+		mov	%r11, %rdi
 	.endif
 
 	/*
 	 * Argument 1 - %rcx on Windows, %rdi on Linux
 	 * Micro-optimization - if we used loop, arg1 is already in %rdi
 	 */
-	.if (\argc >= 1) && (\argc <= 8)
+	.if (\argc >= 1) && (\argc < LOOP_THRESHOLD)
 		mov %rcx, %rdi
 	.endif
 
@@ -168,7 +178,7 @@ In Linux it should look like:
 	.endif
 
 	/* Arguments 5 and 6 - on stack on Windows, %r8 and %r9 on Linux */
-	.if (\argc >= 7)
+	.if (\argc > LINUX_REG_ARGS)
 		mov win2lin_win_arg(5, \argc), %r8
 		mov win2lin_win_arg(6, \argc), %r9
 	.else
@@ -177,10 +187,10 @@ In Linux it should look like:
 		 * as if there are 6 arguments.
 		 */
 		.if (\argc >= 5)
-			mov win2lin_win_arg(5, 6), %r8
+			mov win2lin_win_arg(5, LINUX_REG_ARGS), %r8
 		.endif
 		.if (\argc >= 6)
-			mov win2lin_win_arg(6, 6), %r9
+			mov win2lin_win_arg(6, LINUX_REG_ARGS), %r9
 		.endif
 	.endif
 
@@ -191,8 +201,8 @@ In Linux it should look like:
 	call	\shortname
 
 	/* Free stack stack space for arguments 7 and up */
-	.if (\argc >= 7)
-		add $(\argc - 6) * 8, %rsp
+	.if (\argc > LINUX_REG_ARGS)
+		add $(\argc - LINUX_REG_ARGS) * WORD_BYTES, %rsp
 	.endif
 
 	/* Restore saved registers */
