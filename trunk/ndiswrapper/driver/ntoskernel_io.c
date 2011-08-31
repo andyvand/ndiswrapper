@@ -1050,7 +1050,7 @@ wstdcall void WIN_FUNC(IoFreeErrorLogEntry,1)
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoAcquireRemoveLockEx,5)
-	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
+	(struct io_remove_lock *lock, void *tag, char *file, ULONG line,
 	 ULONG lock_size)
 {
 	TODO();
@@ -1058,7 +1058,7 @@ wstdcall NTSTATUS WIN_FUNC(IoAcquireRemoveLockEx,5)
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoReleaseRemoveLockEx,3)
-	(struct io_remove_lock lock, void *tag, ULONG lock_size)
+	(struct io_remove_lock *lock, void *tag, ULONG lock_size)
 {
 	TODO();
 	IOEXIT(return STATUS_SUCCESS);
