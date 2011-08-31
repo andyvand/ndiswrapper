@@ -1605,7 +1605,6 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	    wnd->physical_medium == NdisPhysicalMediumNative802_11) {
 		up(&wnd->ndis_comm_mutex);
 		mp_set(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-		kfree(wnd->phy_types);
 		if (down_interruptible(&wnd->ndis_comm_mutex))
 			WARNING("couldn't obtain ndis_comm_mutex");
 	}
