@@ -1734,6 +1734,8 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	else if (highest > DMA_BIT_MASK(30))
 		flags |= __GFP_HIGHMEM;
 #endif
+	if (addr)
+		free_pages((unsigned long)addr, get_order(size));
 	addr = wrap_get_free_pages(flags, size);
 	TRACE2("%p, %zu, 0x%x", addr, size, flags);
 	return addr;
