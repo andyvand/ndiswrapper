@@ -2864,7 +2864,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisIMNotifiyPnPEvent,2)
 	EXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-wstdcall void WIN_FUNC(NdisCompletePnPEvent,2)
+wstdcall void WIN_FUNC(NdisCompletePnPEvent,3)
 	(NDIS_STATUS status, void *handle, struct net_pnp_event *event)
 {
 	ENTER2("%d, %p, %d", status, handle, event->code);

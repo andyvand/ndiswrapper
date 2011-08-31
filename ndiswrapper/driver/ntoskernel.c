@@ -2263,8 +2263,9 @@ wstdcall NTSTATUS WIN_FUNC(ZwOpenSection,3)
 
 wstdcall NTSTATUS WIN_FUNC(ZwMapViewOfSection,10)
 	(void *secn_handle, void *process_handle, void **base_address,
-	 ULONG zero_bits, LARGE_INTEGER *secn_offset, SIZE_T *view_size,
-	 enum section_inherit inherit, ULONG alloc_type, ULONG protect)
+	 ULONG zero_bits, SIZE_T commit_size, LARGE_INTEGER *secn_offset,
+	 SIZE_T *view_size, enum section_inherit inherit, ULONG alloc_type,
+	 ULONG protect)
 {
 	INFO("%p, %p, %p", secn_handle, process_handle, base_address);
 	TODO();
@@ -2344,7 +2345,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwDeleteKey,1)
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WIN_FUNC(ZwPowerInformation,4)
+wstdcall NTSTATUS WIN_FUNC(ZwPowerInformation,5)
 	(INT info_level, void *in_buf, ULONG in_buf_len, void *out_buf,
 	 ULONG out_buf_len)
 {
