@@ -1449,7 +1449,7 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
-	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
+	memcpy(net_dev->dev_addr, mac, ETH_ALEN);
 
 	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |
 		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_MULTICAST;
