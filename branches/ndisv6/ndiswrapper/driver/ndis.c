@@ -900,7 +900,7 @@ wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,2)
 		WARNING("invalid state: %d", rw_lock->count);
 }
 
-wstdcall struct net_buffer_pool *WIN_FUNC(NdisAllocateNetBufferPool,3)
+wstdcall struct net_buffer_pool *WIN_FUNC(NdisAllocateNetBufferPool,2)
 	(struct ndis_mp_block *nmb, struct net_buffer_pool_params *params)
 {
 	struct net_buffer_pool *pool;
@@ -1259,7 +1259,7 @@ wstdcall struct net_buffer_list_pool *WIN_FUNC(NdisAllocateNetBufferListPool,2)
 	return pool;
 }
 
-wstdcall void WIN_FUNC(NdisFreeNetBufferListPool,2)
+wstdcall void WIN_FUNC(NdisFreeNetBufferListPool,1)
 	(struct net_buffer_list_pool *pool)
 {
 	ENTER2("%p", pool);
@@ -1572,7 +1572,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterScatterGatherDma,3)
 	return NDIS_STATUS_SUCCESS;
 }
 
-wstdcall NDIS_STATUS WIN_FUNC(NdisMDeregisterScatterGatherDma,3)
+wstdcall NDIS_STATUS WIN_FUNC(NdisMDeregisterScatterGatherDma,1)
 	(struct ndis_sg_dma *sg_dma)
 {
 	struct ndis_device *wnd = sg_dma->wnd;
@@ -1637,7 +1637,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateNetBufferSGList,6)
 	EXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-wstdcall void WIN_FUNC(NdisMFreeNetBufferSGList,6)
+wstdcall void WIN_FUNC(NdisMFreeNetBufferSGList,3)
 	(struct ndis_device *wnd, struct ndis_sg_list *sg_list,
 	 struct net_buffer *buffer)
 {
@@ -1960,13 +1960,13 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterruptEx,1)
 	EXIT1(return);
 }
 
-wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,3)
+wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,4)
 	(struct ndis_mp_block *nmb, ULONG msg_id, void *func, void *ctx)
 {
 	return KeSynchronizeExecution(nmb->wnd->kinterrupt, func, ctx);
 }
 
-wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
+wstdcall void WIN_FUNC(NdisMIndicateStatusEx,2)
 	(struct ndis_mp_block *nmb, struct ndis_status_indication *status)
 {
 	struct ndis_device *wnd = nmb->wnd;
