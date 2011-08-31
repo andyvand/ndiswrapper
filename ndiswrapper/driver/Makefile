@@ -85,7 +85,7 @@ ifdef WORK_DEBUG
 EXTRA_CFLAGS += -DWORK_DEBUG
 endif
 
-# to debug memory allocation, add option "ALLOC_DEBUG=<n>" where <n> is 1 to 3
+# to debug memory allocation, add option "ALLOC_DEBUG=<n>" where <n> is 1 or 2
 ifdef ALLOC_DEBUG
 EXTRA_CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif

@@ -16,33 +16,33 @@
 #ifndef _WRAPMEM_H_
 #define _WRAPMEM_H_
 
-/* set ALLOC_DEBUG to 1 to get information about memory used by both
- * ndiswrapper and Windows driver by reading
- * /proc/net/ndiswrapper/debug; this will also show memory leaks
- * (memory allocated but not freed) when ndiswrapper module is
- * unloaded.
-
- * ALLOC_DEBUG=2: details about individual allocations leaking is printed
- * ALLOC_DEBUG=3: tags in ExAllocatePoolWithTag leaking printed
+/*
+ * Set ALLOC_DEBUG to 1 to show information about memory used by both
+ * ndiswrapper and Windows driver in /proc/net/ndiswrapper/debug
+ * This will also show memory leaks (memory allocated but not freed) when
+ * ndiswrapper module is unloaded.
+ *
+ * Set ALLOC_DEBUG to 2 to see details about every leaking allocation.
 */
 
-//#ifndef ALLOC_DEBUG
-//#define ALLOC_DEBUG 1
-//#endif
-
-enum alloc_type { ALLOC_TYPE_KMALLOC_ATOMIC,
-		  ALLOC_TYPE_KMALLOC_NON_ATOMIC,
-		  ALLOC_TYPE_VMALLOC_ATOMIC, ALLOC_TYPE_VMALLOC_NON_ATOMIC,
-		  ALLOC_TYPE_SLACK, ALLOC_TYPE_PAGES, ALLOC_TYPE_MAX };
+#ifndef ALLOC_DEBUG
+#define ALLOC_DEBUG 0
+#endif
 
 int wrapmem_init(void);
 void wrapmem_exit(void);
 void *slack_kmalloc(size_t size);
 void *slack_kzalloc(size_t size);
 void slack_kfree(void *ptr);
-void wrapmem_info(void);
 
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG
+enum alloc_type { ALLOC_TYPE_KMALLOC_ATOMIC,
+		  ALLOC_TYPE_KMALLOC_NON_ATOMIC,
+		  ALLOC_TYPE_VMALLOC_ATOMIC, ALLOC_TYPE_VMALLOC_NON_ATOMIC,
+		  ALLOC_TYPE_SLACK, ALLOC_TYPE_PAGES, ALLOC_TYPE_MAX };
+
+extern const char *alloc_type_name[ALLOC_TYPE_MAX];
+
 void *wrap_kmalloc(size_t size, gfp_t flags, const char *file, int line);
 void *wrap_kzalloc(size_t size, gfp_t flags, const char *file, int line);
 void wrap_kfree(void *ptr);
