@@ -127,11 +127,11 @@ In Linux it should look like:
 	.if (\argc <= 8)
 		/* If 7 or 8 arguments, copy them individually through %r11 */
 		.if (\argc >= 7)
-			mov	win2lin_win_arg(7, 7), %r11
+			mov	win2lin_win_arg(7, \argc), %r11
 			mov	%r11, win2lin_lin_arg(7)
 		.endif
 		.if (\argc >= 8)
-			mov	win2lin_win_arg(8, 8), %r11
+			mov	win2lin_win_arg(8, \argc), %r11
 			mov	%r11, win2lin_lin_arg(8)
 		.endif
 	.else
