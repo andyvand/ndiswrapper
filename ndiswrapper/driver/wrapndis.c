@@ -1250,11 +1250,11 @@ static void get_encryption_capa(struct ndis_device *wnd, char *buf,
 			TRACE2("%d", net_types->types[i]);
 			set_bit(net_types->types[i], &types);
 		}
-		if (types & Ndis802_11OFDM24)
+		if (test_bit(Ndis802_11OFDM24, &types))
 			mode = Ndis802_11OFDM24;
-		else if (types & Ndis802_11DS)
+		else if (test_bit(Ndis802_11DS, &types))
 			mode = Ndis802_11DS;
-		else if (types & Ndis802_11OFDM5)
+		else if (test_bit(Ndis802_11OFDM5, &types))
 			mode = Ndis802_11OFDM5;
 		else
 			mode = Ndis802_11DS;
