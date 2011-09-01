@@ -893,7 +893,6 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 			netif_device_attach(wnd->net_dev);
 			hangcheck_add(wnd);
 			add_stats_timer(wnd);
-			set_scan(wnd);
 		} else {
 			WARNING("%s: couldn't set power to state %d; device not"
 				" resumed", wnd->net_dev->name, state);
