@@ -618,7 +618,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
 
-	dr = kzalloc(sizeof(*dr), GFP_ATOMIC);
+	dr = kzalloc(sizeof(*dr), irql_gfp());
 	if (!dr) {
 		ERROR("couldn't allocate memory");
 		wrap_free_urb(urb);
