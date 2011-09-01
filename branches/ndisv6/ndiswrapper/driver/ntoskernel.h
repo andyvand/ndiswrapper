@@ -193,78 +193,14 @@ typedef void (*work_handler)(void *work);
 
 #endif // WRAP_WQ
 
-#ifndef LOCK_PREFIX
-#ifdef LOCK
-#define LOCK_PREFIX LOCK
-#else
-#ifdef CONFIG_SMP
-#define LOCK_PREFIX "lock ; "
-#else
-#define LOCK_PREFIX ""
-#endif
-#endif
-#endif
-
-#ifndef NETDEV_TX_OK
-#define NETDEV_TX_OK 0
-#endif
-
-#ifndef NETDEV_TX_BUSY
-#define NETDEV_TX_BUSY 1
-#endif
-
-#ifndef CHECKSUM_HW
-#define CHECKSUM_HW CHECKSUM_PARTIAL
-#endif
-
-#ifndef offset_in_page
-#define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
-#endif
-
-#ifndef PMSG_SUSPEND
-#ifdef PM_SUSPEND
-/* this is not correct - the value of PM_SUSPEND is different from
- * PMSG_SUSPEND, but ndiswrapper doesn't care about the value when
- * suspending */
-#define PMSG_SUSPEND PM_SUSPEND
-#define PSMG_ON PM_ON
-#else
-typedef u32 pm_message_t;
-#define PMSG_SUSPEND 2
-#define PMSG_ON 0
-#endif
-#endif
-
-#ifndef PCI_D0
-#define PCI_D0 0
-#endif
-
-#ifndef PCI_D3hot
-#define PCI_D3hot 3
-#endif
-
-#ifndef PCI_D3cold
-#define PCI_D3cold 3
-#endif
-
-#ifndef PM_EVENT_SUSPEND
-#define PM_EVENT_SUSPEND 2
-#endif
-
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
 #define ISR_PT_REGS_PARAM_DECL
-#define ISR_PT_REGS_ARG
 #else
 #define ISR_PT_REGS_PARAM_DECL , struct pt_regs *regs
-#define ISR_PT_REGS_ARG , NULL
 #endif
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,16)
 #define for_each_possible_cpu(_cpu) for_each_cpu(_cpu)
-#endif
-
-#ifndef flush_icache_range
-#define flush_icache_range(start, end) do { } while (0)
 #endif
 
 #ifndef CHECKSUM_PARTIAL
@@ -563,10 +499,6 @@ do {									\
 })
 
 #define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
-
-#ifndef in_atomic
-#define in_atomic() in_interrupt()
-#endif
 
 //#define DEBUG_IRQL 1
 
