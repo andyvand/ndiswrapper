@@ -63,15 +63,9 @@ static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
 void *slack_kmalloc(size_t size)
 {
 	struct slack_alloc_info *info;
-	gfp_t flags;
 
 	ENTER4("size = %zu", size);
-
-	if (irql_gfp() & GFP_ATOMIC)
-		flags = GFP_ATOMIC;
-	else
-		flags = GFP_KERNEL;
-	info = kmalloc(size + sizeof(*info), flags);
+	info = kmalloc(size + sizeof(*info), irql_gfp());
 	if (!info)
 		return NULL;
 	info->size = size;
