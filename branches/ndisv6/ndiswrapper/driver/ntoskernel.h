@@ -96,6 +96,10 @@
 #define UNMAP_SG(pci_dev, sglist, nents, direction)		\
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 
+#if defined(CONFIG_NET_RADIO) && !defined(CONFIG_WIRELESS_EXT)
+#define CONFIG_WIRELESS_EXT
+#endif
+
 #define prepare_wait_condition(task, var, value)	\
 do {							\
 	var = value;					\
