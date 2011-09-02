@@ -66,11 +66,13 @@
 #endif /* Linux < 2.6.29 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
+#ifndef mutex_init
 #define mutex semaphore
 #define mutex_init(m) sema_init(m, 1)
 #define mutex_lock(m) down(m)
 #define mutex_unlock(m) up(m)
 #define mutex_is_locked(m) (atomic_read(m.count) == 0)
+#endif
 #endif /* Linux < 2.6.16 */
 
 #ifndef __packed
