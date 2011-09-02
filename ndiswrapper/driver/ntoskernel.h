@@ -673,24 +673,27 @@ static inline void  nt_spin_lock_init(NT_SPIN_LOCK *lock)
 
 static inline void nt_spin_lock(NT_SPIN_LOCK *lock)
 {
-	__asm__ __volatile__(
-		"1:\t"
-		"  xchgl %1, %0\n\t"
-		"  testl %1, %1\n\t"
-		"  jz 3f\n"
-		"2:\t"
-		"  rep; nop\n\t"
-		"  cmpl %2, %0\n\t"
-		"  je 1b\n\t"
-		"  jmp 2b\n"
-		"3:\n\t"
-		: "+m" (*lock)
-		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
+	while (1) {
+		unsigned long lockval = xchg(lock, NT_SPIN_LOCK_LOCKED);
+
+		if (likely(lockval == NT_SPIN_LOCK_UNLOCKED))
+			break;
+		if (unlikely(lockval > NT_SPIN_LOCK_LOCKED)) {
+			ERROR("bad spinlock: 0x%lx at %p", lockval, lock);
+			return;
+		}
+		/* "rep; nop" doesn't change cx register, it's a "pause" */
+		__asm__ __volatile__("rep; nop");
+	}
 }
 
 static inline void nt_spin_unlock(NT_SPIN_LOCK *lock)
 {
-	*lock = NT_SPIN_LOCK_UNLOCKED;
+	unsigned long lockval = xchg(lock, NT_SPIN_LOCK_UNLOCKED);
+
+	if (likely(lockval == NT_SPIN_LOCK_LOCKED))
+		return;
+	WARNING("unlocking unlocked spinlock: 0x%lx at %p", lockval, lock);
 }
 
 #else // CONFIG_SMP
