@@ -1969,14 +1969,14 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
 		       ", WPA2" : "",
 		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
-		       ", WPA2PSK" : "",
+		       ", WPA2-PSK" : "",
 
 		       test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr) ?
 		       "; AES/CCMP with WPA" : "",
 		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
 		       ", WPA2" : "",
 		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
-		       ", WPA2PSK" : "");
+		       ", WPA2-PSK" : "");
 
 		set_default_iw_params(wnd);
 	}
