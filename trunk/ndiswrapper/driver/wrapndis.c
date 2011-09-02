@@ -15,8 +15,6 @@
 
 #include <linux/inetdevice.h>
 #include <linux/ip.h>
-#include <linux/tcp.h>
-#include <linux/udp.h>
 #include <linux/in.h>
 #include <linux/proc_fs.h>
 #include "ndis.h"
