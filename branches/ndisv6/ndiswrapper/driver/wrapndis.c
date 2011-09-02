@@ -1070,22 +1070,22 @@ static void init_dot11_station(struct ndis_device *wnd, void *buf,
 	       test_bit(DOT11_AUTH_ALGO_WPA, &wnd->capa.auth) ?
 	       ", WPA" : "",
 	       test_bit(DOT11_AUTH_ALGO_WPA_PSK, &wnd->capa.auth) ?
-	       ", WPAPSK" : "",
+	       ", WPA-PSK" : "",
 	       test_bit(DOT11_AUTH_ALGO_RSNA, &wnd->capa.auth) ?
 	       ", WPA2" : "",
 	       test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth) ?
-	       ", WPA2PSK" : "",
+	       ", WPA2-PSK" : "",
 
 	       test_bit(DOT11_CIPHER_ALGO_CCMP, &wnd->capa.encr) ?
 	       "; AES/CCMP with" : "",
 	       test_bit(DOT11_AUTH_ALGO_WPA, &wnd->capa.auth) ?
 	       ", WPA" : "",
 	       test_bit(DOT11_AUTH_ALGO_WPA_PSK, &wnd->capa.auth) ?
-	       ", WPAPSK" : "",
+	       ", WPA-PSK" : "",
 	       test_bit(DOT11_AUTH_ALGO_RSNA, &wnd->capa.auth) ?
 	       ", WPA2" : "",
 	       test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth) ?
-	       ", WPA2PSK" : "");
+	       ", WPA2-PSK" : "");
 
 	op_mode_capa = buf;
 	op_mode_capa->major_version = 2;
