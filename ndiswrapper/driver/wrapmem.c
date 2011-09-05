@@ -345,10 +345,10 @@ void wrapmem_exit(void)
 			break;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-		WARNING("%p in %s of size %zu allocated at %s(%d) "
-			"with tag 0x%08X leaking; freeing it now",
-			info + 1, alloc_type_name[info->type], info->size,
-			info->file, info->line, info->tag);
+		printk(KERN_DEBUG DRIVER_NAME
+		       ": %s:%d leaked %zd bytes at %p (%s, tag 0x%08X)\n",
+		       info->file, info->line, info->size, info + 1,
+		       alloc_type_name[info->type], info->tag);
 		if (info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
 		    info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC)
 			kfree(info);
