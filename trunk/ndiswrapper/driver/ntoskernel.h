@@ -850,7 +850,6 @@ int usb_init(void);
 void usb_exit(void);
 int usb_init_device(struct wrap_device *wd);
 void usb_exit_device(struct wrap_device *wd);
-void usb_cancel_pending_urbs(void);
 
 int crt_init(void);
 void crt_exit(void);
