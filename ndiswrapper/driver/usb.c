@@ -1433,6 +1433,38 @@ USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
 	USBEXIT(return STATUS_SUCCESS);
 }
 
+NTSTATUS
+usb_query_interface(struct wrap_device *wd, struct io_stack_location *irp_sl)
+{
+	struct usbd_bus_interface_usbdi *intf =
+		(struct usbd_bus_interface_usbdi *)
+		irp_sl->params.query_intf.intf;
+
+	TRACE2("type: %x, size: %d, version: %d",
+	       irp_sl->params.query_intf.type->data1,
+	       irp_sl->params.query_intf.size,
+	       irp_sl->params.query_intf.version);
+	intf->Context = wd;
+	intf->InterfaceReference =
+		WIN_FUNC_PTR(USBD_InterfaceReference, 1);
+	intf->InterfaceDereference =
+		WIN_FUNC_PTR(USBD_InterfaceDereference, 1);
+	intf->GetUSBDIVersion =
+		WIN_FUNC_PTR(USBD_InterfaceGetUSBDIVersion, 3);
+	intf->QueryBusTime =
+		WIN_FUNC_PTR(USBD_InterfaceQueryBusTime, 2);
+	intf->SubmitIsoOutUrb =
+		WIN_FUNC_PTR(USBD_InterfaceSubmitIsoOutUrb, 2);
+	intf->QueryBusInformation =
+		WIN_FUNC_PTR(USBD_InterfaceQueryBusInformation, 5);
+	if (irp_sl->params.query_intf.version >= USB_BUSIF_USBDI_VERSION_1)
+		intf->IsDeviceHighSpeed =
+			WIN_FUNC_PTR(USBD_InterfaceIsDeviceHighSpeed, 1);
+	if (irp_sl->params.query_intf.version >= USB_BUSIF_USBDI_VERSION_2)
+		intf->LogEntry = WIN_FUNC_PTR(USBD_InterfaceLogEntry, 5);
+	return STATUS_SUCCESS;
+}
+
 int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
