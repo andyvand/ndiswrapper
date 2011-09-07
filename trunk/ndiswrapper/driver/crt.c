@@ -136,7 +136,7 @@ do { \
 #define FMT_PREP(_fmt) \
 do { \
 	_fmt##len = strlen(format) + 1; \
-	_fmt##copy = kmalloc(_fmt##len, GFP_KERNEL); \
+	_fmt##copy = kmalloc(_fmt##len, irql_gfp()); \
 	if (_fmt##copy) { \
 		memcpy(_fmt##copy, format, _fmt##len); \
 		strip_l_modifier(_fmt##copy); \
