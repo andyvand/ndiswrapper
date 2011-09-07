@@ -38,12 +38,10 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 	if (ntoskernel_init_device(wd))
 		EXIT1(return STATUS_FAILURE);
 	if (wrap_is_usb_bus(wd->dev_bus)) {
-#ifdef ENABLE_USB
 		if (usb_init_device(wd)) {
 			ntoskernel_exit_device(wd);
 			EXIT1(return STATUS_FAILURE);
 		}
-#endif
 		EXIT1(return STATUS_SUCCESS);
 	}
 	if (!wrap_is_pci_bus(wd->dev_bus))
@@ -185,9 +183,7 @@ static void remove_pdo(struct device_object *pdo)
 		wd->pci.pdev = NULL;
 		pci_set_drvdata(pdev, NULL);
 	} else if (wrap_is_usb_bus(wd->dev_bus)) {
-#ifdef ENABLE_USB
 		usb_exit_device(wd);
-#endif
 	}
 	kfree(wd->resource_list);
 	wd->resource_list = NULL;
@@ -227,17 +223,19 @@ wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 					  struct  irp *irp)
 {
 	NTSTATUS status;
+	struct wrap_device *wd = pdo->reserved;
 
 	DUMP_IRP(irp);
-#ifdef ENABLE_USB
-	status = wrap_submit_irp(pdo, irp);
-	IOTRACE("status: %08X", status);
-	if (status != STATUS_PENDING)
+	(void)wd;
+	if (wrap_is_usb_bus(wd->dev_bus)) {
+		status = wrap_submit_irp(pdo, irp);
+		IOTRACE("status: %08X", status);
+		if (status != STATUS_PENDING)
+			IoCompleteRequest(irp, IO_NO_INCREMENT);
+	} else {
+		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-#else
-	status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
-#endif
+	}
 	IOEXIT(return status);
 }
 WIN_FUNC_DECL(pdoDispatchDeviceControl,2)
@@ -316,10 +314,8 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 							PCI_D3cold, 0);
 				}
 				pci_set_power_state(pdev, PCI_D0);
-			} else { // usb device
-#ifdef ENABLE_USB
+			} else if (wrap_is_usb_bus(wd->dev_bus)) {
 				wrap_resume_urbs(wd);
-#endif
 			}
 		} else {
 			TRACE2("suspending device %p", wd);
@@ -334,10 +330,8 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 							PCI_D3cold, 1);
 				}
 				pci_set_power_state(pdev, PCI_D3hot);
-			} else { // usb device
-#ifdef ENABLE_USB
+			} else if (wrap_is_usb_bus(wd->dev_bus)) {
 				wrap_suspend_urbs(wd);
-#endif
 			}
 		}
 		status = STATUS_SUCCESS;

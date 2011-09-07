@@ -208,27 +208,21 @@ static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
+		i = -1;
 		if (wrap_is_pci_bus(wnd->wd->dev_bus))
 			i = wrap_pnp_suspend_pci_device(wnd->wd->pci.pdev,
 							PMSG_SUSPEND);
-		else
-#ifdef ENABLE_USB
+		else if (wrap_is_usb_bus(wnd->wd->dev_bus))
 			i = wrap_pnp_suspend_usb_device(wnd->wd->usb.intf,
 							PMSG_SUSPEND);
-#else
-		i = -1;
-#endif
 		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
+		i = -1;
 		if (wrap_is_pci_bus(wnd->wd->dev_bus))
 			i = wrap_pnp_resume_pci_device(wnd->wd->pci.pdev);
-		else
-#ifdef ENABLE_USB
+		else if (wrap_is_usb_bus(wnd->wd->dev_bus))
 			i = wrap_pnp_resume_usb_device(wnd->wd->usb.intf);
-#else
-		i = -1;
-#endif
 		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "stats_enabled")) {
