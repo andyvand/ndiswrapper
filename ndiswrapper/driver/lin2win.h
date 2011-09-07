@@ -20,9 +20,9 @@
  */
 
 #define alloc_win_stack_frame(argc)		\
-	"sub $(" #argc "+1)*8, %%rsp\n\t"
+	"sub $(" #argc ")*8, %%rsp\n\t"
 #define free_win_stack_frame(argc)		\
-	"add $(" #argc "+1)*8, %%rsp\n\t"
+	"add $(" #argc ")*8, %%rsp\n\t"
 
 /* m is index of Windows arg required; Windows arg 1 should be at
  * 0(%rsp), arg 2 at 8(%rsp) and so on after the frame is allocated.
