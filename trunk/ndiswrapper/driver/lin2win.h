@@ -36,7 +36,7 @@
 	"=a" (_ret), "=c" (_dummy), "=d" (_dummy),			\
 		"=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)
 
-#define clobbers() "cc"
+#define clobbers() "cc", "memory"
 
 #define LIN2WIN0(func)							\
 ({									\
