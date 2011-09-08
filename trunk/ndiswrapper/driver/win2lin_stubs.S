@@ -141,10 +141,10 @@ In Linux it should look like:
 
 /* Declare function LONGNAME, call function SHORTNAME with ARGC arguments */
 .macro win2linm longname, shortname, argc
-	.type	\longname, @function
+	.type \longname, @function
 	ENTRY(\longname)
 
-	/* Create a call frame - it's optional, but good for debuging */
+	/* Create a call frame - it's optional, but good for debugging */
 	.cfi_startproc
 	push %rbp
 	.cfi_def_cfa %rsp, 2 * WORD_BYTES
@@ -156,8 +156,8 @@ In Linux it should look like:
 	 * Registers %rdi and %rsi are volatile on Linux, but not on Windows,
 	 * so save them on the stack.
 	 */
-	push	%rsi
-	push	%rdi
+	push %rsi
+	push %rdi
 
 	/* Allocate extra stack space for arguments 7 and up */
 	sub $stack_space(\argc), %rsp
@@ -170,25 +170,25 @@ In Linux it should look like:
 	.if (\argc < LOOP_THRESHOLD)
 		/* If a few arguments, copy them individually through %r11 */
 		.if (\argc >= 7)
-			mov	win2lin_win_arg(7, \argc), %r11
-			mov	%r11, win2lin_lin_arg(7)
+			mov win2lin_win_arg(7, \argc), %r11
+			mov %r11, win2lin_lin_arg(7)
 		.endif
 		.if (\argc >= 8)
-			mov	win2lin_win_arg(8, \argc), %r11
-			mov	%r11, win2lin_lin_arg(8)
+			mov win2lin_win_arg(8, \argc), %r11
+			mov %r11, win2lin_lin_arg(8)
 		.endif
 	.else
 		/* If there are many arguments, copy them in a loop */
 		/* Save arg1 to %r11 */
-		mov	%rcx, %r11
+		mov %rcx, %r11
 		/* Source and destination */
-		lea	win2lin_win_arg(LINUX_REG_ARGS + 1, \argc), %rsi
-		lea	win2lin_lin_arg(LINUX_REG_ARGS + 1), %rdi
+		lea win2lin_win_arg(LINUX_REG_ARGS + 1, \argc), %rsi
+		lea win2lin_lin_arg(LINUX_REG_ARGS + 1), %rdi
 		/* Number of arguments to copy (%ecx zero-extends to %rcx) */
-		mov	$(\argc - LINUX_REG_ARGS), %ecx
-		rep	movsq
+		mov $(\argc - LINUX_REG_ARGS), %ecx
+		rep movsq
 		/* Restore arg1 directly to %rdi */
-		mov	%r11, %rdi
+		mov %r11, %rdi
 	.endif
 
 	/*
@@ -225,17 +225,17 @@ In Linux it should look like:
 	.endif
 
 	/* %rax on Linux is the number of arguments in SSE registers (zero) */
-	xor	%rax, %rax
+	xor %rax, %rax
 
 	/* Call the function */
-	call	\shortname
+	call \shortname
 
-	/* Free stack stack space for arguments 7 and up */
+	/* Free stack space for arguments 7 and up */
 	add $stack_space(\argc), %rsp
 
 	/* Restore saved registers */
-	pop	%rdi
-	pop	%rsi
+	pop %rdi
+	pop %rsi
 
 	/* Return to Windows code */
 	leave
@@ -243,7 +243,7 @@ In Linux it should look like:
 	.cfi_restore %rbp
 	ret
 	.cfi_endproc
-	.size	\longname, (. - \longname)
+	.size \longname, (. - \longname)
 .endm
 
 #define win2lin(name, argc) win2linm win2lin_ ## name ## _ ## argc, name, argc
