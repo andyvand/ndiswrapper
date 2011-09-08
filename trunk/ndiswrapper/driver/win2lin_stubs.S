@@ -90,13 +90,25 @@ In Linux it should look like:
  * We also need to allocate an additional word on the stack to keep it aligned
  * to the 16-bit boundary if the number of saved arguments plus one (for the
  * return address) is odd.
- *
- * The value of true is -1 in assembler, hence the minus.
  */
 
-#define stack_space(argc)						\
-	((((-(argc > LINUX_REG_ARGS)) * (argc - LINUX_REG_ARGS)) |	\
-	 ((SAVED_REGS + 1) & 1)) * WORD_BYTES)
+/*
+ * Number of arguments we pass on stack to the Linux function.
+ * The value of true is -1 in assembler, so we multiply it by another true
+ * value.
+ */
+#define stack_args(argc)					\
+	((0 < 1) * (argc > LINUX_REG_ARGS) * (argc - LINUX_REG_ARGS))
+
+/* Full required change of stack pointer, in words */
+#define stack_words_raw(argc) (stack_args(argc) + SAVED_REGS + 1)
+
+/* Full actual change of stack pointer, in words (must be even) */
+#define stack_words_aligned(argc) ((stack_words_raw(argc) + 1) & ~1)
+
+/* Space allocated for Linux arguments on stack */
+#define stack_space(argc) \
+	((stack_words_aligned(argc) - SAVED_REGS - 1) * WORD_BYTES)
 
 /*
  * win2lin_win_arg(N, ARGC) gives the address of the Windows argument N out of
