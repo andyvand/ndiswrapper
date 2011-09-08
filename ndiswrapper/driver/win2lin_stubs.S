@@ -83,28 +83,39 @@ In Linux it should look like:
 #define WORD_BYTES 8
 
 /*
- * win2lin_win_arg(N, ARGTOTAL) gives the address of the Windows argument
- * N out of ARGTOTAL after the stack has been prepared for the Linux function
- * call.
- *
  * When calling the Linux function, two registers (%rdi and %rsi) are pushed
  * to the stack.  When passing more than 6 arguments, arguments starting with
  * argument 7 are pushed to the stack as well.
  *
- * When called from Windows, the Nth argument is at (N * 8)(%rsp).  We add two
- * 8-byte positions for the saved registers (%rdi and %rsi) and (ARGTOTAL - 6)
- * for the arguments to be passed on stack to the Linux function.
+ * We also need to allocate an additional word on the stack to keep it aligned
+ * to the 16-bit boundary if the number of saved arguments plus one (for the
+ * return address) is odd.
  *
- * If there are 6 and less arguments, ARGTOTAL must be 6.  N must be at least
- * 5, as arguments 1 to 4 are passed in registers.
+ * The value of true is -1 in assembler, hence the minus.
  */
-#define win2lin_win_arg(n, argtotal) \
-	((n + SAVED_REGS + (argtotal - LINUX_REG_ARGS)) * WORD_BYTES)(%rsp)
+
+#define stack_space(argc)						\
+	((((-(argc > LINUX_REG_ARGS)) * (argc - LINUX_REG_ARGS)) |	\
+	 ((SAVED_REGS + 1) & 1)) * WORD_BYTES)
 
 /*
- * win2lin_lin_arg(N) gives the address of the Nth linux argument of the extra
- * linux stack frame.  When more than 6 arguments are used, %rsp points to the
+ * win2lin_win_arg(N, ARGC) gives the address of the Windows argument N out of
+ * total ARGC after the stack has been prepared for the Linux function call.
+ *
+ * When called from Windows, the Nth argument is at (N * 8)(%rsp).  We add the
+ * stack space allocated by the Linux function to compensate for %rsp change.
+ *
+ * Don't call with N less than 5!
+ */
+#define win2lin_win_arg(n, argc) \
+	((n + SAVED_REGS) * WORD_BYTES + stack_space(argc))(%rsp)
+
+/*
+ * win2lin_lin_arg(N) gives the address of the Nth Linux argument on the extra
+ * Linux stack frame.  When more than 6 arguments are used, %rsp points to the
  * 7th argument.  The Nth argument is therefore at ((N - 7) * 8)(%rsp).
+ *
+ * Don't call with N less than 7!
  */
 #define win2lin_lin_arg(n) ((n - 1 - LINUX_REG_ARGS) * WORD_BYTES)(%rsp)
 
@@ -121,9 +132,7 @@ In Linux it should look like:
 	push	%rdi
 
 	/* Allocate extra stack space for arguments 7 and up */
-	.if (\argc > LINUX_REG_ARGS)
-		sub $(\argc - LINUX_REG_ARGS) * WORD_BYTES, %rsp
-	.endif
+	sub $stack_space(\argc), %rsp
 
 	/*
 	 * Copy arguments 7 and up.  We do it early, before %rdi and %rsi
@@ -177,21 +186,14 @@ In Linux it should look like:
 		mov %r9, %rcx
 	.endif
 
-	/* Arguments 5 and 6 - on stack on Windows, %r8 and %r9 on Linux */
-	.if (\argc > LINUX_REG_ARGS)
+	/* Argument 5 - first argument on stack on Windows, %r8 Linux */
+	.if (\argc >= 5)
 		mov win2lin_win_arg(5, \argc), %r8
+	.endif
+
+	/* Argument 6 - second argument on stack on Windows, %r9 Linux */
+	.if (\argc >= 6)
 		mov win2lin_win_arg(6, \argc), %r9
-	.else
-		/*
-		 * If no extra stack is needed, Windows arguments are located
-		 * as if there are 6 arguments.
-		 */
-		.if (\argc >= 5)
-			mov win2lin_win_arg(5, LINUX_REG_ARGS), %r8
-		.endif
-		.if (\argc >= 6)
-			mov win2lin_win_arg(6, LINUX_REG_ARGS), %r9
-		.endif
 	.endif
 
 	/* %rax on Linux is the number of arguments in SSE registers (zero) */
@@ -201,9 +203,7 @@ In Linux it should look like:
 	call	\shortname
 
 	/* Free stack stack space for arguments 7 and up */
-	.if (\argc > LINUX_REG_ARGS)
-		add $(\argc - LINUX_REG_ARGS) * WORD_BYTES, %rsp
-	.endif
+	add $stack_space(\argc), %rsp
 
 	/* Restore saved registers */
 	pop	%rdi
