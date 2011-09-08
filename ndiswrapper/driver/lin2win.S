@@ -18,46 +18,121 @@
 	.text
 
 #define WORD_BYTES 8
+#define LINUX_REG_ARGS 6
+#define WINDOWS_REG_ARGS 4
+
+/* %rbp is saved to create a stack frame, which can help with debugging */
+#define SAVED_REGS 1
 
 /*
- * lin2win(func, unused, winarg1, winarg2, ...)
- *
- * Call Windows function FUNC with arguments WINARG1, WINARG2 etc using
- * Windows calling convention.  The second argument is unused to preserve
- * 16-bit stack alignment.
- *
- * We use the fact that Linux passes more arguments in the registers than
- * Windows and that Windows preserves more registers across function calls.
- * This allows us to reuse the arguments allocated on the stack without
- * copying.
+ * When calling a Windows function, stack space is allocated for at least 4
+ * arguments even if the number of arguments is less than 4.  The value of
+ * true is -1 in assembler, so we multiply it by another true value.
  */
-.type	lin2win, @function
-ENTRY(lin2win)
-	/* Save our return address to %rsi, it's saved by Windows functions */
-	mov (%rsp), %rsi
+#define stack_args(argc)						\
+	(WINDOWS_REG_ARGS +						\
+	 (0 < 1) * (argc > WINDOWS_REG_ARGS) * (argc - WINDOWS_REG_ARGS))
 
-	/*
-	 * Allocate spill space for Windows arguments 1 to 4.  We sacrifice
-	 * our return address as well, so that's one position less.
-	 */
-	sub $(4 - 1) * WORD_BYTES, %rsp
+/* Full required change of stack pointer, in words */
+#define stack_words_raw(argc) (stack_args(argc) + SAVED_REGS + 1)
 
-	/*
-	 * arg3(winarg1) is in %rdx, goes to %rcx
-	 * arg4(winarg2) is in %rcx, goes to %rdx
-	 * So we swap %rcx and %rdx.
-	 * arg5 and winarg3 are in %r8 - nothing needed.
-	 * arg6 and winarg4 are in %r9 - nothing needed.
-	 */
-	xchg %rcx, %rdx
+/* Full actual change of stack pointer, in words (must be even) */
+#define stack_words_aligned(argc) ((stack_words_raw(argc) + 1) & ~1)
+
+/* Space allocated for Linux arguments on stack */
+#define stack_space(argc) \
+	((stack_words_aligned(argc) - SAVED_REGS - 1) * WORD_BYTES)
+
+/*
+ * lin2win_win_arg(N) gives the address of the Nth Windows argument on our
+ * stack frame.  %rsp points to the first argument.  The Nth argument is
+ * therefore at ((N - 1) * 8)(%rsp).
+ *
+ * Don't call with N less than 5!
+ */
+#define lin2win_win_arg(n) ((n - 1) * WORD_BYTES)(%rsp)
+
+/*
+ * lin2win_lin_arg(N, ARGC) gives the address of the Nth Linux argument after
+ * the stack has been prepared for a Windows function call with ARGC arguments.
+ *
+ * When called from Linux, the Nth argument is at ((N - 6) * 8)(%rsp).  We add
+ * the allocated stack space and saved registers to compensate for %rsp change.
+ *
+ * Don't call with N less than 7!
+ */
+#define lin2win_lin_arg(n, argc)					\
+	(stack_space(argc) +						\
+	 (SAVED_REGS + n - LINUX_REG_ARGS) * WORD_BYTES)(%rsp)
+
+/*
+ * lin2win(func, winarg1, winarg2, ...)
+ * Call Windows FUNC function with ARGC arguments WINARG1, WINARG2, ...
+ * We get (ARGC + 1) arguments.
+ */
+.macro lin2win name, argc
+	.type \name, @function
+	ENTRY(\name)
+
+	/* Create a call frame - it's optional, but good for debugging */
+	.cfi_startproc
+	push %rbp
+	.cfi_def_cfa %rsp, 2 * WORD_BYTES
+	.cfi_offset %rbp, -2 * WORD_BYTES
+	mov %rsp, %rbp
+	.cfi_def_cfa %rbp, 2 * WORD_BYTES
+
+	/* Allocate space for Windows arguments */
+	sub $stack_space(\argc), %rsp
+
+	/* arg7 to winarg6 */
+	.if (\argc >= 6)
+		mov lin2win_lin_arg(7, \argc), %r11
+		mov %r11, lin2win_win_arg(6)
+	.endif
+
+	/* arg6 to winarg5 */
+	.if (\argc >= 5)
+		mov %r9, lin2win_win_arg(5)
+	.endif
+
+	/* arg5 to winarg4 */
+	.if (\argc >= 4)
+		mov %r8, %r9
+	.endif
+
+	/* arg4 to winarg3 */
+	.if (\argc >= 3)
+		mov %rcx, %r8
+	.endif
+
+	/* arg3 to winarg2 - nothing needed, both are in %rdx */
+
+	/* arg2 to winarg1 */
+	.if (\argc >= 1)
+		mov %rsi, %rcx
+	.endif
 
 	/* Call function (arg1) */
 	call *%rdi
 
-	/* Reclaim all spill space */
-	add $4 * WORD_BYTES, %rsp
+	/* Reclaim space for Windows arguments */
+	add $stack_space(\argc), %rsp
 
-	/* Return to the address saved in %rsi */
-	push %rsi
+	/* Return to the caller */
+	leave
+	.cfi_def_cfa %rsp, WORD_BYTES
+	.cfi_restore %rbp
 	ret
-.size	lin2win, (. - lin2win)
+	.cfi_endproc
+	.size	\name, (. - \name)
+.endm
+
+/* Define lin2winN functions */
+lin2win lin2win0, 0
+lin2win lin2win1, 1
+lin2win lin2win2, 2
+lin2win lin2win3, 3
+lin2win lin2win4, 4
+lin2win lin2win5, 5
+lin2win lin2win6, 6
