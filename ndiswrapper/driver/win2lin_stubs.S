@@ -78,14 +78,22 @@ In Linux it should look like:
 	.text
 
 #define LINUX_REG_ARGS 6
-#define SAVED_REGS 2
 #define LOOP_THRESHOLD 9
 #define WORD_BYTES 8
 
 /*
- * When calling the Linux function, two registers (%rdi and %rsi) are pushed
- * to the stack.  When passing more than 6 arguments, arguments starting with
- * argument 7 are pushed to the stack as well.
+ * %rsi and %rdi must be saved because they are not saved by Linux calls, but
+ * Windows callers expect them to be saved.  %rbp is saved to create a stack
+ * frame, which can help with debugging.  We need to reserve space for an odd
+ * number of registers anyway to keep 16-bit alignment of the stack (one more
+ * position is used by the return address).
+ */
+#define SAVED_REGS 3
+
+/*
+ * When calling the Linux function, several registers are saved on the stack.
+ * When passing more than 6 arguments, arguments starting with argument 7 are
+ * pushed to the stack as well.
  *
  * We also need to allocate an additional word on the stack to keep it aligned
  * to the 16-bit boundary if the number of saved arguments plus one (for the
@@ -135,6 +143,14 @@ In Linux it should look like:
 .macro win2linm longname, shortname, argc
 	.type	\longname, @function
 	ENTRY(\longname)
+
+	/* Create a call frame - it's optional, but good for debuging */
+	.cfi_startproc
+	push %rbp
+	.cfi_def_cfa %rsp, 2 * WORD_BYTES
+	.cfi_offset %rbp, -2 * WORD_BYTES
+	mov %rsp, %rbp
+	.cfi_def_cfa %rbp, 2 * WORD_BYTES
 
 	/*
 	 * Registers %rdi and %rsi are volatile on Linux, but not on Windows,
@@ -222,7 +238,11 @@ In Linux it should look like:
 	pop	%rsi
 
 	/* Return to Windows code */
+	leave
+	.cfi_def_cfa %rsp, WORD_BYTES
+	.cfi_restore %rbp
 	ret
+	.cfi_endproc
 	.size	\longname, (. - \longname)
 .endm
 
