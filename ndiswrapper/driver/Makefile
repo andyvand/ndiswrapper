@@ -2,8 +2,8 @@
 MODNAME = ndiswrapper
 
 DISTFILES = \
-	Makefile crt.c divdi3.c hal.c iw_ndis.c iw_ndis.h lin2win.h loader.c \
-	loader.h longlong.h mkexport.sh mkstubs.sh ndis.c ndis.h \
+	Makefile crt.c divdi3.c hal.c iw_ndis.c iw_ndis.h lin2win.S lin2win.h \
+	loader.c loader.h longlong.h mkexport.sh mkstubs.sh ndis.c ndis.h \
 	ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c pe_linker.c \
 	pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h win2lin_stubs.S \
 	winnt_types.h workqueue.c wrapmem.c wrapmem.h wrapndis.c wrapndis.h \
@@ -145,7 +145,7 @@ $(obj)/win2lin_stubs.h: $(addprefix $(src)/,$(STUB_SRCS)) FORCE
 	$(call if_changed,mkstubs)
 
 $(obj)/win2lin_stubs.o: $(obj)/win2lin_stubs.h
-OBJS += win2lin_stubs.o
+OBJS += win2lin_stubs.o lin2win.o
 else
 OBJS += divdi3.o
 endif
