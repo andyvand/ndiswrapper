@@ -88,7 +88,7 @@ WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 struct workqueue_struct *ntos_wq;
 
 #ifdef WRAP_PREEMPT
-DEFINE_PER_CPU(irql_info_t, irql_info);
+DEFINE_PER_CPU(struct irql_info, irql_info);
 #endif
 
 #if defined(CONFIG_X86_64)
@@ -2550,7 +2550,7 @@ int ntoskernel_init(void)
 	do {
 		int cpu;
 		for_each_possible_cpu(cpu) {
-			irql_info_t *info;
+			struct irql_info *info;
 			info = &per_cpu(irql_info, cpu);
 			mutex_init(&(info->lock));
 			info->task = NULL;

@@ -547,20 +547,20 @@ do {									\
 
 #ifdef WRAP_PREEMPT
 
-typedef struct {
+struct irql_info {
 	int count;
 	struct mutex lock;
 #ifdef CONFIG_SMP
 	cpumask_t cpus_allowed;
 #endif
 	struct task_struct *task;
-} irql_info_t;
+};
 
-DECLARE_PER_CPU(irql_info_t, irql_info);
+DECLARE_PER_CPU(struct irql_info, irql_info);
 
 static inline KIRQL raise_irql(KIRQL newirql)
 {
-	irql_info_t *info;
+	struct irql_info *info;
 
 	assert(newirql == DISPATCH_LEVEL);
 	info = &get_cpu_var(irql_info);
@@ -596,7 +596,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	irql_info_t *info;
+	struct irql_info *info;
 
 	assert(oldirql <= DISPATCH_LEVEL);
 	info = &get_cpu_var(irql_info);
