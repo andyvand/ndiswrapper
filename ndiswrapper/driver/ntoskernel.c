@@ -2526,6 +2526,9 @@ int ntoskernel_init(void)
 			mutex_init(&(info->lock));
 			info->task = NULL;
 			info->count = 0;
+#ifdef CONFIG_SMP
+			cpus_setall(info->cpus_allowed);
+#endif
 		}
 	} while (0);
 #endif
