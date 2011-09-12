@@ -650,7 +650,7 @@ BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	}
 	spin_unlock_irqrestore(&kdpc_list_lock, flags);
 	if (ret == TRUE)
-		schedule_ntos_work(&kdpc_work);
+		queue_work(ntos_wq, &kdpc_work);
 	WORKTRACE("%d", ret);
 	return ret;
 }
@@ -734,7 +734,7 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	spin_lock_irqsave(&ntos_work_lock, flags);
 	InsertTailList(&ntos_work_list, &ntos_work_item->list);
 	spin_unlock_irqrestore(&ntos_work_lock, flags);
-	schedule_ntos_work(&ntos_work);
+	queue_work(ntos_wq, &ntos_work);
 	WORKEXIT(return 0);
 }
 

@@ -2014,7 +2014,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,2)
 	case NDIS_STATUS_DOT11_DISASSOCIATION:
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->ndis_pending_work);
-		schedule_wrapndis_work(&wnd->ndis_work);
+		queue_work(wrapndis_wq, &wnd->ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_CONNECTION_START:
 		conn_start = status->buf;
@@ -2030,7 +2030,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,2)
 			netif_carrier_on(wnd->net_dev);
 			set_bit(LINK_STATUS_CHANGED,
 				&wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			queue_work(wrapndis_wq, &wnd->ndis_work);
 		}
 		break;
 	case NDIS_STATUS_DOT11_SCAN_CONFIRM:
@@ -2044,7 +2044,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,2)
 		TRACE2("%d, %d, %d", phy_state->phy_id, phy_state->hw_state,
 		       phy_state->sw_state);
 		set_bit(PHY_STATE_CHANGED, &wnd->ndis_pending_work);
-		schedule_wrapndis_work(&wnd->ndis_work);
+		queue_work(wrapndis_wq, &wnd->ndis_work);
 		break;
 	case NDIS_STATUS_DOT11_LINK_QUALITY:
 		link_quality = status->buf;
@@ -2309,7 +2309,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	InsertTailList(&ndis_worker_list, &ndis_work_entry->list);
 	spin_unlock_bh(&ndis_work_list_lock);
 	WORKTRACE("scheduling %p", ndis_work_item);
-	schedule_ndis_work(&ndis_work);
+	queue_work(ndis_wq, &ndis_work);
 	EXIT3(return NDIS_STATUS_SUCCESS);
 }
 
