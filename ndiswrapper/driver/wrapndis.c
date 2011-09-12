@@ -374,7 +374,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		wnd->tx_buffer_list = tx_buffer_list;
 	wnd->tx_buffer_list->ndis_reserved[0] = tx_buffer_list;
 	spin_unlock(&wnd->tx_ring_lock);
-	schedule_wrapndis_work(&wnd->tx_work);
+	queue_work(wrapndis_wq, &wnd->tx_work);
 	return NETDEV_TX_OK;
 }
 
@@ -441,7 +441,7 @@ void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
 			netif_wake_queue(net_dev);
 		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 			set_bit(LINK_STATUS_CHANGED, &wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			queue_work(wrapndis_wq, &wnd->ndis_work);
 		}
 		break;
 	case NdisMediaStateDisconnected:
@@ -453,7 +453,7 @@ void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
 		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 			memset(&wnd->essid, 0, sizeof(wnd->essid));
 			set_bit(LINK_STATUS_CHANGED, &wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			queue_work(wrapndis_wq, &wnd->ndis_work);
 		}
 		break;
 	default:
@@ -549,7 +549,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct ndis_device *wnd = netdev_priv(dev);
 	set_bit(SET_MULTICAST_LIST, &wnd->ndis_pending_work);
-	schedule_wrapndis_work(&wnd->ndis_work);
+	queue_work(wrapndis_wq, &wnd->ndis_work);
 }
 
 /* called from BH context */
@@ -756,7 +756,7 @@ static void stats_timer_proc(unsigned long data)
 	if (wnd->stats_interval <= 0)
 		EXIT2(return);
 	set_bit(COLLECT_STATS, &wnd->ndis_pending_work);
-	schedule_wrapndis_work(&wnd->ndis_work);
+	queue_work(wrapndis_wq, &wnd->ndis_work);
 	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
 }
 
@@ -794,7 +794,7 @@ static void hangcheck_proc(unsigned long data)
 		       wnd->nmb->adapter_ctx);
 	if (res) {
 		set_bit(MINIPORT_RESET, &wnd->ndis_pending_work);
-		schedule_wrapndis_work(&wnd->ndis_work);
+		queue_work(wrapndis_wq, &wnd->ndis_work);
 	}
 	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	EXIT3(return);

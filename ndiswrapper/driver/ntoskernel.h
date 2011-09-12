@@ -459,16 +459,9 @@ struct wrap_device {
 	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
-extern struct workqueue_struct *ndis_wq;
-#define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
-
-extern struct workqueue_struct *wrapndis_wq;
-#define schedule_wrapndis_work(work_struct)	\
-	queue_work(wrapndis_wq, (work_struct))
-
 extern struct workqueue_struct *ntos_wq;
-#define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
-#define schedule_work(work_struct) queue_work(ntos_wq, (work_struct))
+extern struct workqueue_struct *ndis_wq;
+extern struct workqueue_struct *wrapndis_wq;
 
 #define atomic_unary_op(var, size, oper)				\
 do {									\

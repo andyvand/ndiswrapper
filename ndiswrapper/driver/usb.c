@@ -389,7 +389,7 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 	spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	spin_unlock(&wrap_urb_complete_list_lock);
-	schedule_ntos_work(&wrap_urb_complete_work);
+	queue_work(ntos_wq, &wrap_urb_complete_work);
 	USBTRACE("scheduled worker for urb %p", urb);
 }
 
