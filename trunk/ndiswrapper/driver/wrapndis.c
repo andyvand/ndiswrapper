@@ -1167,7 +1167,7 @@ void hangcheck_del(struct ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
-static void ndis_worker(struct work_struct *work)
+static void wrapndis_worker(struct work_struct *work)
 {
 	struct ndis_device *wnd;
 
@@ -2137,7 +2137,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
-	initialize_work(&wnd->ndis_work, ndis_worker);
+	initialize_work(&wnd->ndis_work, wrapndis_worker);
 	wnd->iw_stats_enabled = TRUE;
 
 	TRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
