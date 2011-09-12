@@ -826,7 +826,7 @@ void hangcheck_del(struct ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
-static void ndis_worker(struct work_struct *work)
+static void wrapndis_worker(struct work_struct *work)
 {
 	struct ndis_device *wnd;
 
@@ -1692,7 +1692,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	memset(&wnd->cipher_info, 0, sizeof(wnd->cipher_info));
 	wnd->cipher_info.algo = DOT11_CIPHER_ALGO_NONE;
 	wnd->auth_algo = DOT11_AUTH_ALGO_80211_OPEN;
-	initialize_work(&wnd->ndis_work, ndis_worker);
+	initialize_work(&wnd->ndis_work, wrapndis_worker);
 	wnd->hw_status = 0;
 
 	wnd->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
