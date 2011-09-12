@@ -583,7 +583,7 @@ void free_tx_packet(struct ndis_device *wnd, struct ndis_packet *packet,
 	    ((pool->max_descr - pool->num_used_descr) >=
 	     (wnd->max_tx_packets / 4))) {
 		set_bit(NETIF_WAKEQ, &wnd->ndis_pending_work);
-		schedule_wrapndis_work(&wnd->ndis_work);
+		queue_work(wrapndis_wq, &wnd->ndis_work);
 	}
 	EXIT4(return);
 }
@@ -748,7 +748,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	}
 	spin_unlock(&wnd->tx_ring_lock);
 	TRACE4("ring: %d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	schedule_wrapndis_work(&wnd->tx_work);
+	queue_work(wrapndis_wq, &wnd->tx_work);
 	return NETDEV_TX_OK;
 }
 
@@ -815,7 +815,7 @@ void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
 			netif_wake_queue(net_dev);
 		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 			set_bit(LINK_STATUS_ON, &wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			queue_work(wrapndis_wq, &wnd->ndis_work);
 		}
 		break;
 	case NdisMediaStateDisconnected:
@@ -827,7 +827,7 @@ void set_media_state(struct ndis_device *wnd, enum ndis_media_state state)
 		if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 			memset(&wnd->essid, 0, sizeof(wnd->essid));
 			set_bit(LINK_STATUS_OFF, &wnd->ndis_pending_work);
-			schedule_wrapndis_work(&wnd->ndis_work);
+			queue_work(wrapndis_wq, &wnd->ndis_work);
 		}
 		break;
 	default:
@@ -920,7 +920,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct ndis_device *wnd = netdev_priv(dev);
 	set_bit(SET_MULTICAST_LIST, &wnd->ndis_pending_work);
-	schedule_wrapndis_work(&wnd->ndis_work);
+	queue_work(wrapndis_wq, &wnd->ndis_work);
 }
 
 /* called from BH context */
@@ -1104,7 +1104,7 @@ static void iw_stats_timer_proc(unsigned long data)
 	ENTER2("%d", wnd->iw_stats_interval);
 	if (wnd->iw_stats_interval > 0) {
 		set_bit(COLLECT_IW_STATS, &wnd->ndis_pending_work);
-		schedule_wrapndis_work(&wnd->ndis_work);
+		queue_work(wrapndis_wq, &wnd->ndis_work);
 	}
 	mod_timer(&wnd->iw_stats_timer, jiffies + wnd->iw_stats_interval);
 }
@@ -1135,7 +1135,7 @@ static void hangcheck_proc(unsigned long data)
 	ENTER3("%d", wnd->hangcheck_interval);
 	if (wnd->hangcheck_interval > 0) {
 		set_bit(HANGCHECK, &wnd->ndis_pending_work);
-		schedule_wrapndis_work(&wnd->ndis_work);
+		queue_work(wrapndis_wq, &wnd->ndis_work);
 	}
 	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	EXIT3(return);

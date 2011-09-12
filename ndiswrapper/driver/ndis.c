@@ -2169,7 +2169,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
 	struct ndis_device *wnd = nmb->wnd;
 	ENTER2("%p", wnd);
 	if (wnd->tx_ok)
-		schedule_wrapndis_work(&wnd->tx_work);
+		queue_work(wrapndis_wq, &wnd->tx_work);
 }
 
 /* called via function pointer */
@@ -2203,7 +2203,7 @@ wstdcall void NdisMSendComplete(struct ndis_mp_block *nmb,
 		 */
 		if (xchg(&wnd->tx_ok, 1) == 0) {
 			TRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-			schedule_wrapndis_work(&wnd->tx_work);
+			queue_work(wrapndis_wq, &wnd->tx_work);
 		}
 	}
 	EXIT3(return);
@@ -2215,7 +2215,7 @@ wstdcall void NdisMSendResourcesAvailable(struct ndis_mp_block *nmb)
 	struct ndis_device *wnd = nmb->wnd;
 	ENTER3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	wnd->tx_ok = 1;
-	schedule_wrapndis_work(&wnd->tx_work);
+	queue_work(wrapndis_wq, &wnd->tx_work);
 	EXIT3(return);
 }
 
@@ -2730,7 +2730,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	InsertTailList(&ndis_work_list, &ndis_work_item->list);
 	spin_unlock_bh(&ndis_work_list_lock);
 	WORKTRACE("scheduling %p", ndis_work_item);
-	schedule_ndis_work(&ndis_work);
+	queue_work(ndis_wq, &ndis_work);
 	EXIT3(return NDIS_STATUS_SUCCESS);
 }
 
