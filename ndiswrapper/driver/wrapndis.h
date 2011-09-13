@@ -81,10 +81,6 @@ void set_media_state(struct ndis_device *wnd, enum ndis_media_state state);
 void hangcheck_add(struct ndis_device *wnd);
 void hangcheck_del(struct ndis_device *wnd);
 
-driver_dispatch_t winNdisDispatchPnp;
-driver_dispatch_t winNdisDispatchPower;
-driver_dispatch_t winNdisDispatchDeviceControl;
-
 struct iw_statistics *get_iw_stats(struct net_device *dev);
 
 #endif
