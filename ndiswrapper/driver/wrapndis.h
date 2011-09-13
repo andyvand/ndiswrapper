@@ -66,10 +66,6 @@ void hangcheck_del(struct ndis_device *wnd);
 NDIS_STATUS mp_pnp_event(struct ndis_device *wnd,
 			 enum ndis_device_pnp_event event, ULONG profile);
 
-driver_dispatch_t winNdisDispatchPnp;
-driver_dispatch_t winNdisDispatchPower;
-driver_dispatch_t winNdisDispatchDeviceControl;
-
 struct iw_statistics *get_iw_stats(struct net_device *dev);
 
 #endif
