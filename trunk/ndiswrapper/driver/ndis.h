@@ -262,7 +262,7 @@ struct ndis_packet {
 		struct {
 			UCHAR miniport_reserved_ex[3 * sizeof(void *)];
 			UCHAR wrapper_reserved_ex[sizeof(void *)];
-		} deserailized_reserved;
+		} deserialized_reserved;
 		struct {
 			UCHAR mac_reserved[4 * sizeof(void *)];
 		} mac_reserved;
