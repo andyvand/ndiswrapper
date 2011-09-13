@@ -1633,8 +1633,8 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	EXIT2(return 0);
 }
 
-static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
-				       struct device_object *pdo)
+static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
+				struct device_object *pdo)
 {
 	struct device_object *fdo;
 	NTSTATUS status;
@@ -1742,7 +1742,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 int init_ndis_driver(struct driver_object *drv_obj)
 {
 	ENTER1("%p", drv_obj);
-	drv_obj->drv_ext->add_device = NdisAddDevice;
+	drv_obj->drv_ext->add_device = ndis_add_device;
 	return 0;
 }
 
