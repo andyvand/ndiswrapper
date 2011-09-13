@@ -561,7 +561,7 @@ struct driver_object {
 struct driver_extension {
 	struct driver_object *drv_obj;
 	NTSTATUS (*add_device)(struct driver_object *drv_obj,
-			       struct device_object *dev_obj) wstdcall;
+			       struct device_object *dev_obj);
 	ULONG count;
 	struct unicode_string service_key_name;
 	struct nt_list custom_ext;
