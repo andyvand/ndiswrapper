@@ -36,8 +36,6 @@ extern const struct iw_handler_def ndis_handler_def;
 #define PRIV_CONNECT			SIOCIWFIRSTPRIV+20
 #define PRIV_SCAN			SIOCIWFIRSTPRIV+21
 
-#define RSN_INFO_ELEM		0x30
-
 /* these have to match what is in wpa_supplicant */
 
 enum wpa_alg { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP };
