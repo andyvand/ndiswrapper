@@ -347,12 +347,10 @@ static int iw_get_infra_mode(struct net_device *dev,
 
 static const char *network_type_to_name(int net_type)
 {
-	if (net_type >= 0 &&
-	    net_type < (sizeof(network_names)/sizeof(network_names[0])))
+	if (net_type >= 0 && net_type < ARRAY_SIZE(network_names))
 		return network_names[net_type];
 	else
-		return network_names[sizeof(network_names) /
-				     sizeof(network_names[0]) - 1];
+		return network_names[ARRAY_SIZE(network_names) - 1];
 }
 
 static int iw_get_network_type(struct net_device *dev,
@@ -429,8 +427,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0) {
-		if (wrqu->freq.m >= 1 &&
-		    wrqu->freq.m <= (sizeof(freq_chan) / sizeof(freq_chan[0])))
+		if (wrqu->freq.m >= 1 && wrqu->freq.m <= ARRAY_SIZE(freq_chan))
 			req.ds_config = freq_chan[wrqu->freq.m - 1] * 1000;
 		else
 			return -EINVAL;
@@ -1449,10 +1446,9 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 			}
 	}
 
-	range->num_channels = (sizeof(freq_chan)/sizeof(freq_chan[0]));
+	range->num_channels = ARRAY_SIZE(freq_chan);
 
-	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])) &&
-		    i < IW_MAX_FREQUENCIES; i++) {
+	for (i = 0; i < ARRAY_SIZE(freq_chan) && i < IW_MAX_FREQUENCIES; i++) {
 		range->freq[i].i = i + 1;
 		range->freq[i].m = freq_chan[i] * 100000;
 		range->freq[i].e = 1;
@@ -1970,9 +1966,9 @@ static const iw_handler priv_handler[] = {
 };
 
 const struct iw_handler_def ndis_handler_def = {
-	.num_standard	= sizeof(ndis_handler) / sizeof(ndis_handler[0]),
-	.num_private	= sizeof(priv_handler) / sizeof(priv_handler[0]),
-	.num_private_args = sizeof(priv_args) / sizeof(priv_args[0]),
+	.num_standard	= ARRAY_SIZE(ndis_handler),
+	.num_private	= ARRAY_SIZE(priv_handler),
+	.num_private_args = ARRAY_SIZE(priv_args),
 
 	.standard	= (iw_handler *)ndis_handler,
 	.private	= (iw_handler *)priv_handler,
