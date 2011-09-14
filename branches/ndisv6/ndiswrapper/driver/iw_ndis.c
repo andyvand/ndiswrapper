@@ -921,7 +921,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	struct iw_event iwe;
 	struct ndis_dot11_bss_entry *bss;
 	struct ndis_dot11_info_element *ie;
-	unsigned char buf[MAX_WPA_IE_LEN * 2 + 30];
+	unsigned char custom_str[64];
 	unsigned long i;
 	char *cbuf;
 
@@ -975,9 +975,9 @@ static char *ndis_translate_scan(struct net_device *dev,
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
-	sprintf(buf, "time=%llu", bss->time_stamp);
-	iwe.u.data.length = strlen(buf);
-	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
+	sprintf(custom_str, "time=%llu", bss->time_stamp);
+	iwe.u.data.length = strlen(custom_str);
+	event = iwe_stream_add_point(info, event, end_buf, &iwe, custom_str);
 
 	i = 0;
 	ie = (typeof(ie))bss->buffer;
