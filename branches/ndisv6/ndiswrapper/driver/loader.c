@@ -52,7 +52,7 @@ static struct nt_list wrap_drivers;
 static int wrap_device_type(int data1)
 {
 	int i;
-	for (i = 0; i < sizeof(class_guids) / sizeof(class_guids[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(class_guids); i++)
 		if (data1 == class_guids[i].data1)
 			return i;
 	ERROR("unknown device: 0x%x\n", data1);
