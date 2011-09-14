@@ -165,17 +165,12 @@ struct ndis_pmkid {
 	struct ndis_bssid_info bssid_info[1];
 };
 
-int add_wep_key(struct ndis_device *wnd, char *key, int key_len,
-		int index);
 int get_ap_address(struct ndis_device *wnd, mac_address mac);
 int set_ndis_auth_mode(struct ndis_device *wnd, ULONG auth_mode);
-int set_auth_mode(struct ndis_device *wnd);
 int get_ndis_encr_mode(struct ndis_device *wnd);
-int set_encr_mode(struct ndis_device *wnd);
 int set_iw_encr_mode(struct ndis_device *wnd, int cipher_pairwise,
 		     int cipher_groupwise);
 int get_ndis_auth_mode(struct ndis_device *wnd);
-int set_priv_filter(struct ndis_device *wnd);
 NDIS_STATUS disassociate(struct ndis_device *wnd, int reset_ssid);
 void set_default_iw_params(struct ndis_device *wnd);
 extern const struct iw_handler_def ndis_handler_def;
