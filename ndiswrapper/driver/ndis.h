@@ -34,8 +34,6 @@ typedef LONG ndis_rssi;
 typedef ULONG ndis_key_index;
 typedef ULONG ndis_tx_power_level;
 typedef ULONGULONG ndis_key_rsc;
-typedef UCHAR ndis_rates[NDIS_MAX_RATES];
-typedef UCHAR ndis_rates_ex[NDIS_MAX_RATES_EX];
 typedef UCHAR mac_address[ETH_ALEN];
 typedef ULONG ndis_fragmentation_threshold;
 typedef ULONG ndis_rts_threshold;
