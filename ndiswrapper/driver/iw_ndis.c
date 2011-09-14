@@ -1040,7 +1040,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	EXIT2(return event);
 }
 
-int set_scan(struct ndis_device *wnd)
+static int set_scan(struct ndis_device *wnd)
 {
 	struct ndis_dot11_scan_request_v2 *scan_req;
 	int len;
