@@ -1178,20 +1178,15 @@ static char *ndis_translate_scan(struct net_device *dev,
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
 			unsigned char ielen = 2 + iep[1];
 
-			if (ielen > SSID_MAX_WPA_IE_LEN) {
+			if (ielen > IW_GENERIC_IE_MAX) {
 				iep += ielen;
 				continue;
 			}
-			if ((iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
-			     memcmp(iep + 2, "\x00\x50\xf2\x01", 4) == 0) ||
-			    iep[0] == RSN_INFO_ELEM) {
-				memset(&iwe, 0, sizeof(iwe));
-				iwe.cmd = IWEVGENIE;
-				iwe.u.data.length = ielen;
-				event = iwe_stream_add_point(info, event,
-							     end_buf, &iwe,
-							     iep);
-			}
+			memset(&iwe, 0, sizeof(iwe));
+			iwe.cmd = IWEVGENIE;
+			iwe.u.data.length = ielen;
+			event = iwe_stream_add_point(info, event, end_buf, &iwe,
+						     iep);
 			iep += ielen;
 		}
 	}

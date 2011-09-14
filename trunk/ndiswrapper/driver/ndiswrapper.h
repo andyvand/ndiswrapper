@@ -22,7 +22,6 @@
 #define DRIVER_NAME "ndiswrapper"
 #define DRIVER_CONFIG_DIR "/etc/ndiswrapper"
 
-#define SSID_MAX_WPA_IE_LEN 40
 #define NDIS_ESSID_MAX_SIZE 32
 #define NDIS_ENCODING_TOKEN_MAX 32
 #define MAX_ENCR_KEYS 4
