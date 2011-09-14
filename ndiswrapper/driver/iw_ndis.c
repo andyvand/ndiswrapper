@@ -957,7 +957,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	if (bss->bss_type == ndis_dot11_bss_type_independent)
 		iwe.u.mode = IW_MODE_ADHOC;
 	else if (bss->bss_type == ndis_dot11_bss_type_infrastructure)
-		iwe.u.mode = IW_MODE_INFRA;
+		iwe.u.mode = IW_MODE_MASTER;
 	else // if (bss->bss_type == ndis_dot11_bss_type_any)
 		iwe.u.mode = IW_MODE_AUTO;
 	event = iwe_stream_add_event(info, event, end_buf, &iwe,
