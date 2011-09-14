@@ -28,9 +28,6 @@
 #define TX_RING_SIZE 16
 #define NDIS_MAX_RATES 8
 #define NDIS_MAX_RATES_EX 16
-#define WLAN_EID_GENERIC 221
-#define MAX_WPA_IE_LEN 64
-#define MAX_STR_LEN 512
 
 #define WRAP_PCI_BUS 5
 #define WRAP_PCMCIA_BUS 8
