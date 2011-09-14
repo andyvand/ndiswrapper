@@ -136,7 +136,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	char *p = page;
 	struct ndis_device *wnd = (struct ndis_device *)data;
 	struct ndis_configuration config;
-	unsigned int power_mode;
+	enum ndis_power power_mode;
 	NDIS_STATUS res;
 	ndis_tx_power_level tx_power;
 	ULONG bit_rate;
