@@ -1290,7 +1290,7 @@ static int iw_set_power_mode(struct net_device *dev,
 {
 	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
-	ULONG power_mode;
+	enum ndis_power power_mode;
 
 	if (wrqu->power.disabled == 1)
 		power_mode = NDIS_POWER_OFF;
@@ -1313,7 +1313,7 @@ static int iw_get_power_mode(struct net_device *dev,
 {
 	struct ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
-	ULONG power_mode;
+	enum ndis_power power_mode;
 
 	ENTER2("");
 	res = mp_query(wnd, OID_802_11_POWER_MODE,
