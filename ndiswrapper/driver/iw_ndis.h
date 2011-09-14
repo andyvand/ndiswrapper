@@ -51,9 +51,9 @@ struct ndis_fixed_ies {
 };
 
 struct ndis_variable_ies {
-	ULONG elem_id;
+	UCHAR elem_id;
 	UCHAR length;
-	UCHAR data[1];
+	UCHAR data[];
 };
 
 enum ndis_reload_defaults { Ndis802_11ReloadWEPKeys };
@@ -118,7 +118,8 @@ struct ndis_wlan_bssid_ex {
 	UINT mode;
 	ndis_rates_ex rates_ex;
 	ULONG ie_length;
-	UCHAR ies[1];
+	struct ndis_fixed_ies fixed;
+	struct ndis_variable_ies var[];
 };
 
 /* we use bssid_list as bssid_list_ex also */
