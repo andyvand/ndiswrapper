@@ -1018,18 +1018,12 @@ static char *ndis_translate_scan(struct net_device *dev,
 			if ((current_val - event) > IW_EV_LCP_LEN)
 				event = current_val;
 			break;
-		case DOT11_IE_ERP:
-			break;
-		case DOT11_IE_RSN:
+		default:
 			memset(&iwe, 0, sizeof(iwe));
 			iwe.cmd = IWEVGENIE;
-			iwe.u.data.length = ie->length;
-			cbuf = (char *)ie + sizeof(*ie);
+			iwe.u.data.length = ie->length + 2;
 			event = iwe_stream_add_point(info, event, end_buf,
-						     &iwe, cbuf);
-			break;
-		default:
-			TRACE2("unknown element: 0x%x, %u", ie->id, ie->length);
+						     &iwe, (char *)ie);
 			break;
 		}
 		TRACE2("%lu, %d", i, ie->length);
