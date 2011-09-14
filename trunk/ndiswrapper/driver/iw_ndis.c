@@ -1048,10 +1048,13 @@ static char *ndis_translate_scan(struct net_device *dev,
 	unsigned char buf[MAX_WPA_IE_LEN * 2 + 30];
 	struct ndis_wlan_bssid *bssid;
 	struct ndis_wlan_bssid_ex *bssid_ex;
+	int extended;
 
 	ENTER2("%p, %p", event, item);
 	bssid = item;
 	bssid_ex = item;
+	extended = (bssid->length > offsetof(struct ndis_wlan_bssid_ex, var));
+
 	/* add mac address */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWAP;
@@ -1138,12 +1141,12 @@ static char *ndis_translate_scan(struct net_device *dev,
 	memset(&iwe, 0, sizeof(iwe));
 	current_val = event + iwe_stream_lcp_len(info);
 	iwe.cmd = SIOCGIWRATE;
-	if (bssid->length > sizeof(*bssid))
+	if (extended)
 		nrates = NDIS_MAX_RATES_EX;
 	else
 		nrates = NDIS_MAX_RATES;
-	for (i = 0 ; i < nrates ; i++) {
-		if (bssid->rates[i] & 0x7f) {
+	for (i = 0; i < nrates; i++) {
+		if (bssid_ex->rates_ex[i] & 0x7f) {
 			iwe.u.bitrate.value = ((bssid->rates[i] & 0x7f) *
 					       500000);
 			current_val = iwe_stream_add_value(info, event,
@@ -1169,25 +1172,24 @@ static char *ndis_translate_scan(struct net_device *dev,
 	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
 
 	TRACE2("%d, %zu", bssid->length, sizeof(*bssid));
-	if (bssid->length > sizeof(*bssid)) {
-		unsigned char *iep = (unsigned char *)bssid_ex->ies +
-			sizeof(struct ndis_fixed_ies);
-		unsigned char *end = (unsigned char *)bssid_ex->ies +
+	if (extended) {
+		struct ndis_variable_ies *iep = bssid_ex->var;
+		unsigned char *end = (unsigned char *)&bssid_ex->fixed +
 			bssid_ex->ie_length;
 
-		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
-			unsigned char ielen = 2 + iep[1];
+		while (&iep->length < end && &iep->data[iep->length] <= end) {
+			unsigned char ielen = iep->length + 2;
 
-			if (ielen > IW_GENERIC_IE_MAX) {
-				iep += ielen;
+			if (unlikely(ielen > IW_GENERIC_IE_MAX)) {
+				iep = (typeof(iep))&iep->data[iep->length];
 				continue;
 			}
 			memset(&iwe, 0, sizeof(iwe));
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ielen;
 			event = iwe_stream_add_point(info, event, end_buf, &iwe,
-						     iep);
-			iep += ielen;
+						     (char *)iep);
+			iep = (typeof(iep))&iep->data[iep->length];
 		}
 	}
 	TRACE2("event = %p, current_val = %p", event, current_val);
@@ -1229,7 +1231,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	/* try with space for a few scan items */
-	buf_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;
+	buf_len = sizeof(ULONG) + offsetof(struct ndis_wlan_bssid_ex, var) * 8;
 
 	/* Try many times, as the needed space may grow between queries */
 	for (i = 0; i < 10; i++) {
