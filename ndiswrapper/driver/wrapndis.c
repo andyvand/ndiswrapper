@@ -210,8 +210,7 @@ static NDIS_STATUS mp_init(struct ndis_device *wnd)
 	}
 	mp = &wnd->wd->driver->ndis_driver->mp;
 	status = LIN2WIN6(mp->init, &error_status, &medium_index, medium_array,
-			  sizeof(medium_array) / sizeof(medium_array[0]),
-			  wnd->nmb, wnd->nmb);
+			  ARRAY_SIZE(medium_array), wnd->nmb, wnd->nmb);
 	TRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);

@@ -155,8 +155,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	}
 
 	res = mp_query_int(wnd, OID_GEN_HARDWARE_STATUS, &n);
-	if (res == NDIS_STATUS_SUCCESS &&
-	    n >= 0 && n < sizeof(hw_status) / sizeof(hw_status[0]))
+	if (res == NDIS_STATUS_SUCCESS && n >= 0 && n < ARRAY_SIZE(hw_status))
 		p += sprintf(p, "status=%s\n", hw_status[n]);
 
 	res = mp_query(wnd, OID_802_3_CURRENT_ADDRESS, mac, sizeof(mac));

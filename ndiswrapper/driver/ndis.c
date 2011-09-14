@@ -99,7 +99,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 			"pnp_event_notify", "shutdown",
 		};
 		func = (void **)&ndis_driver->mp.queryinfo;
-		for (i = 0; i < (sizeof(mp_funcs) / sizeof(mp_funcs[0])); i++)
+		for (i = 0; i < ARRAY_SIZE(mp_funcs); i++)
 			TRACE0("function '%s' is at %p", mp_funcs[i], func[i]);
 	}
 	EXIT1(return NDIS_STATUS_SUCCESS);
@@ -2910,7 +2910,7 @@ static void *ndis_get_routine_address(char *name)
 {
 	int i;
 	ENTER2("%p", name);
-	for (i = 0; i < sizeof(ndis_exports) / sizeof(ndis_exports[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(ndis_exports); i++) {
 		if (strcmp(name, ndis_exports[i].name) == 0) {
 			TRACE2("%p", ndis_exports[i].func);
 			return ndis_exports[i].func;
