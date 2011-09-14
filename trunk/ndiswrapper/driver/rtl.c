@@ -713,14 +713,3 @@ wstdcall BOOLEAN WIN_FUNC(RtlIsServicePackVersionInstalled,1)
 	TRACE1("version: %d", version);
 	return TRUE;
 }
-
-int rtl_init(void)
-{
-	return 0;
-}
-
-/* called when module is being removed */
-void rtl_exit(void)
-{
-	EXIT4(return);
-}
