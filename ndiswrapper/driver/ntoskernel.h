@@ -848,15 +848,16 @@ void ntoskernel_exit_device(struct wrap_device *wd);
 void *allocate_object(ULONG size, enum common_object_type type,
 		      struct unicode_string *name);
 
+#ifdef ENABLE_USB
 int usb_init(void);
 void usb_exit(void);
+#else
+static inline int usb_init(void) { return 0; }
+static inline void usb_exit(void) {}
+#endif
 int usb_init_device(struct wrap_device *wd);
 void usb_exit_device(struct wrap_device *wd);
 
-int crt_init(void);
-void crt_exit(void);
-int rtl_init(void);
-void rtl_exit(void);
 int wrap_procfs_init(void);
 void wrap_procfs_remove(void);
 
