@@ -1085,7 +1085,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	if (bssid->mode == Ndis802_11IBSS)
 		iwe.u.mode = IW_MODE_ADHOC;
 	else if (bssid->mode == Ndis802_11Infrastructure)
-		iwe.u.mode = IW_MODE_INFRA;
+		iwe.u.mode = IW_MODE_MASTER;
 	else // if (bssid->mode == Ndis802_11AutoUnknown)
 		iwe.u.mode = IW_MODE_AUTO;
 	event = iwe_stream_add_event(info, event, end_buf, &iwe,
