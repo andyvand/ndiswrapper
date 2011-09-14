@@ -27,7 +27,6 @@ NDIS_STATUS set_auth_algo(struct ndis_device *wnd,
 			  enum ndis_dot11_auth_algorithm algo_id);
 NDIS_STATUS set_cipher_algo(struct ndis_device *wnd,
 			    enum ndis_dot11_cipher_algorithm algo_id);
-int set_scan(struct ndis_device *wnd);
 extern const struct iw_handler_def ndis_handler_def;
 
 #define PRIV_RESET			SIOCIWFIRSTPRIV+16
