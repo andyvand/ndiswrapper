@@ -527,7 +527,7 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_device *wnd = netdev_priv(dev);
 	int i, n;
 	NDIS_STATUS res;
-	ndis_rates_ex rates;
+	UCHAR rates[NDIS_MAX_RATES_EX];
 
 	ENTER2("");
 	if (wrqu->bitrate.fixed == 0)
@@ -1045,7 +1045,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	struct iw_event iwe;
 	char *current_val;
 	int i, nrates;
-	unsigned char buf[MAX_WPA_IE_LEN * 2 + 30];
+	unsigned char custom_str[64];
 	struct ndis_wlan_bssid *bssid;
 	struct ndis_wlan_bssid_ex *bssid_ex;
 	int extended;
@@ -1142,9 +1142,9 @@ static char *ndis_translate_scan(struct net_device *dev,
 	current_val = event + iwe_stream_lcp_len(info);
 	iwe.cmd = SIOCGIWRATE;
 	if (extended)
-		nrates = NDIS_MAX_RATES_EX;
+		nrates = ARRAY_SIZE(bssid->rates);
 	else
-		nrates = NDIS_MAX_RATES;
+		nrates = ARRAY_SIZE(bssid_ex->rates_ex);
 	for (i = 0; i < nrates; i++) {
 		if (bssid_ex->rates_ex[i] & 0x7f) {
 			iwe.u.bitrate.value = ((bssid->rates[i] & 0x7f) *
@@ -1161,15 +1161,15 @@ static char *ndis_translate_scan(struct net_device *dev,
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
-	sprintf(buf, "bcn_int=%d", bssid->config.beacon_period);
-	iwe.u.data.length = strlen(buf);
-	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
+	sprintf(custom_str, "bcn_int=%d", bssid->config.beacon_period);
+	iwe.u.data.length = strlen(custom_str);
+	event = iwe_stream_add_point(info, event, end_buf, &iwe, custom_str);
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
-	sprintf(buf, "atim=%u", bssid->config.atim_window);
-	iwe.u.data.length = strlen(buf);
-	event = iwe_stream_add_point(info, event, end_buf, &iwe, buf);
+	sprintf(custom_str, "atim=%u", bssid->config.atim_window);
+	iwe.u.data.length = strlen(custom_str);
+	event = iwe_stream_add_point(info, event, end_buf, &iwe, custom_str);
 
 	TRACE2("%d, %zu", bssid->length, sizeof(*bssid));
 	if (extended) {
@@ -1395,7 +1395,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_device *wnd = netdev_priv(dev);
 	unsigned int i, n;
 	NDIS_STATUS res;
-	ndis_rates_ex rates;
+	UCHAR rates[NDIS_MAX_RATES_EX];
 	ndis_tx_power_level tx_power;
 
 	ENTER2("");

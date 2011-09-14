@@ -103,7 +103,7 @@ struct ndis_wlan_bssid {
 	UINT net_type;
 	struct ndis_configuration config;
 	UINT mode;
-	ndis_rates rates;
+	UCHAR rates[NDIS_MAX_RATES];
 };
 
 struct ndis_wlan_bssid_ex {
@@ -116,7 +116,7 @@ struct ndis_wlan_bssid_ex {
 	UINT net_type;
 	struct ndis_configuration config;
 	UINT mode;
-	ndis_rates_ex rates_ex;
+	UCHAR rates_ex[NDIS_MAX_RATES_EX];
 	ULONG ie_length;
 	struct ndis_fixed_ies fixed;
 	struct ndis_variable_ies var[];
