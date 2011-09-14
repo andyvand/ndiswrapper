@@ -61,15 +61,10 @@ MODULE_LICENSE("GPL");
 static void module_cleanup(void)
 {
 	loader_exit();
-#ifdef ENABLE_USB
 	usb_exit();
-#endif
-
 	wrap_procfs_remove();
 	wrapndis_exit();
 	ndis_exit();
-	rtl_exit();
-	crt_exit();
 	ntoskernel_exit();
 	wrapmem_exit();
 }
@@ -93,12 +88,9 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	if (wrapmem_init() || ntoskernel_init() || crt_init() ||
-	    rtl_init() || ndis_init() || wrapndis_init() ||
-#ifdef ENABLE_USB
-	    usb_init() ||
-#endif
-	    wrap_procfs_init() || loader_init()) {
+	if (wrapmem_init() || ntoskernel_init() || ndis_init() ||
+	    wrapndis_init() || usb_init() || wrap_procfs_init() ||
+	    loader_init()) {
 		module_cleanup();
 		ERROR("%s: initialization failed", DRIVER_NAME);
 		return -EINVAL;

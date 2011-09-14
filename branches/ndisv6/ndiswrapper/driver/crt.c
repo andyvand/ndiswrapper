@@ -587,14 +587,3 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 	printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
 	kfree(buf);
 }
-
-int crt_init(void)
-{
-	return 0;
-}
-
-/* called when module is being removed */
-void crt_exit(void)
-{
-	EXIT4(return);
-}
