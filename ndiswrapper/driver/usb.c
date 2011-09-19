@@ -479,7 +479,7 @@ static void wrap_urb_complete_worker(struct work_struct *dummy)
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 {
-	usbd_pipe_handle pipe_handle;
+	struct usb_endpoint_descriptor *pipe_handle;
 	struct urb *urb;
 	unsigned int pipe;
 	struct usbd_bulk_or_intr_transfer *bulk_int_tx;
@@ -642,7 +642,7 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 {
 	int ret;
 	union nt_urb *nt_urb;
-	usbd_pipe_handle pipe_handle;
+	struct usb_endpoint_descriptor *pipe_handle;
 	unsigned int pipe1, pipe2;
 
 	nt_urb = IRP_URB(irp);
@@ -674,7 +674,7 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 {
 	union nt_urb *nt_urb;
-	usbd_pipe_handle pipe_handle;
+	struct usb_endpoint_descriptor *pipe_handle;
 	struct wrap_urb *wrap_urb;
 	struct wrap_device *wd;
 	KIRQL irql;
@@ -1221,11 +1221,10 @@ WIN_FUNC(USBD_ParseConfigurationDescriptor,3)
 						   -1, -1, -1);
 }
 
-wstdcall usb_common_descriptor_t *WIN_FUNC(USBD_ParseDescriptors,4)
-	(void *buf, ULONG length, void *start, LONG type)
+wstdcall struct usb_descriptor_header *WIN_FUNC(USBD_ParseDescriptors,4)
+	(void *buf, ULONG length, struct usb_descriptor_header *descr,
+	 LONG type)
 {
-	usb_common_descriptor_t *descr = start;
-
 	while ((void *)descr < buf + length) {
 		if (descr->bDescriptorType == type)
 			return descr;
