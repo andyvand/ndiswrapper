@@ -42,8 +42,6 @@ typedef ULONG ndis_rts_threshold;
 typedef ULONG ndis_antenna;
 typedef ULONG ndis_oid;
 
-typedef UCHAR ndis_pmkid_vavlue[16];
-
 typedef uint64_t NDIS_PHY_ADDRESS;
 
 struct ndis_sg_element {
