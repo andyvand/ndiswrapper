@@ -149,15 +149,12 @@ struct urb_hcd_area {
 	void *reserved8[8];
 };
 
-typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
-typedef struct usb_descriptor_header usb_common_descriptor_t;
-
 struct usbd_pipe_information {
 	USHORT wMaxPacketSize;
 	UCHAR bEndpointAddress;
 	UCHAR bInterval;
 	enum pipe_type type;
-	usbd_pipe_handle handle;
+	struct usb_endpoint_descriptor *handle;
 	ULONG max_tx_size;
 	ULONG flags;
 };
@@ -219,7 +216,7 @@ struct usbd_control_descriptor_request {
 
 struct usbd_bulk_or_intr_transfer {
 	struct nt_urb_header header;
-	usbd_pipe_handle pipe_handle;
+	struct usb_endpoint_descriptor *pipe_handle;
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
@@ -230,7 +227,7 @@ struct usbd_bulk_or_intr_transfer {
 
 struct usbd_pipe_request {
 	struct nt_urb_header header;
-	usbd_pipe_handle pipe_handle;
+	struct usb_endpoint_descriptor *pipe_handle;
 };
 
 struct usbd_vendor_or_class_request {
@@ -286,7 +283,7 @@ struct usbd_iso_packet_desc {
 
 struct usbd_isochronous_transfer {
 	struct nt_urb_header header;
-	usbd_pipe_handle pipe_handle;
+	struct usb_endpoint_descriptor *pipe_handle;
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
