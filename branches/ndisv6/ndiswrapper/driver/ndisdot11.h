@@ -159,12 +159,12 @@ struct ndis_dot11_default_wep_offload {
 
 #define OID_DOT11_DEFAULT_WEP_UPLOAD		(OID_DOT11_NDIS_START + 5)
 struct ndis_dot11_default_wep_upload {
-        ULONG reserved;
-        enum ndis_dot11_offload_type type;
-        void *offload;
-        ULONG num_rws_used;
-        struct ndis_dot11_iv48_counter iv48_counters[16];
-        USHORT rw_bitmaps[16];
+	ULONG reserved;
+	enum ndis_dot11_offload_type type;
+	void *offload;
+	ULONG num_rws_used;
+	struct ndis_dot11_iv48_counter iv48_counters[16];
+	USHORT rw_bitmaps[16];
 };
 
 #define OID_DOT11_MPDU_MAX_LENGTH		(OID_DOT11_NDIS_START + 6)
@@ -376,8 +376,8 @@ enum ndis_dot11_power_mode {
 	ndis_dot11_power_mode_active = 1,
 	ndis_dot11_power_mode_powersave = 2
 };
-#define DOT11_POWER_SAVE_LEVEL_MAX_PSP      1
-#define DOT11_POWER_SAVE_LEVEL_FAST_PSP     2
+#define DOT11_POWER_SAVE_LEVEL_MAX_PSP		1
+#define DOT11_POWER_SAVE_LEVEL_FAST_PSP		2
 struct ndis_dot11_power_mgmt_mode {
 	enum ndis_dot11_power_mode power_mode;
 	ULONG power_save_level;
@@ -683,9 +683,9 @@ struct ndis_dot11_pmkid_list {
 #define OID_DOT11_CONNECT_REQUEST					\
 	NDIS_DEFINE_OID(129, NDIS_OPERATIONAL_OID, NDIS_MANDATORY_OID)
 
+/* boolean */
 #define OID_DOT11_EXCLUDE_UNENCRYPTED					\
 	NDIS_DEFINE_OID(130, NDIS_OPERATIONAL_OID, NDIS_MANDATORY_OID)
-    // BOOLEAN
 
 #define OID_DOT11_STATISTICS						\
 	NDIS_DEFINE_OID(131, NDIS_STATISTICS_OID, NDIS_MANDATORY_OID)
@@ -763,15 +763,15 @@ struct ndis_dot11_statistics {
 
 struct ndis_dot11_privacy_exemption {
 	USHORT ether_type;
-        USHORT exemption_action_type;
-        USHORT exemption_packet_type;
+	USHORT exemption_action_type;
+	USHORT exemption_packet_type;
 };
 
 struct ndis_dot11_privacy_exemption_list {
 	struct ndis_object_header header;
 	ULONG num_entries;
 	ULONG num_total_entries;
-        struct ndis_dot11_privacy_exemption priv_exception_entries[1];
+	struct ndis_dot11_privacy_exemption priv_exception_entries[1];
 };
 
 #define OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM			\
@@ -890,7 +890,7 @@ struct ndis_dot11_cipher_key_mapping_key_value {
 	BOOLEAN delete;
 	BOOLEAN is_static;
 	USHORT key_length;
-        UCHAR key[1];
+	UCHAR key[1];
 };
 
 #define OID_DOT11_ENUM_ASSOCIATION_INFO					\
@@ -947,7 +947,7 @@ struct ndis_dot11_phy_id_list {
 	ULONG phy_ids[1];
 };
 
-#define DOT11_PHY_ID_ANY        (0xffffffffU)
+#define DOT11_PHY_ID_ANY	(0xffffffffU)
 
 #define OID_DOT11_CURRENT_PHY_ID\
 	NDIS_DEFINE_OID(146, NDIS_OPERATIONAL_OID, NDIS_MANDATORY_OID)
@@ -1228,7 +1228,7 @@ struct ndis_dot11_association_completion_parameters {
 	ULONG encap_table_offset, encap_table_size;
 };
 
-#define DOT11_CONNECTION_START_PARAMETERS_REVISION_1  1
+#define DOT11_CONNECTION_START_PARAMETERS_REVISION_1	1
 struct ndis_dot11_connection_start_parameters {
 	struct ndis_object_header header;
 	enum ndis_dot11_bss_type bss_type;

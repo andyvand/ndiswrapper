@@ -445,7 +445,7 @@ int wrap_procfs_init(void)
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
-		procfs_entry->read_proc  = procfs_read_debug;
+		procfs_entry->read_proc = procfs_read_debug;
 		procfs_entry->write_proc = procfs_write_debug;
 	}
 	return 0;

@@ -23,9 +23,9 @@
 #define NDIS_DMA_64BITS 2
 
 #ifdef CONFIG_X86_64
-#define MAXIMUM_PROCESSORS  64
+#define MAXIMUM_PROCESSORS 64
 #else
-#define MAXIMUM_PROCESSORS  32
+#define MAXIMUM_PROCESSORS 32
 #endif
 
 typedef UINT NDIS_STATUS;
@@ -59,11 +59,11 @@ struct ndis_object_header {
 	USHORT size;
 };
 
-#define init_ndis_object_header(object, htype, hrev)		  \
-	do {							  \
-		(object)->header.type = htype;			  \
-		(object)->header.revision = hrev;		  \
-		(object)->header.size = sizeof(*object);	  \
+#define init_ndis_object_header(object, htype, hrev)		\
+	do {							\
+		(object)->header.type = htype;			\
+		(object)->header.revision = hrev;		\
+		(object)->header.size = sizeof(*object);	\
 	} while (0)
 
 struct ndis_reference {
@@ -1007,9 +1007,9 @@ enum ndis_halt_action  {
 	NdisHaltDeviceStopped
 };
 
-#define NDIS_OID_REQUEST_REVISION_1             1
-#define NDIS_OID_REQUEST_TIMEOUT_INFINITE       0
-#define NDIS_OID_REQUEST_NDIS_RESERVED_SIZE     16
+#define NDIS_OID_REQUEST_REVISION_1		1
+#define NDIS_OID_REQUEST_TIMEOUT_INFINITE	0
+#define NDIS_OID_REQUEST_NDIS_RESERVED_SIZE	16
 
 struct ndis_oid_request {
 	struct ndis_object_header header;

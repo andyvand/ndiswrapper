@@ -591,7 +591,7 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	ENTER3("%p, %p, %p", kdpc, func, ctx);
 	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->func = func;
-	kdpc->ctx  = ctx;
+	kdpc->ctx = ctx;
 }
 
 static void kdpc_worker(struct work_struct *dummy)

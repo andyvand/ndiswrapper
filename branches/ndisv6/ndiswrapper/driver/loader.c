@@ -842,8 +842,7 @@ static int wrapper_ioctl_release(struct inode *inode, struct file *file)
 }
 
 static struct file_operations wrapper_fops = {
-	.owner          = THIS_MODULE,
-
+	.owner		= THIS_MODULE,
 #ifdef HAVE_UNLOCKED_IOCTL
 	.unlocked_ioctl	= wrapper_ioctl,
 #else
@@ -853,9 +852,9 @@ static struct file_operations wrapper_fops = {
 };
 
 static struct miscdevice wrapper_misc = {
-	.name   = DRIVER_NAME,
+	.name	= DRIVER_NAME,
 	.minor	= MISC_DYNAMIC_MINOR,
-	.fops   = &wrapper_fops
+	.fops	= &wrapper_fops
 };
 
 int loader_init(void)
@@ -866,7 +865,7 @@ int loader_init(void)
 	InitializeListHead(&wrap_devices);
 	sema_init(&loader_mutex, 1);
 	init_completion(&loader_complete);
-	if ((err = misc_register(&wrapper_misc)) < 0 ) {
+	if ((err = misc_register(&wrapper_misc)) < 0) {
 		ERROR("couldn't register module (%d)", err);
 		unregister_devices();
 		EXIT1(return err);

@@ -122,7 +122,7 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 		memcpy(extra, ssid_list.ssids[0].ssid, ssid_list.ssids[0].length);
 		wrqu->essid.length = ssid_list.ssids[0].length;
 		if (wrqu->essid.length > 0)
-			wrqu->essid.flags  = 1;
+			wrqu->essid.flags = 1;
 		else
 			wrqu->essid.flags = 0;
 		if (ssid_list.ssids[0].length == DOT11_SSID_MAX_LENGTH)
@@ -698,7 +698,7 @@ static int iw_get_cipher(struct net_device *dev, struct iw_request_info *info,
 	EXIT2(return 0);
 }
 
-/* index must be 0 - N, as per NDIS  */
+/* index must be 0 - N, as per NDIS */
 static int add_cipher_key(struct ndis_device *wnd, char *key, int key_len,
 			  int index, enum ndis_dot11_cipher_algorithm algo,
 			  mac_address mac)
@@ -967,7 +967,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 	iwe.cmd = IWEVQUAL;
 	iwe.u.qual.level = bss->rssi;
 	iwe.u.qual.noise = WL_NOISE;
-	iwe.u.qual.qual  = bss->link_quality;
+	iwe.u.qual.qual = bss->link_quality;
 	iwe.len = IW_EV_QUAL_LEN;
 	event = iwe_stream_add_event(info, event, end_buf, &iwe,
 				     IW_EV_QUAL_LEN);
@@ -1003,7 +1003,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 			current_val = event + IW_EV_LCP_LEN;
 			iwe.cmd = SIOCGIWRATE;
 			cbuf = (char *)ie + sizeof(*ie);
-			for (i = 0 ; i < ie->length ; i++) {
+			for (i = 0; i < ie->length; i++) {
 				if (!(cbuf[i] & 0x7f))
 					continue;
 				iwe.u.bitrate.value =

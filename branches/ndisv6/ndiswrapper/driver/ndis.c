@@ -277,7 +277,7 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 		ERROR("couldn't allocate memory");
 		return NULL;
 	}
-	switch(type) {
+	switch (type) {
 	case NdisParameterInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 0);
 		TRACE2("%u", param->data.integer);
@@ -317,7 +317,7 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 		RtlFreeUnicodeString(&prev->data.string);
 		setting->encoded = NULL;
 	}
-	switch(param->type) {
+	switch (param->type) {
 	case NdisParameterInteger:
 		snprintf(setting->value, MAX_SETTING_VALUE_LEN, "%u",
 			 param->data.integer);
@@ -1979,7 +1979,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,2)
 	struct ndis_dot11_link_quality_entry *link_quality_entry;
 
 	ENTER2("status=0x%x", status->code);
-	if (status->header.type !=  NDIS_OBJECT_TYPE_STATUS_INDICATION) {
+	if (status->header.type != NDIS_OBJECT_TYPE_STATUS_INDICATION) {
 		ERROR("invalid status: 0x%x", status->header.type);
 		return;
 	}

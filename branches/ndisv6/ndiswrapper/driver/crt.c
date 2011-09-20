@@ -370,7 +370,7 @@ noregparm wchar_t *WIN_FUNC(_win_wcscpy,2)
 {
 	wchar_t *d = dest;
 	while ((*d++ = *src++))
-	       ;
+		;
 	return dest;
 }
 
@@ -477,7 +477,7 @@ noregparm int WIN_FUNC(rand,0)
 	int i, n;
 
 	get_random_bytes(buf, sizeof(buf));
-	for (n = i = 0; i < sizeof(buf) ; i++)
+	for (n = i = 0; i < sizeof(buf); i++)
 		n += buf[i];
 	return n;
 }
