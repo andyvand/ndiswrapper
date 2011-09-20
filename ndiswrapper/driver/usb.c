@@ -719,23 +719,23 @@ static USBD_STATUS wrap_set_clear_feature(struct usb_device *udev,
 		break;
 	case URB_FUNCTION_SET_FEATURE_TO_INTERFACE:
 		request = USB_REQ_SET_FEATURE;
-		type =  USB_DT_INTERFACE;
+		type = USB_DT_INTERFACE;
 		break;
 	case URB_FUNCTION_SET_FEATURE_TO_ENDPOINT:
 		request = USB_REQ_SET_FEATURE;
-		type =  USB_DT_ENDPOINT;
+		type = USB_DT_ENDPOINT;
 		break;
 	case URB_FUNCTION_CLEAR_FEATURE_TO_DEVICE:
 		request = USB_REQ_CLEAR_FEATURE;
-		type =  USB_DT_DEVICE;
+		type = USB_DT_DEVICE;
 		break;
 	case URB_FUNCTION_CLEAR_FEATURE_TO_INTERFACE:
 		request = USB_REQ_CLEAR_FEATURE;
-		type =  USB_DT_INTERFACE;
+		type = USB_DT_INTERFACE;
 		break;
 	case URB_FUNCTION_CLEAR_FEATURE_TO_ENDPOINT:
 		request = USB_REQ_CLEAR_FEATURE;
-		type =  USB_DT_ENDPOINT;
+		type = USB_DT_ENDPOINT;
 		break;
 	default:
 		WARNING("invalid function: %x", nt_urb->header.function);

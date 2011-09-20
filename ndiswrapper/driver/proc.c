@@ -92,7 +92,7 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
 	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
-	for (i = 1 ; i < ETH_ALEN ; i++)
+	for (i = 1; i < ETH_ALEN; i++)
 		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
@@ -544,7 +544,7 @@ int wrap_procfs_init(void)
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
-		procfs_entry->read_proc  = procfs_read_debug;
+		procfs_entry->read_proc = procfs_read_debug;
 		procfs_entry->write_proc = procfs_write_debug;
 	}
 	return 0;

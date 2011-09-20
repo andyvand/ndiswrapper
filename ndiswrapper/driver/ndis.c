@@ -357,7 +357,7 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 		ERROR("couldn't allocate memory");
 		return NULL;
 	}
-	switch(type) {
+	switch (type) {
 	case NdisParameterInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 0);
 		TRACE2("0x%x", param->data.integer);
@@ -401,7 +401,7 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 		RtlFreeUnicodeString(&prev->data.string);
 		setting->encoded = NULL;
 	}
-	switch(param->type) {
+	switch (param->type) {
 	case NdisParameterInteger:
 		snprintf(setting->value, MAX_SETTING_VALUE_LEN, "%u",
 			 param->data.integer);
@@ -1321,7 +1321,7 @@ wstdcall void WIN_FUNC(NdisQueryBuffer,3)
 	if (virt)
 		*virt = MmGetSystemAddressForMdl(buffer);
 	*length = MmGetMdlByteCount(buffer);
-	TRACE4("%p, %u", virt? *virt : NULL, *length);
+	TRACE4("%p, %u", virt ? *virt : NULL, *length);
 	return;
 }
 
@@ -1333,7 +1333,7 @@ wstdcall void WIN_FUNC(NdisQueryBufferSafe,4)
 	if (virt)
 		*virt = MmGetSystemAddressForMdlSafe(buffer, priority);
 	*length = MmGetMdlByteCount(buffer);
-	TRACE4("%p, %u", virt? *virt : NULL, *length);
+	TRACE4("%p, %u", virt ? *virt : NULL, *length);
 }
 
 wstdcall void *WIN_FUNC(NdisBufferVirtualAddress,1)

@@ -29,26 +29,26 @@
 #define DIRQL				(DEVICE_LEVEL_BASE + 2)
 
 #define STATUS_WAIT_0			0
-#define STATUS_SUCCESS                  0
-#define STATUS_ALERTED                  0x00000101
-#define STATUS_TIMEOUT                  0x00000102
-#define STATUS_PENDING                  0x00000103
-#define STATUS_FAILURE                  0xC0000001
+#define STATUS_SUCCESS			0
+#define STATUS_ALERTED			0x00000101
+#define STATUS_TIMEOUT			0x00000102
+#define STATUS_PENDING			0x00000103
+#define STATUS_FAILURE			0xC0000001
 #define STATUS_NOT_IMPLEMENTED		0xC0000002
-#define STATUS_INVALID_PARAMETER        0xC000000D
+#define STATUS_INVALID_PARAMETER	0xC000000D
 #define STATUS_INVALID_DEVICE_REQUEST	0xC0000010
 #define STATUS_MORE_PROCESSING_REQUIRED 0xC0000016
-#define STATUS_ACCESS_DENIED            0xC0000022
-#define STATUS_BUFFER_TOO_SMALL         0xC0000023
-#define STATUS_OBJECT_NAME_INVALID      0xC0000023
+#define STATUS_ACCESS_DENIED		0xC0000022
+#define STATUS_BUFFER_TOO_SMALL		0xC0000023
+#define STATUS_OBJECT_NAME_INVALID	0xC0000023
 #define STATUS_MUTANT_NOT_OWNED		0xC0000046
-#define STATUS_RESOURCES                0xC000009A
+#define STATUS_RESOURCES		0xC000009A
 #define STATUS_DELETE_PENDING		0xC0000056
 #define STATUS_INSUFFICIENT_RESOURCES	0xC000009A
-#define STATUS_NOT_SUPPORTED            0xC00000BB
-#define STATUS_INVALID_PARAMETER_2      0xC00000F0
+#define STATUS_NOT_SUPPORTED		0xC00000BB
+#define STATUS_INVALID_PARAMETER_2	0xC00000F0
 #define STATUS_NO_MEMORY		0xC0000017
-#define STATUS_CANCELLED                0xC0000120
+#define STATUS_CANCELLED		0xC0000120
 #define STATUS_DEVICE_REMOVED		0xC00002B6
 #define STATUS_DEVICE_NOT_CONNECTED	0xC000009D
 
@@ -182,7 +182,7 @@ typedef ULONG_PTR PFN_NUMBER;
 typedef ULONG SECURITY_INFORMATION;
 
 /* non-negative numbers indicate success */
-#define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
+#define NT_SUCCESS(status) ((NTSTATUS)(status) >= 0)
 
 struct ansi_string {
 	USHORT length;
@@ -1593,8 +1593,8 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 	     &pos->member != (head);					\
 	     pos = container_of(pos->member.next, typeof(*pos), member))
 
-#define nt_list_for_each_safe(pos, n, head)		       \
-	for (pos = (head)->next, n = pos->next; pos != (head); \
+#define nt_list_for_each_safe(pos, n, head)			\
+	for (pos = (head)->next, n = pos->next; pos != (head);	\
 	     pos = n, n = pos->next)
 
 /* device object flags */

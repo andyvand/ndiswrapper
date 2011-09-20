@@ -197,14 +197,14 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	}
 	memcpy(extra, req.essid, req.length);
 	if (req.length > 0)
-		wrqu->essid.flags  = 1;
+		wrqu->essid.flags = 1;
 	else
 		wrqu->essid.flags = 0;
 	wrqu->essid.length = req.length;
 	EXIT2(return 0);
 }
 
-/* index must be 0 - N, as per NDIS  */
+/* index must be 0 - N, as per NDIS */
 static int add_wep_key(struct ndis_device *wnd, char *key, int key_len,
 		       int index)
 {
@@ -327,7 +327,7 @@ static int iw_get_infra_mode(struct net_device *dev,
 		EXIT2(return -EOPNOTSUPP);
 	}
 
-	switch(ndis_mode) {
+	switch (ndis_mode) {
 	case Ndis802_11IBSS:
 		iw_mode = IW_MODE_ADHOC;
 		break;
@@ -369,7 +369,7 @@ static int iw_get_network_type(struct net_device *dev,
 		network_type = -1;
 	}
 	strncpy(wrqu->name, network_type_to_name(network_type),
-	        sizeof(wrqu->name) - 1);
+		sizeof(wrqu->name) - 1);
 	wrqu->name[sizeof(wrqu->name)-1] = 0;
 	return 0;
 }
@@ -1117,7 +1117,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 		i = 100;
 	iwe.u.qual.level = bssid->rssi;
 	iwe.u.qual.noise = WL_NOISE;
-	iwe.u.qual.qual  = i;
+	iwe.u.qual.qual = i;
 	iwe.len = IW_EV_QUAL_LEN;
 	event = iwe_stream_add_event(info, event, end_buf, &iwe,
 				     IW_EV_QUAL_LEN);
@@ -1218,7 +1218,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	struct ndis_bssid_list *bssid_list = NULL;
 	char *event = extra;
-	struct ndis_wlan_bssid *cur_item ;
+	struct ndis_wlan_bssid *cur_item;
 
 	ENTER2("");
 	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
@@ -1585,9 +1585,9 @@ static int iw_set_auth(struct net_device *dev,
 		break;
 #ifdef IW_AUTH_MFP
 	case IW_AUTH_MFP:
-	        if (wrqu->param.value == IW_AUTH_MFP_DISABLED ||
-                    wrqu->param.value == IW_AUTH_MFP_OPTIONAL)
-		        break;
+		if (wrqu->param.value == IW_AUTH_MFP_DISABLED ||
+		    wrqu->param.value == IW_AUTH_MFP_OPTIONAL)
+			break;
 		WARNING("MFP not implemented");
 		return -EOPNOTSUPP;
 #endif
@@ -1683,7 +1683,7 @@ static int iw_set_encodeext(struct net_device *dev,
 	ndis_key.index = keyidx;
 
 	if (ext->ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
-		for (i = 0; i < 6 ; i++)
+		for (i = 0; i < 6; i++)
 			ndis_key.rsc |= (((u64)ext->rx_seq[i]) << (i * 8));
 		TRACE2("0x%llx", ndis_key.rsc);
 		ndis_key.index |= 1 << 29;
