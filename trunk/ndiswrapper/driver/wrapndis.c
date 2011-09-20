@@ -953,7 +953,7 @@ static void update_iw_stats(struct ndis_device *wnd)
 		qual = 100;
 
 	iw_stats->qual.noise = WL_NOISE;
-	iw_stats->qual.qual  = qual;
+	iw_stats->qual.qual = qual;
 
 	res = mp_query(wnd, OID_802_11_STATISTICS,
 		       &ndis_stats, sizeof(ndis_stats));
@@ -1526,7 +1526,7 @@ static void set_task_offload(struct ndis_device *wnd, void *buf,
 			task_offload_header->offset_first_task);
 	while (1) {
 		TRACE1("%d, %d", task_offload->version, task_offload->task);
-		switch(task_offload->task) {
+		switch (task_offload->task) {
 		case TcpIpChecksumNdisTask:
 			csum = (void *)task_offload->task_buf;
 			break;

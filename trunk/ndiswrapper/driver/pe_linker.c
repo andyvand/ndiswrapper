@@ -192,7 +192,7 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		  opt_hdr->NumberOfRvaAndSizes);
 	for (i = 0; i < opt_hdr->NumberOfRvaAndSizes; i++) {
 		DBGLINKER("datadirectory %s RVA:%X Size:%d",
-			  (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?
+			  (i <= IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR) ?
 			  image_directory_name[i] : "unknown",
 			  opt_hdr->DataDirectory[i].VirtualAddress,
 			  opt_hdr->DataDirectory[i].Size);
@@ -213,7 +213,7 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 	int ret = 0;
 	generic_func adr;
 
-	lookup_tbl  = RVA2VA(image, dirent->u.OriginalFirstThunk, ULONG_PTR *);
+	lookup_tbl = RVA2VA(image, dirent->u.OriginalFirstThunk, ULONG_PTR *);
 	address_tbl = RVA2VA(image, dirent->FirstThunk, ULONG_PTR *);
 
 	for (i = 0; lookup_tbl[i]; i++) {
@@ -553,7 +553,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 	}
 
 	for (i = 0; i < n; i++) {
-	        pe = &pe_image[i];
+		pe = &pe_image[i];
 
 		if (fixup_reloc(pe->image, pe->nt_hdr)) {
 			TRACE1("fixup reloc failed");
@@ -576,7 +576,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 	}
 
 	for (i = 0; i < n; i++) {
-	        pe = &pe_image[i];
+		pe = &pe_image[i];
 
 		if (pe->type == IMAGE_FILE_DLL) {
 			struct unicode_string ustring;

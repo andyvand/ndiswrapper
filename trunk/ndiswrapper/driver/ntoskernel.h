@@ -72,7 +72,7 @@
 #endif /* Linux < 2.6.16 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
-#define cpumask_copy(dst, src) do { *dst = *src; } while(0)
+#define cpumask_copy(dst, src) do { *dst = *src; } while (0)
 #endif /* Linux < 2.6.28 */
 
 #ifndef tsk_cpus_allowed
@@ -673,7 +673,7 @@ static inline void lower_irql(KIRQL oldirql)
 #define NT_SPIN_LOCK_UNLOCKED 0
 #define NT_SPIN_LOCK_LOCKED 1
 
-static inline void  nt_spin_lock_init(NT_SPIN_LOCK *lock)
+static inline void nt_spin_lock_init(NT_SPIN_LOCK *lock)
 {
 	*lock = NT_SPIN_LOCK_UNLOCKED;
 }
@@ -709,7 +709,7 @@ static inline void nt_spin_unlock(NT_SPIN_LOCK *lock)
 
 #define nt_spin_lock(lock) do { } while (0)
 
-#define nt_spin_unlock(lock)  do { } while (0)
+#define nt_spin_unlock(lock) do { } while (0)
 
 #endif // CONFIG_SMP
 

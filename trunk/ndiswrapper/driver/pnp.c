@@ -215,7 +215,7 @@ static NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 }
 
 wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-					   struct  irp *irp)
+					   struct irp *irp)
 {
 	NTSTATUS status;
 	struct wrap_device *wd = pdo->reserved;
@@ -470,7 +470,7 @@ WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
 static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {
 	struct device_object *pdo;
-	NTSTATUS status ;
+	NTSTATUS status;
 	int i;
 	struct ansi_string ansi_name;
 	struct unicode_string unicode_name;
