@@ -151,21 +151,16 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_device *wnd = netdev_priv(dev);
-	char ssid[NDIS_ESSID_MAX_SIZE];
 	int length;
 
 	ENTER2("");
-	memset(ssid, 0, sizeof(ssid));
 	/* there is no way to turn off essid other than to set to
 	 * random bytes; instead, we use off to mean any */
 	if (wrqu->essid.flags) {
-		/* wireless-tools prior to version 20 add extra 1, and
-		 * later than 20 don't! Deal with that mess */
-		length = wrqu->essid.length - 1;
-		if (length > 0)
+		length = wrqu->essid.length;
+		/* Strip '\0' appended by wireless extensions 19 and older */
+		if (length > 0 && extra[length - 1] == '\0')
 			length--;
-		while (length < wrqu->essid.length && extra[length])
-			length++;
 		TRACE2("%d", length);
 		if (length <= 0 || length > NDIS_ESSID_MAX_SIZE)
 			EXIT2(return -EINVAL);
@@ -174,8 +169,7 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 
 	set_assoc_params(wnd);
 
-	memcpy(ssid, extra, length);
-	if (set_essid(wnd, ssid, length))
+	if (set_essid(wnd, extra, length))
 		EXIT2(return -EINVAL);
 
 	EXIT2(return 0);
