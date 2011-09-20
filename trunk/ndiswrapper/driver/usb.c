@@ -1468,7 +1468,7 @@ int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
 	spin_lock_init(&wrap_urb_complete_list_lock);
-	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker);
+	INIT_WORK(&wrap_urb_complete_work, wrap_urb_complete_worker);
 #ifdef USB_DEBUG
 	urb_id = 0;
 #endif

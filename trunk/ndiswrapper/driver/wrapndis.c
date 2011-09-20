@@ -2118,7 +2118,7 @@ static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
 	sema_init(&wnd->tx_ring_mutex, 1);
 	sema_init(&wnd->ndis_req_mutex, 1);
 	wnd->ndis_req_done = 0;
-	initialize_work(&wnd->tx_work, tx_worker);
+	INIT_WORK(&wnd->tx_work, tx_worker);
 	wnd->tx_ring_start = 0;
 	wnd->tx_ring_end = 0;
 	wnd->is_tx_ring_full = 0;
@@ -2136,7 +2136,7 @@ static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
-	initialize_work(&wnd->ndis_work, wrapndis_worker);
+	INIT_WORK(&wnd->ndis_work, wrapndis_worker);
 	wnd->iw_stats_enabled = TRUE;
 
 	TRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
