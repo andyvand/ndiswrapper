@@ -63,7 +63,7 @@ log "module(s):"
 log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
 log ""
 
-# the verion of gcc
+# the version of gcc
 newblock
 log "gcc --version:"
 log_cmd 'gcc --version'
