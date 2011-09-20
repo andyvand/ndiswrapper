@@ -80,11 +80,10 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	int res, length;
 
 	if (wrqu->essid.flags) {
-		length = wrqu->essid.length - 1;
-		if (length > 0)
+		length = wrqu->essid.length;
+		/* Strip '\0' appended by wireless extensions 19 and older */
+		if (length > 0 && extra[length - 1] == '\0')
 			length--;
-		while (length < wrqu->essid.length && extra[length])
-			length++;
 		if (length <= 0 || length > DOT11_SSID_MAX_LENGTH)
 			return -EINVAL;
 	} else
