@@ -2504,8 +2504,8 @@ int ntoskernel_init(void)
 
 	nt_spin_lock_init(&nt_list_lock);
 
-	initialize_work(&kdpc_work, kdpc_worker);
-	initialize_work(&ntos_work, ntos_work_worker);
+	INIT_WORK(&kdpc_work, kdpc_worker);
+	INIT_WORK(&ntos_work, ntos_work_worker);
 	wrap_timer_slist.next = NULL;
 
 	do_gettimeofday(&now);

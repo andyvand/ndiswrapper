@@ -2974,7 +2974,7 @@ int ndis_init(void)
 {
 	InitializeListHead(&ndis_work_list);
 	spin_lock_init(&ndis_work_list_lock);
-	initialize_work(&ndis_work, ndis_worker);
+	INIT_WORK(&ndis_work, ndis_worker);
 
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
 	if (!ndis_wq) {
