@@ -25,10 +25,6 @@ install: all
 	install -m 755 loadndisdriver $(DESTDIR)$(sbindir)
 	install -m 755 ndiswrapper $(DESTDIR)$(usrsbindir)
 	install -m 755 ndiswrapper-buginfo $(DESTDIR)$(usrsbindir)
-	@echo
-	@echo "NOTE: Windows driver configuration file format has changed since" \
-	      "1.5. You must re-install Windows drivers if they were" \
-	      "installed before."
 
 uninstall:
 	rm -f $(DESTDIR)$(sbindir)/loadndisdriver
