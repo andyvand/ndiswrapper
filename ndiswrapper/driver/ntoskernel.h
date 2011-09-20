@@ -167,7 +167,8 @@ struct wrap_work_struct {
 #define work_struct wrap_work_struct
 #define workqueue_struct wrap_workqueue_struct
 
-#define initialize_work(work, pfunc)				\
+#undef INIT_WORK
+#define INIT_WORK(work, pfunc)					\
 	do {							\
 		(work)->func = (pfunc);				\
 		(work)->data = (work);				\
@@ -194,12 +195,15 @@ void wrap_flush_wq(struct workqueue_struct *workq);
 
 #else // WRAP_WQ
 
-#if defined(INIT_WORK_NAR) || defined(INIT_DELAYED_WORK_DEFERRABLE)
-#define initialize_work(work, func) INIT_WORK(work, func)
-#else
-typedef void (*work_handler)(void *work);
-#define initialize_work(work, func) INIT_WORK(work, (work_handler)func, work)
-#endif // INIT_WORK_NAR
+/* Compatibility for Linux before 2.6.20 where INIT_WORK takes 3 arguments */
+#if !defined(INIT_WORK_NAR) && !defined(INIT_DELAYED_WORK_DEFERRABLE)
+typedef void (*work_handler)(struct work_struct *work);
+typedef void (*work_handler_compat)(void *work);
+static inline void (INIT_WORK)(struct work_struct *work, work_handler func) {
+	INIT_WORK(work, (work_handler_compat)func, work);
+}
+#undef INIT_WORK
+#endif
 
 #endif // WRAP_WQ
 

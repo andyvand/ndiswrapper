@@ -2392,7 +2392,7 @@ int ndis_init(void)
 	TRACE1("ndis_wq: %p", ndis_wq);
 	InitializeListHead(&ndis_worker_list);
 	spin_lock_init(&ndis_work_list_lock);
-	initialize_work(&ndis_work, ndis_worker);
+	INIT_WORK(&ndis_work, ndis_worker);
 
 	return 0;
 }
