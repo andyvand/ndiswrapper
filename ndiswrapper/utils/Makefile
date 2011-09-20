@@ -11,7 +11,7 @@ DISTFILES=Makefile ndis6wrapper loadndisdriver.c ndiswrapper-buginfo
 all: loadndis6driver
 
 loadndis6driver: loadndisdriver.c
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
 	rm -f *~ *.o loadndis6driver
