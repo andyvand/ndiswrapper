@@ -1177,10 +1177,6 @@ static char *ndis_translate_scan(struct net_device *dev,
 		while (&iep->length < end && &iep->data[iep->length] <= end) {
 			unsigned char ielen = iep->length + 2;
 
-			if (unlikely(ielen > IW_GENERIC_IE_MAX)) {
-				iep = (typeof(iep))&iep->data[iep->length];
-				continue;
-			}
 			memset(&iwe, 0, sizeof(iwe));
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ielen;
