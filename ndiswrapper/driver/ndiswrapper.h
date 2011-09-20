@@ -79,11 +79,11 @@
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 #define TODO() ERROR("not fully implemented (yet)")
 
-#define TRACE(level, fmt, ...)				       \
-do {								       \
-	if (debug >= level)					       \
-		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME, \
-		       __func__, __LINE__ , ## __VA_ARGS__);       \
+#define TRACE(level, fmt, ...)						\
+do {									\
+	if (debug >= level)						\
+		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME,	\
+		       __func__, __LINE__ , ## __VA_ARGS__);		\
 } while (0)
 #define TRACE0(fmt, ...) TRACE(0, fmt , ## __VA_ARGS__)
 
@@ -144,13 +144,13 @@ extern int debug;
 #define ENTER5(fmt, ...) TRACE5("Enter " fmt , ## __VA_ARGS__)
 #define ENTER6(fmt, ...) TRACE6("Enter " fmt , ## __VA_ARGS__)
 
-#define EXIT0(stmt) do { TRACE0("Exit"); stmt; } while(0)
-#define EXIT1(stmt) do { TRACE1("Exit"); stmt; } while(0)
-#define EXIT2(stmt) do { TRACE2("Exit"); stmt; } while(0)
-#define EXIT3(stmt) do { TRACE3("Exit"); stmt; } while(0)
-#define EXIT4(stmt) do { TRACE4("Exit"); stmt; } while(0)
-#define EXIT5(stmt) do { TRACE5("Exit"); stmt; } while(0)
-#define EXIT6(stmt) do { TRACE6("Exit"); stmt; } while(0)
+#define EXIT0(stmt) do { TRACE0("Exit"); stmt; } while (0)
+#define EXIT1(stmt) do { TRACE1("Exit"); stmt; } while (0)
+#define EXIT2(stmt) do { TRACE2("Exit"); stmt; } while (0)
+#define EXIT3(stmt) do { TRACE3("Exit"); stmt; } while (0)
+#define EXIT4(stmt) do { TRACE4("Exit"); stmt; } while (0)
+#define EXIT5(stmt) do { TRACE5("Exit"); stmt; } while (0)
+#define EXIT6(stmt) do { TRACE6("Exit"); stmt; } while (0)
 
 #if defined(USB_DEBUG)
 #define USBTRACE TRACE0
