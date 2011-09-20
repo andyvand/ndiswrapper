@@ -91,4 +91,3 @@ Now load ndiswrapper module with
 If everything worked properly, this should initialize 'wlan0' wireless
 device, which can be configured with wireless tools, such as
 'iwconfig', 'wpa_supplicant' etc.
-

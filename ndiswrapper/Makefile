@@ -73,4 +73,3 @@ dist:
 
 rpm: dist ndiswrapper.spec
 	rpmbuild -ta $(distarchive) --define="ndiswrapper_version $(DRIVER_VERSION)"
-
