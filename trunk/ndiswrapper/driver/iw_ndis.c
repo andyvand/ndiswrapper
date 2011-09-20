@@ -1010,7 +1010,7 @@ static int iw_set_nick(struct net_device *dev, struct iw_request_info *info,
 {
 	struct ndis_device *wnd = netdev_priv(dev);
 
-	if (wrqu->data.length >= IW_ESSID_MAX_SIZE || wrqu->data.length <= 0)
+	if (wrqu->data.length >= sizeof(wnd->nick) || wrqu->data.length < 0)
 		return -EINVAL;
 	memcpy(wnd->nick, extra, wrqu->data.length);
 	wnd->nick[wrqu->data.length] = 0;
