@@ -28,7 +28,7 @@ $(SUBDIRS):
 install:
 	$(MAKE) -C driver install
 	$(MAKE) -C utils install
-	mkdir -p -m 0755 $(DESTDIR)$(mandir)/man8
+	mkdir -p -m 755 $(DESTDIR)$(mandir)/man8
 	install -m 644 ndiswrapper.8 $(DESTDIR)$(mandir)/man8
 	install -m 644 loadndisdriver.8 $(DESTDIR)$(mandir)/man8
 

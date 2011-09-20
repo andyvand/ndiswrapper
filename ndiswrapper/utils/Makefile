@@ -20,8 +20,8 @@ distclean: clean
 	rm -f .\#*
 
 install: all
-	mkdir -p -m 0755 $(DESTDIR)$(sbindir)
-	mkdir -p -m 0755 $(DESTDIR)$(usrsbindir)
+	mkdir -p -m 755 $(DESTDIR)$(sbindir)
+	mkdir -p -m 755 $(DESTDIR)$(usrsbindir)
 	install -m 755 loadndis6driver $(DESTDIR)$(sbindir)
 	install -m 755 ndis6wrapper $(DESTDIR)$(usrsbindir)
 	install -m 755 ndiswrapper-buginfo $(DESTDIR)$(usrsbindir)
