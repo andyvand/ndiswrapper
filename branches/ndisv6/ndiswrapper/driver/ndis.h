@@ -1328,7 +1328,7 @@ struct ndis_device {
 	enum ndis_dot11_bss_type bss_type;
 	enum ndis_dot11_auth_algorithm auth_algo;
 	struct cipher_info cipher_info;
-	char nick[IW_ESSID_MAX_SIZE];
+	char nick[IW_ESSID_MAX_SIZE + 1];
 	struct ndis_essid essid;
 	struct auth_encr_capa capa;
 	int num_pmkids;
