@@ -197,10 +197,11 @@ void wrap_flush_wq(struct workqueue_struct *workq);
 
 /* Compatibility for Linux before 2.6.20 where INIT_WORK takes 3 arguments */
 #if !defined(INIT_WORK_NAR) && !defined(INIT_DELAYED_WORK_DEFERRABLE)
-typedef void (*work_handler)(struct work_struct *work);
-typedef void (*work_handler_compat)(void *work);
-static inline void (INIT_WORK)(struct work_struct *work, work_handler func) {
-	INIT_WORK(work, (work_handler_compat)func, work);
+typedef void (*compat_work_func_t)(void *work);
+typedef void (*work_func_t)(struct work_struct *work);
+static inline void (INIT_WORK)(struct work_struct *work, work_func_t func)
+{
+	INIT_WORK(work, (compat_work_func_t)func, work);
 }
 #undef INIT_WORK
 #endif
