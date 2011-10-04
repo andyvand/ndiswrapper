@@ -51,12 +51,8 @@ NDIS_STATUS mp_reset(struct ndis_device *wnd)
 	KIRQL irql;
 
 	ENTER2("wnd: %p", wnd);
-	if (down_interruptible(&wnd->tx_ring_mutex))
-		EXIT3(return NDIS_STATUS_FAILURE);
-	if (down_interruptible(&wnd->ndis_req_mutex)) {
-		up(&wnd->tx_ring_mutex);
-		EXIT3(return NDIS_STATUS_FAILURE);
-	}
+	mutex_lock(&wnd->tx_ring_mutex);
+	mutex_lock(&wnd->ndis_req_mutex);
 	mp = &wnd->wd->driver->ndis_driver->mp;
 	prepare_wait_condition(wnd->ndis_req_task, wnd->ndis_req_done, 0);
 	WARNING("%s is being reset", wnd->net_dev->name);
@@ -77,12 +73,12 @@ NDIS_STATUS mp_reset(struct ndis_device *wnd)
 		}
 		TRACE2("%08X, %08X", res, reset_address);
 	}
-	up(&wnd->ndis_req_mutex);
+	mutex_unlock(&wnd->ndis_req_mutex);
 	if (res == NDIS_STATUS_SUCCESS && reset_address) {
 		set_packet_filter(wnd, wnd->packet_filter);
 		set_multicast_list(wnd);
 	}
-	up(&wnd->tx_ring_mutex);
+	mutex_unlock(&wnd->tx_ring_mutex);
 	EXIT3(return res);
 }
 
@@ -96,8 +92,7 @@ NDIS_STATUS mp_request(enum ndis_request_type request,
 	struct miniport *mp;
 	KIRQL irql;
 
-	if (down_interruptible(&wnd->ndis_req_mutex))
-		EXIT3(return NDIS_STATUS_FAILURE);
+	mutex_lock(&wnd->ndis_req_mutex);
 	if (!written)
 		written = &w;
 	if (!needed)
@@ -133,7 +128,7 @@ NDIS_STATUS mp_request(enum ndis_request_type request,
 			res = wnd->ndis_req_status;
 		TRACE2("%08X, %08X", res, oid);
 	}
-	up(&wnd->ndis_req_mutex);
+	mutex_unlock(&wnd->ndis_req_mutex);
 	DBG_BLOCK(2) {
 		if (res || needed)
 			TRACE2("%08X, %d, %d, %d", res, buflen, *written,
@@ -263,10 +258,9 @@ static void mp_halt(struct ndis_device *wnd)
 	del_iw_stats_timer(wnd);
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan &&
 	    wrap_is_pci_bus(wnd->wd->dev_bus)) {
-		up(&wnd->ndis_req_mutex);
+		mutex_unlock(&wnd->ndis_req_mutex);
 		disassociate(wnd, 0);
-		if (down_interruptible(&wnd->ndis_req_mutex))
-			WARNING("couldn't obtain ndis_req_mutex");
+		mutex_lock(&wnd->ndis_req_mutex);
 	}
 	mp = &wnd->wd->driver->ndis_driver->mp;
 	TRACE1("halt: %p", mp->mp_halt);
@@ -310,7 +304,7 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 	TRACE1("%d", state);
 	if (state == NdisDeviceStateD0) {
 		status = NDIS_STATUS_SUCCESS;
-		up(&wnd->ndis_req_mutex);
+		mutex_unlock(&wnd->ndis_req_mutex);
 		if (test_and_clear_bit(HW_HALTED, &wnd->wd->hw_status)) {
 			status = mp_init(wnd);
 			if (status == NDIS_STATUS_SUCCESS) {
@@ -332,7 +326,7 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 			pci_enable_wake(wnd->wd->pci.pdev, PCI_D3cold, 0);
 		}
 		if (status == NDIS_STATUS_SUCCESS) {
-			up(&wnd->tx_ring_mutex);
+			mutex_unlock(&wnd->tx_ring_mutex);
 			netif_device_attach(wnd->net_dev);
 			hangcheck_add(wnd);
 			add_iw_stats_timer(wnd);
@@ -341,8 +335,7 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 				" resumed", wnd->net_dev->name, state);
 		EXIT1(return status);
 	} else {
-		if (down_interruptible(&wnd->tx_ring_mutex))
-			EXIT1(return NDIS_STATUS_FAILURE);
+		mutex_lock(&wnd->tx_ring_mutex);
 		netif_device_detach(wnd->net_dev);
 		hangcheck_del(wnd);
 		del_iw_stats_timer(wnd);
@@ -375,8 +368,7 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 			set_bit(HW_HALTED, &wnd->wd->hw_status);
 			status = STATUS_SUCCESS;
 		}
-		if (down_interruptible(&wnd->ndis_req_mutex))
-			WARNING("couldn't lock ndis_req_mutex");
+		mutex_lock(&wnd->ndis_req_mutex);
 		EXIT1(return status);
 	}
 }
@@ -689,8 +681,7 @@ static void tx_worker(struct work_struct *work)
 	wnd = container_of(work, struct ndis_device, tx_work);
 	ENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
-		if (down_interruptible(&wnd->tx_ring_mutex))
-			break;
+		mutex_lock(&wnd->tx_ring_mutex);
 		spin_lock_bh(&wnd->tx_ring_lock);
 		n = wnd->tx_ring_end - wnd->tx_ring_start;
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
@@ -701,7 +692,7 @@ static void tx_worker(struct work_struct *work)
 				n = TX_RING_SIZE - wnd->tx_ring_start;
 			else {
 				spin_unlock_bh(&wnd->tx_ring_lock);
-				up(&wnd->tx_ring_mutex);
+				mutex_unlock(&wnd->tx_ring_mutex);
 				break;
 			}
 		} else if (n < 0)
@@ -716,7 +707,7 @@ static void tx_worker(struct work_struct *work)
 				(wnd->tx_ring_start + n) % TX_RING_SIZE;
 			wnd->is_tx_ring_full = 0;
 		}
-		up(&wnd->tx_ring_mutex);
+		mutex_unlock(&wnd->tx_ring_mutex);
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
 	}
 	EXIT3(return);
@@ -2003,6 +1994,7 @@ err_start:
 static int ndis_remove_device(struct ndis_device *wnd)
 {
 	s8 tx_pending;
+	int our_mutex;
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
@@ -2012,7 +2004,8 @@ static int ndis_remove_device(struct ndis_device *wnd)
 		unregister_netdev(wnd->net_dev);
 	/* if device is suspended, but resume failed, tx_ring_mutex
 	 * may already be locked */
-	if (down_trylock(&wnd->tx_ring_mutex))
+	our_mutex = mutex_trylock(&wnd->tx_ring_mutex);
+	if (!our_mutex)
 		WARNING("couldn't obtain tx_ring_mutex");
 	spin_lock_bh(&wnd->tx_ring_lock);
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
@@ -2030,7 +2023,8 @@ static int ndis_remove_device(struct ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 	}
 	spin_unlock_bh(&wnd->tx_ring_lock);
-	up(&wnd->tx_ring_mutex);
+	if (our_mutex)
+		mutex_unlock(&wnd->tx_ring_mutex);
 	mp_halt(wnd);
 	ndis_exit_device(wnd);
 
@@ -2115,8 +2109,8 @@ static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
 	}
 	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
 	spin_lock_init(&wnd->tx_ring_lock);
-	sema_init(&wnd->tx_ring_mutex, 1);
-	sema_init(&wnd->ndis_req_mutex, 1);
+	mutex_init(&wnd->tx_ring_mutex);
+	mutex_init(&wnd->ndis_req_mutex);
 	wnd->ndis_req_done = 0;
 	INIT_WORK(&wnd->tx_work, tx_worker);
 	wnd->tx_ring_start = 0;
