@@ -48,8 +48,7 @@ static NDIS_STATUS mp_oid_request(struct ndis_device *wnd,
 
 	TRACE2("oid: %08X", oid_req->data.query.oid);
 
-	if (down_interruptible(&wnd->ndis_comm_mutex))
-		EXIT3(return NDIS_STATUS_FAILURE);
+	mutex_lock(&wnd->ndis_comm_mutex);
 	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver;
 	TRACE2("%08X", oid_req->data.query.oid);
 	wnd->ndis_comm_done = 0;
@@ -68,7 +67,7 @@ static NDIS_STATUS mp_oid_request(struct ndis_device *wnd,
 			res = wnd->ndis_comm_status;
 		TRACE2("%08X, %08X", oid_req->data.query.oid, res);
 	}
-	up(&wnd->ndis_comm_mutex);
+	mutex_unlock(&wnd->ndis_comm_mutex);
 	DBG_BLOCK(2) {
 		if (res)
 			TRACE2("%08X", res);
@@ -241,10 +240,9 @@ static void mp_halt(struct ndis_device *wnd)
 
 	hangcheck_del(wnd);
 	del_stats_timer(wnd);
-	if (down_interruptible(&wnd->ndis_comm_mutex))
-		WARNING("couldn't obtain ndis_comm_mutex");
+	mutex_lock(&wnd->ndis_comm_mutex);
 	LIN2WIN2(mp_driver->mphalt, wnd->nmb->adapter_ctx, halt_action);
-	up(&wnd->ndis_comm_mutex);
+	mutex_unlock(&wnd->ndis_comm_mutex);
 	/* cancel any timers left by buggy windows driver; also free
 	 * the memory for timers */
 	while (1) {
@@ -868,7 +866,7 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 	TRACE1("%d", state);
 	if (state == NdisDeviceStateD0) {
 		status = NDIS_STATUS_SUCCESS;
-		up(&wnd->ndis_comm_mutex);
+		mutex_unlock(&wnd->ndis_comm_mutex);
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			status = mp_init(wnd);
 			if (status == NDIS_STATUS_SUCCESS) {
@@ -929,8 +927,7 @@ static NDIS_STATUS mp_set_power_state(struct ndis_device *wnd,
 			set_bit(HW_HALTED, &wnd->hw_status);
 			status = STATUS_SUCCESS;
 		}
-		if (down_interruptible(&wnd->ndis_comm_mutex))
-			WARNING("couldn't lock ndis_comm_mutex");
+		mutex_lock(&wnd->ndis_comm_mutex);
 		EXIT1(return status);
 	}
 }
@@ -1602,10 +1599,9 @@ static int ndis_remove_device(struct ndis_device *wnd)
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan ||
 	    wnd->physical_medium == NdisPhysicalMediumNative802_11) {
-		up(&wnd->ndis_comm_mutex);
+		mutex_unlock(&wnd->ndis_comm_mutex);
 		mp_set(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-		if (down_interruptible(&wnd->ndis_comm_mutex))
-			WARNING("couldn't obtain ndis_comm_mutex");
+		mutex_lock(&wnd->ndis_comm_mutex);
 	}
 	set_bit(SHUTDOWN, &wnd->ndis_pending_work);
 	wnd->tx_ok = 0;
@@ -1673,7 +1669,7 @@ static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
 	wnd->pdo = pdo;
 	wnd->fdo = fdo;
 	wnd->net_dev = net_dev;
-	sema_init(&wnd->ndis_comm_mutex, 1);
+	mutex_init(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
 	INIT_WORK(&wnd->tx_work, tx_worker);

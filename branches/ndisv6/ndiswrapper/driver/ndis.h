@@ -1304,11 +1304,11 @@ struct ndis_device {
 
 	struct work_struct tx_work;
 	struct net_buffer_list *tx_buffer_list;
-	struct semaphore tx_buffer_list_mutex;
+	struct mutex tx_buffer_list_mutex;
 	unsigned int max_tx_packets;
 	u8 tx_ok;
 	spinlock_t tx_ring_lock;
-	struct semaphore ndis_comm_mutex;
+	struct mutex ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
 	s8 ndis_comm_done;
 	NDIS_STATUS ndis_comm_status;

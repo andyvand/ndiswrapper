@@ -70,6 +70,7 @@
 #define mutex semaphore
 #define mutex_init(m) sema_init(m, 1)
 #define mutex_lock(m) down(m)
+#define mutex_trylock(m) (!down_trylock(m))
 #define mutex_unlock(m) up(m)
 #define mutex_is_locked(m) (atomic_read(m.count) == 0)
 #endif

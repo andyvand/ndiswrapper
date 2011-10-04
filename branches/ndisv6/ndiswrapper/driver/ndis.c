@@ -352,12 +352,11 @@ static int read_setting(struct nt_list *setting_list, char *keyname, int length,
 			enum ndis_parameter_type type)
 {
 	struct wrap_device_setting *setting;
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
+	mutex_lock(&loader_mutex);
 	nt_list_for_each_entry(setting, setting_list, list) {
 		if (strnicmp(keyname, setting->name, length) == 0) {
 			TRACE2("setting %s='%s'", keyname, setting->value);
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 			*param = ndis_encode_setting(setting, type);
 			if (*param)
 				EXIT2(return 0);
@@ -365,7 +364,7 @@ static int read_setting(struct nt_list *setting_list, char *keyname, int length,
 				EXIT2(return -1);
 		}
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 	EXIT2(return -1);
 }
 
@@ -419,11 +418,10 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 	keyname = ansi.buf;
 	TRACE2("%s", keyname);
 
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
+	mutex_lock(&loader_mutex);
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
 		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 			if (ndis_decode_setting(setting, param))
 				*status = NDIS_STATUS_FAILURE;
 			else
@@ -432,7 +430,7 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 			EXIT2(return);
 		}
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 	setting = kzalloc(sizeof(*setting), GFP_KERNEL);
 	if (setting) {
 		if (ansi.length == ansi.max_length)
@@ -443,10 +441,9 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 			*status = NDIS_STATUS_FAILURE;
 		else {
 			*status = NDIS_STATUS_SUCCESS;
-			if (down_interruptible(&loader_mutex))
-				WARNING("couldn't obtain loader_mutex");
+			mutex_lock(&loader_mutex);
 			InsertTailList(&wnd->wd->settings, &setting->list);
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 		}
 	} else
 		*status = NDIS_STATUS_RESOURCES;
@@ -2367,8 +2364,7 @@ void ndis_exit_device(struct ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
 	TRACE2("%p", wnd);
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
+	mutex_lock(&loader_mutex);
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
 		struct ndis_configuration_parameter *param;
 		param = setting->encoded;
@@ -2379,7 +2375,7 @@ void ndis_exit_device(struct ndis_device *wnd)
 			setting->encoded = NULL;
 		}
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 }
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
