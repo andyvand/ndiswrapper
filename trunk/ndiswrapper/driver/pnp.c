@@ -452,10 +452,9 @@ static NTSTATUS pnp_remove_device(struct wrap_device *wd)
 		if (fdo_drv_obj->unload)
 			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
 		if (wrap_driver) {
-			if (down_interruptible(&loader_mutex))
-				WARNING("couldn't obtain loader_mutex");
+			mutex_lock(&loader_mutex);
 			unload_wrap_driver(wrap_driver);
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 		} else
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);

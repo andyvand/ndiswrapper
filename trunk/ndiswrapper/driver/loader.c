@@ -43,7 +43,7 @@ static struct guid class_guids[] = {
 	{ .data1 = 0xf12d3cf8, .data2 = 0xb11d, .data3 = 0x457e},
 };
 
-struct semaphore loader_mutex;
+struct mutex loader_mutex;
 static struct completion loader_complete;
 
 static struct nt_list wrap_devices;
@@ -68,10 +68,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 
 	ENTER1("device: %04X:%04X:%04X:%04X", wd->vendor, wd->device,
 	       wd->subvendor, wd->subdevice);
-	if (down_interruptible(&loader_mutex)) {
-		WARNING("couldn't obtain loader_mutex");
-		EXIT1(return NULL);
-	}
+	mutex_lock(&loader_mutex);
 	wrap_driver = NULL;
 	nt_list_for_each(cur, &wrap_drivers) {
 		wrap_driver = container_of(cur, struct wrap_driver, list);
@@ -81,7 +78,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		} else
 			wrap_driver = NULL;
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 
 	if (!wrap_driver) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DRIVER,
@@ -95,14 +92,11 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		char *env[] = {NULL};
 
 		TRACE1("loading driver %s", wd->driver_name);
-		if (down_interruptible(&loader_mutex)) {
-			WARNING("couldn't obtain loader_mutex");
-			EXIT1(return NULL);
-		}
+		mutex_lock(&loader_mutex);
 		INIT_COMPLETION(loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 		if (ret) {
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 			ERROR("couldn't load driver %s; check system log "
 			      "for messages from 'loadndisdriver'",
 			      wd->driver_name);
@@ -120,7 +114,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			} else
 				wrap_driver = NULL;
 		}
-		up(&loader_mutex);
+		mutex_unlock(&loader_mutex);
 		if (wrap_driver)
 			TRACE1("driver %s is loaded", wrap_driver->name);
 		else
@@ -222,10 +216,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 	struct wrap_driver *driver, *cur;
 
 	ENTER1("%s", bin_file_name);
-	if (down_interruptible(&loader_mutex)) {
-		WARNING("couldn't obtain loader_mutex");
-		EXIT1(return NULL);
-	}
+	mutex_lock(&loader_mutex);
 	driver = NULL;
 	nt_list_for_each_entry(cur, &wrap_drivers, list) {
 		for (i = 0; i < cur->num_bin_files; i++)
@@ -236,7 +227,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		if (driver)
 			break;
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 	if (!driver) {
 		TRACE1("couldn't find bin file '%s'", bin_file_name);
 		return NULL;
@@ -256,21 +247,18 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 
 		TRACE1("loading bin file %s/%s", driver->name,
 		       driver->bin_files[i].name);
-		if (down_interruptible(&loader_mutex)) {
-			WARNING("couldn't obtain loader_mutex");
-			EXIT1(return NULL);
-		}
+		mutex_lock(&loader_mutex);
 		INIT_COMPLETION(loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 		if (ret) {
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 			ERROR("couldn't load file %s/%s; check system log "
 			      "for messages from 'loadndisdriver' (%d)",
 			      driver->name, driver->bin_files[i].name, ret);
 			EXIT1(return NULL);
 		}
 		wait_for_completion(&loader_complete);
-		up(&loader_mutex);
+		mutex_unlock(&loader_mutex);
 		if (!driver->bin_files[i].data) {
 			WARNING("couldn't load binary file %s",
 				driver->bin_files[i].name);
@@ -415,15 +403,14 @@ void unload_wrap_device(struct wrap_device *wd)
 	ENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s", wd,
 	       wd->vendor, wd->device, wd->subvendor, wd->subdevice,
 	       wd->driver_name);
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
+	mutex_lock(&loader_mutex);
 	while ((cur = RemoveHeadList(&wd->settings))) {
 		struct wrap_device_setting *setting;
 		setting = container_of(cur, struct wrap_device_setting, list);
 		kfree(setting);
 	}
 	RemoveEntryList(&wd->list);
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 	kfree(wd);
 	EXIT1(return);
 }
@@ -657,14 +644,13 @@ static void unregister_devices(void)
 {
 	struct nt_list *cur, *next;
 
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
+	mutex_lock(&loader_mutex);
 	nt_list_for_each_safe(cur, next, &wrap_devices) {
 		struct wrap_device *wd;
 		wd = container_of(cur, struct wrap_device, list);
 		set_bit(HW_DISABLED, &wd->hw_status);
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 
 	if (wrap_pci_driver.name)
 		pci_unregister_driver(&wrap_pci_driver);
@@ -700,14 +686,11 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 		char *env[] = {NULL};
 		TRACE2("%s, %s, %s, %s, %s", vendor, device,
 		       subvendor, subdevice, bus);
-		if (down_interruptible(&loader_mutex)) {
-			WARNING("couldn't obtain loader_mutex");
-			EXIT1(return NULL);
-		}
+		mutex_lock(&loader_mutex);
 		INIT_COMPLETION(loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 		if (ret) {
-			up(&loader_mutex);
+			mutex_unlock(&loader_mutex);
 			TRACE1("couldn't load device %04x:%04x; check system "
 			       "log for messages from 'loadndisdriver'",
 			       load_device->vendor, load_device->device);
@@ -725,7 +708,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			else
 				wd = NULL;
 		}
-		up(&loader_mutex);
+		mutex_unlock(&loader_mutex);
 	} else
 		wd = NULL;
 	EXIT1(return wd);
@@ -736,10 +719,7 @@ struct wrap_device *get_wrap_device(void *dev, int bus)
 	struct nt_list *cur;
 	struct wrap_device *wd;
 
-	if (down_interruptible(&loader_mutex)) {
-		WARNING("couldn't obtain loader_mutex");
-		return NULL;
-	}
+	mutex_lock(&loader_mutex);
 	wd = NULL;
 	nt_list_for_each(cur, &wrap_devices) {
 		wd = container_of(cur, struct wrap_device, list);
@@ -752,7 +732,7 @@ struct wrap_device *get_wrap_device(void *dev, int bus)
 		else
 			wd = NULL;
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 	return wd;
 }
 
@@ -863,7 +843,7 @@ int loader_init(void)
 
 	InitializeListHead(&wrap_drivers);
 	InitializeListHead(&wrap_devices);
-	sema_init(&loader_mutex, 1);
+	mutex_init(&loader_mutex);
 	init_completion(&loader_complete);
 	if ((err = misc_register(&wrapper_misc)) < 0) {
 		ERROR("couldn't register module (%d)", err);
@@ -881,13 +861,12 @@ void loader_exit(void)
 	ENTER1("");
 	misc_deregister(&wrapper_misc);
 	unregister_devices();
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
+	mutex_lock(&loader_mutex);
 	nt_list_for_each_safe(cur, next, &wrap_drivers) {
 		struct wrap_driver *driver;
 		driver = container_of(cur, struct wrap_driver, list);
 		unload_wrap_driver(driver);
 	}
-	up(&loader_mutex);
+	mutex_unlock(&loader_mutex);
 	EXIT1(return);
 }

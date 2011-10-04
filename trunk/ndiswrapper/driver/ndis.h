@@ -860,9 +860,9 @@ struct ndis_device {
 	u8 is_tx_ring_full;
 	u8 tx_ok;
 	spinlock_t tx_ring_lock;
-	struct semaphore tx_ring_mutex;
+	struct mutex tx_ring_mutex;
 	unsigned int max_tx_packets;
-	struct semaphore ndis_req_mutex;
+	struct mutex ndis_req_mutex;
 	struct task_struct *ndis_req_task;
 	int ndis_req_done;
 	NDIS_STATUS ndis_req_status;
