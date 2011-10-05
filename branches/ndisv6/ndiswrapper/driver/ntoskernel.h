@@ -76,8 +76,20 @@
 #endif
 #endif /* Linux < 2.6.16 */
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)
+#define set_cpus_allowed_ptr(task, mask) set_cpus_allowed(task, *mask)
+#endif /* Linux < 2.6.26 */
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
 #define cpumask_copy(dst, src) do { *dst = *src; } while (0)
+#define cpumask_equal(mask1, mask2) cpus_equal(*mask1, *mask2)
+#define cpumask_setall(mask) cpus_setall(*mask)
+static cpumask_t cpumasks[NR_CPUS];
+#define cpumask_of(cpu) 			\
+({						\
+	cpumasks[cpu] = cpumask_of_cpu(cpu);	\
+	&cpumasks[cpu];				\
+})
 #endif /* Linux < 2.6.28 */
 
 #ifndef tsk_cpus_allowed
@@ -567,12 +579,8 @@ static inline KIRQL raise_irql(KIRQL newirql)
 		assert(info->count > 0);
 		assert(mutex_is_locked(&info->lock));
 #if defined(CONFIG_SMP) && DEBUG >= 1
-		do {
-			cpumask_t cpumask;
-			cpumask = cpumask_of_cpu(smp_processor_id());
-			cpus_xor(cpumask, cpumask, current->cpus_allowed);
-			assert(cpus_empty(cpumask));
-		} while (0);
+		assert(cpumask_equal(tsk_cpus_allowed(current),
+				     cpumask_of(smp_processor_id())));
 #endif
 		info->count++;
 		put_cpu_var(irql_info);
@@ -582,7 +590,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 #ifdef CONFIG_SMP
 	assert(task_cpu(current) == smp_processor_id());
 	cpumask_copy(&info->cpus_allowed, tsk_cpus_allowed(current));
-	set_cpus_allowed(current, cpumask_of_cpu(smp_processor_id()));
+	set_cpus_allowed_ptr(current, cpumask_of(smp_processor_id()));
 #endif
 	put_cpu_var(irql_info);
 	mutex_lock(&info->lock);
@@ -605,7 +613,7 @@ static inline void lower_irql(KIRQL oldirql)
 	if (--info->count == 0) {
 		info->task = NULL;
 #ifdef CONFIG_SMP
-		set_cpus_allowed(current, info->cpus_allowed);
+		set_cpus_allowed_ptr(current, &info->cpus_allowed);
 #endif
 		mutex_unlock(&info->lock);
 	}
