@@ -603,7 +603,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 #else
 		fix_seh(pe_image[i].image, pe_image[i].size);
 #endif
-		flush_icache_range(pe->image, pe->size);
+		flush_icache_range((unsigned long)pe->image, pe->size);
 
 		pe->entry =
 			RVA2VA(pe->image,
