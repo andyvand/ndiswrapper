@@ -2556,7 +2556,7 @@ int ntoskernel_init(void)
 			info->task = NULL;
 			info->count = 0;
 #ifdef CONFIG_SMP
-			cpus_setall(info->cpus_allowed);
+			cpumask_setall(&info->cpus_allowed);
 #endif
 		}
 	} while (0);
