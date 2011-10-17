@@ -917,6 +917,7 @@ static char *ndis_translate_scan(struct net_device *dev,
 {
 	struct ndis_device *wnd = netdev_priv(dev);
 	struct iw_event iwe;
+	char *ret;
 	struct ndis_dot11_bss_entry *bss;
 	struct ndis_dot11_info_element *ie;
 	unsigned char custom_str[64];
@@ -936,8 +937,10 @@ static char *ndis_translate_scan(struct net_device *dev,
 	iwe.u.ap_addr.sa_family = ARPHRD_ETHER;
 	iwe.len = IW_EV_ADDR_LEN;
 	memcpy(iwe.u.ap_addr.sa_data, bss->bss_id, ETH_ALEN);
-	event = iwe_stream_add_event(info, event, end_buf, &iwe,
-				     IW_EV_ADDR_LEN);
+	ret = iwe_stream_add_event(info, event, end_buf, &iwe, IW_EV_ADDR_LEN);
+	if (ret == event)
+		return NULL;
+	event = ret;
 
 	/* add protocol name */
 	TRACE2("0x%x", bss->phy_id);
@@ -946,8 +949,10 @@ static char *ndis_translate_scan(struct net_device *dev,
 	strncpy(iwe.u.name,
 		network_type_to_name(wnd->phy_types->phy_types[bss->phy_id]),
 		IFNAMSIZ);
-	event = iwe_stream_add_event(info, event, end_buf, &iwe,
-				     IW_EV_CHAR_LEN);
+	ret = iwe_stream_add_event(info, event, end_buf, &iwe, IW_EV_CHAR_LEN);
+	if (ret == event)
+		return NULL;
+	event = ret;
 
 	/* add mode */
 	memset(&iwe, 0, sizeof(iwe));
@@ -958,8 +963,10 @@ static char *ndis_translate_scan(struct net_device *dev,
 		iwe.u.mode = IW_MODE_MASTER;
 	else // if (bss->bss_type == ndis_dot11_bss_type_any)
 		iwe.u.mode = IW_MODE_AUTO;
-	event = iwe_stream_add_event(info, event, end_buf, &iwe,
-				     IW_EV_UINT_LEN);
+	ret = iwe_stream_add_event(info, event, end_buf, &iwe, IW_EV_UINT_LEN);
+	if (ret == event)
+		return NULL;
+	event = ret;
 
 	/* add qual */
 	memset(&iwe, 0, sizeof(iwe));
@@ -968,14 +975,19 @@ static char *ndis_translate_scan(struct net_device *dev,
 	iwe.u.qual.noise = WL_NOISE;
 	iwe.u.qual.qual = bss->link_quality;
 	iwe.len = IW_EV_QUAL_LEN;
-	event = iwe_stream_add_event(info, event, end_buf, &iwe,
-				     IW_EV_QUAL_LEN);
+	ret = iwe_stream_add_event(info, event, end_buf, &iwe, IW_EV_QUAL_LEN);
+	if (ret == event)
+		return NULL;
+	event = ret;
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
 	sprintf(custom_str, "time=%llu", bss->time_stamp);
 	iwe.u.data.length = strlen(custom_str);
-	event = iwe_stream_add_point(info, event, end_buf, &iwe, custom_str);
+	ret = iwe_stream_add_point(info, event, end_buf, &iwe, custom_str);
+	if (ret == event)
+		return NULL;
+	event = ret;
 
 	i = 0;
 	ie = (typeof(ie))bss->buffer;
@@ -993,8 +1005,11 @@ static char *ndis_translate_scan(struct net_device *dev,
 				iwe.u.data.length = IW_ESSID_MAX_SIZE;
 			iwe.u.data.flags = 1;
 			iwe.len = IW_EV_POINT_LEN + iwe.u.data.length;
-			event = iwe_stream_add_point(info, event, end_buf, &iwe,
-						     ((char *)ie) + sizeof(*ie));
+			ret = iwe_stream_add_point(info, event, end_buf, &iwe,
+						   ((char *)ie) + sizeof(*ie));
+			if (ret == event)
+				return NULL;
+			event = ret;
 			break;
 		case DOT11_IE_SUPPORTED_RATES:
 		case DOT11_IE_EXTD_SUPPORTED_RATES:
@@ -1007,11 +1022,13 @@ static char *ndis_translate_scan(struct net_device *dev,
 					continue;
 				iwe.u.bitrate.value =
 					(cbuf[i] & 0x7f) * 500000;
-				current_val =
-					iwe_stream_add_value(info, event,
-							     current_val,
-							     end_buf, &iwe,
-							     IW_EV_PARAM_LEN);
+				ret = iwe_stream_add_value(info, event,
+							   current_val,
+							   end_buf, &iwe,
+							   IW_EV_PARAM_LEN);
+				if (ret == current_val)
+					return NULL;
+				current_val = ret;
 			}
 			if ((current_val - event) > IW_EV_LCP_LEN)
 				event = current_val;
@@ -1020,8 +1037,11 @@ static char *ndis_translate_scan(struct net_device *dev,
 			memset(&iwe, 0, sizeof(iwe));
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ie->length + 2;
-			event = iwe_stream_add_point(info, event, end_buf,
-						     &iwe, (char *)ie);
+			ret = iwe_stream_add_point(info, event, end_buf, &iwe,
+						   (char *)ie);
+			if (ret == event)
+				return NULL;
+			event = ret;
 			break;
 		}
 		TRACE2("%lu, %d", i, ie->length);
@@ -1125,7 +1145,11 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		bss = (typeof(bss))(&byte_array->buffer[i]);
 		TRACE2("%d", bss->buffer_length);
 		event = ndis_translate_scan(dev, info, event,
-					    extra + IW_SCAN_MAX_DATA, bss);
+					    extra + wrqu->data.length, bss);
+		if (!event) {
+			kfree(byte_array);
+			return -E2BIG;
+		}
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
