@@ -1050,6 +1050,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	typeof(jiffies) wait_hz = 0;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
+	KIRQL irql = current_irql();
 
 	EVENTENTER("%p, %d, %u, %p", current, count, wait_type, timeout);
 
@@ -1121,7 +1122,10 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout);
 
-	assert(current_irql() < DISPATCH_LEVEL);
+	if (irql >= DISPATCH_LEVEL) {
+		WARNING("attempt to wait with irql %d", irql);
+		EVENTEXIT(return STATUS_INVALID_PARAMETER);
+	}
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
 	/* we don't honor 'alertable' - according to description for
 	 * this, even if waiting in non-alertable state, thread may be
