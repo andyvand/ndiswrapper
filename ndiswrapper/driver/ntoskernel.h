@@ -421,7 +421,6 @@ struct wrap_driver {
 	struct pe_image pe_images[MAX_DRIVER_PE_IMAGES];
 	unsigned short num_bin_files;
 	struct wrap_bin_file *bin_files;
-	struct nt_list wrap_devices;
 	struct nt_list settings;
 	int dev_type;
 	struct ndis_driver *ndis_driver;
@@ -460,9 +459,6 @@ struct wrap_device {
 			int num_alloc_urbs;
 			struct nt_list wrap_urb_list;
 		} usb;
-	};
-	union {
-		struct ndis_device *wnd;
 	};
 };
 
