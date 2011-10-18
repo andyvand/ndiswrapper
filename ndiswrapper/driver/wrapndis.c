@@ -1662,7 +1662,6 @@ static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
 	}
 	fdo->reserved = wnd;
 	wd = pdo->reserved;
-	wd->wnd = wnd;
 	wnd->wd = wd;
 	nmb->wnd = wnd;
 	wnd->nmb = nmb;

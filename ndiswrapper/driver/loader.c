@@ -551,7 +551,6 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	memset(wrap_driver, 0, sizeof(*wrap_driver));
 	InitializeListHead(&wrap_driver->list);
 	InitializeListHead(&wrap_driver->settings);
-	InitializeListHead(&wrap_driver->wrap_devices);
 	wrap_driver->drv_obj = drv_obj;
 	RtlInitAnsiString(&ansi_reg, "/tmp");
 	if (RtlAnsiStringToUnicodeString(&drv_obj->name, &ansi_reg, TRUE) !=
