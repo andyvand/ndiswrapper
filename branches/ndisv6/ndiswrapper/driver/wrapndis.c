@@ -1360,7 +1360,11 @@ static const struct net_device_ops ndis_netdev_ops = {
 	.ndo_stop = ndis_net_dev_close,
 	.ndo_start_xmit = tx_skbuff,
 	.ndo_change_mtu = ndis_change_mtu,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)
+	.ndo_set_rx_mode = ndis_set_multicast_list,
+#else
 	.ndo_set_multicast_list = ndis_set_multicast_list,
+#endif
 //	.ndo_set_mac_address = ndis_set_mac_address,
 	.ndo_get_stats = ndis_get_stats,
 #ifdef CONFIG_NET_POLL_CONTROLLER
