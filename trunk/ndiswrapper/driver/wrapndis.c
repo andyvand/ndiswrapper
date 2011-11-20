@@ -457,7 +457,7 @@ static int setup_tx_sg_list(struct ndis_device *wnd, struct sk_buff *skb,
 		sg_element++;
 		sg_element->length = frag->size;
 		sg_element->address =
-			pci_map_page(wnd->wd->pci.pdev, frag->page,
+			pci_map_page(wnd->wd->pci.pdev, skb_frag_page(frag),
 				     frag->page_offset, frag->size,
 				     PCI_DMA_TODEVICE);
 		TRACE3("%llx, %u", sg_element->address, sg_element->length);
