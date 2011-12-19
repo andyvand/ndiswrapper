@@ -308,7 +308,6 @@ static inline void netif_poll_disable(struct net_device *dev)
 #if ((LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)) && \
      (LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0))) || \
     (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,42))
-#error 1
 #ifndef skb_frag_page
 #define skb_frag_page(frag) ((frag)->page)
 #endif
