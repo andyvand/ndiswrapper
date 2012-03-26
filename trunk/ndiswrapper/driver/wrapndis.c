@@ -1675,6 +1675,7 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)
 static u32 ndis_get_tx_csum(struct net_device *dev)
 {
 	struct ndis_device *wnd = netdev_priv(dev);
@@ -1735,18 +1736,21 @@ static int ndis_set_sg(struct net_device *dev, u32 data)
 	else
 		return -EOPNOTSUPP;
 }
+#endif
 
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_drvinfo	= ndis_get_drvinfo,
 	.get_link	= ndis_get_link,
 	.get_wol	= ndis_get_wol,
 	.set_wol	= ndis_set_wol,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)
 	.get_tx_csum	= ndis_get_tx_csum,
 	.get_rx_csum	= ndis_get_rx_csum,
 	.set_tx_csum	= ndis_set_tx_csum,
 	.set_rx_csum	= ndis_set_rx_csum,
 	.get_sg		= ndis_get_sg,
 	.set_sg		= ndis_set_sg,
+#endif
 };
 
 static int notifier_event(struct notifier_block *notifier, unsigned long event,
