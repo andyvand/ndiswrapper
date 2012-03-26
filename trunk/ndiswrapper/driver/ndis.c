@@ -2654,9 +2654,15 @@ wstdcall void WIN_FUNC(NdisGetCurrentProcessorCounts,3)
 	(ULONG *idle, ULONG *kernel_user, ULONG *index)
 {
 	int cpu = smp_processor_id();
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
+	*idle = kcpustat_cpu(cpu).cpustat[CPUTIME_IDLE];
+	*kernel_user = kcpustat_cpu(cpu).cpustat[CPUTIME_SYSTEM] +
+		kcpustat_cpu(cpu).cpustat[CPUTIME_USER];
+#else
 	*idle = kstat_cpu(cpu).cpustat.idle;
 	*kernel_user = kstat_cpu(cpu).cpustat.system +
 		kstat_cpu(cpu).cpustat.user;
+#endif
 	*index = cpu;
 }
 
