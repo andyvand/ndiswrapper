@@ -1136,3 +1136,17 @@ wstdcall NTSTATUS WIN_FUNC(IoUnregisterPlugPlayNotification,1)
 	TODO();
 	IOEXIT(return STATUS_SUCCESS);
 }
+
+wstdcall NTSTATUS WIN_FUNC(IoWMIOpenBlock,3)
+	(struct guid *guid, ULONG access, void *object)
+{
+	TODO();
+	IOEXIT(return STATUS_NOT_IMPLEMENTED);
+}
+
+wstdcall NTSTATUS WIN_FUNC(IoWMIQueryAllData,3)
+	(void *data_block_object, UINT *buffer_size, void *buffer)
+{
+	TODO();
+	IOEXIT(return STATUS_NOT_IMPLEMENTED);
+}

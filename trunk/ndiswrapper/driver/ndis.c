@@ -2909,6 +2909,33 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 	TODO();
 }
 
+wstdcall NDIS_STATUS WIN_FUNC(NdisMOpenLog,3)
+	(struct ndis_device *wnd, UINT size, void *handle)
+{
+	if (size >= sizeof(int))
+		*((int *)handle) = 42;
+	return NDIS_STATUS_SUCCESS;
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMWriteLogData,3)
+	(void *handle, char *buffer, UINT buffer_size)
+{
+	TODO();
+	return NDIS_STATUS_SUCCESS;
+}
+
+wstdcall void WIN_FUNC(NdisMFlushLog,1)
+	(void *handle)
+{
+	TODO();
+}
+
+wstdcall void WIN_FUNC(NdisMCloseLog,1)
+	(void *handle)
+{
+	TODO();
+}
+
 static void *ndis_get_routine_address(char *name)
 {
 	int i;
