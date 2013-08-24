@@ -12,12 +12,12 @@ DISTFILES = \
 # By default, we try to compile the modules for the currently running
 # kernel.  But it's the first approximation, as we will re-read the
 # version from the kernel sources.
-KVERS ?= $(shell uname -r)
+KVERS_UNAME ?= $(shell uname -r)
 
 # KBUILD is the path to the Linux kernel build tree.  It is usually the
 # same as the kernel source tree, except when the kernel was compiled in
 # a separate directory.
-KBUILD := $(shell readlink -f /lib/modules/$(KVERS)/build)
+KBUILD ?= $(shell readlink -f /lib/modules/$(KVERS_UNAME)/build)
 
 ifeq (,$(KBUILD))
 $(error Kernel tree not found - please set KBUILD to configured kernel)
