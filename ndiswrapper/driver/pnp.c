@@ -559,10 +559,6 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	return 0;
 }
 
-/*
- * This function should not be marked __devinit because PCI IDs are
- * added dynamically.
- */
 int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 			      const struct pci_device_id *ent)
 {
@@ -660,7 +656,7 @@ int wrap_pnp_start_usb_device(struct usb_interface *intf,
 		return 0;
 }
 
-void __devexit wrap_pnp_remove_usb_device(struct usb_interface *intf)
+void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrap_device *wd;
 
