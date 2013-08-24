@@ -22,7 +22,7 @@
 
 int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 			      const struct pci_device_id *ent);
-void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev);
+void wrap_pnp_remove_pci_device(struct pci_dev *pdev);
 int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state);
 int wrap_pnp_resume_pci_device(struct pci_dev *pdev);
 
