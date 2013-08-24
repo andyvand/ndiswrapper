@@ -1,3 +1,7 @@
+Version 1.58 2013-02-19
+=======================
+* Added support for Linux kernels up to 3.8
+
 Version 1.57 2011-12-31
 =======================
 * Added support for Linux 2.6.35 - Linux 3.1
