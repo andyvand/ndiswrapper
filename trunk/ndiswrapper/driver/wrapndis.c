@@ -256,12 +256,14 @@ static void mp_halt(struct ndis_device *wnd)
 	}
 	hangcheck_del(wnd);
 	del_iw_stats_timer(wnd);
+#ifdef CONFIG_WIRELESS_EXT
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan &&
 	    wrap_is_pci_bus(wnd->wd->dev_bus)) {
 		mutex_unlock(&wnd->ndis_req_mutex);
 		disassociate(wnd, 0);
 		mutex_lock(&wnd->ndis_req_mutex);
 	}
+#endif
 	mp = &wnd->wd->driver->ndis_driver->mp;
 	TRACE1("halt: %p", mp->mp_halt);
 	LIN2WIN1(mp->mp_halt, wnd->nmb->mp_ctx);
@@ -1218,6 +1220,7 @@ NDIS_STATUS ndis_reinit(struct ndis_device *wnd)
 	return status;
 }
 
+#ifdef CONFIG_WIRELESS_EXT
 static void get_encryption_capa(struct ndis_device *wnd, char *buf,
 				const int buf_len)
 {
@@ -1356,6 +1359,7 @@ static void get_encryption_capa(struct ndis_device *wnd, char *buf,
 	}
 	EXIT1(return);
 }
+#endif
 
 wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 					    struct irp *irp)
@@ -1953,6 +1957,7 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 	if (status != NDIS_STATUS_SUCCESS)
 		wnd->physical_medium = NdisPhysicalMediumUnspecified;
 
+#ifdef CONFIG_WIRELESS_EXT
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		mp_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 		get_encryption_capa(wnd, buf, buf_len);
@@ -1978,6 +1983,7 @@ static NDIS_STATUS ndis_start_device(struct ndis_device *wnd)
 
 		set_default_iw_params(wnd);
 	}
+#endif
 	kfree(buf);
 	hangcheck_add(wnd);
 	add_iw_stats_timer(wnd);
