@@ -20,7 +20,12 @@ KVERS_UNAME ?= $(shell uname -r)
 KBUILD ?= $(shell readlink -f /lib/modules/$(KVERS_UNAME)/build)
 
 ifeq (,$(KBUILD))
-$(error Kernel tree not found - please set KBUILD to configured kernel)
+$(error Kernel build tree not found - please set KBUILD to configured kernel)
+endif
+
+KCONFIG := $(KBUILD)/.config
+ifeq (,$(wildcard $(KCONFIG)))
+$(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
 endif
 
 # Kernel Makefile doesn't always know the exact kernel version, so we
@@ -33,24 +38,20 @@ ifeq (,$(wildcard $(VERSION_H)))
 VERSION_H := $(KBUILD)/include/linux/version.h
 endif
 ifeq (,$(wildcard $(VERSION_H)))
-$(error Cannot find kernel version in $(KBUILD), is it configured?)
+$(error Please run 'make modules_prepare' in $(KBUILD))
 endif
 
 KVERS := $(shell sed -ne 's/"//g;s/^\#define UTS_RELEASE //p' $(VERSION_H))
 
 ifeq (,$(KVERS))
-$(error Cannot find UTS_RELEASE in $(VERSION_H), has 'make modules_prepare' been called?)
+$(error Cannot find UTS_RELEASE in $(VERSION_H), please report)
 endif
 
 INST_DIR = /lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
-KCONFIG := $(KBUILD)/.config
-ifeq (,$(wildcard $(KCONFIG)))
-$(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
-endif
-include $(KBUILD)/.config
+include $(KCONFIG)
 
 # returns of structs and unions in registers when possible, like Windows
 EXTRA_CFLAGS += -freg-struct-return
@@ -157,14 +158,6 @@ $(MODNAME)-objs := $(OBJS)
 
 
 config_check:
-	@if [ ! -f "$(VERSION_H)" ]; then \
-		echo; echo; \
-		echo "Cannot find kernel build files in $(KBUILD)"; \
-		echo "Please give the path to kernel build directory with" ; \
-		echo "the KBUILD=<path> argument to make";\
-		echo; echo; \
-		exit 1; \
-	fi
 	@if [ -z "$(CONFIG_WIRELESS_EXT)$(CONFIG_NET_RADIO)" ]; then \
 		echo; echo; \
 		echo "*** WARNING: This kernel lacks wireless extensions."; \
