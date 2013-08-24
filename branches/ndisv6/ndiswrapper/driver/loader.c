@@ -596,7 +596,7 @@ static struct pci_driver wrap_pci_driver = {
 	.name		= DRIVER_NAME,
 	.id_table	= wrap_pci_id_table,
 	.probe		= wrap_pnp_start_pci_device,
-	.remove		= __devexit_p(wrap_pnp_remove_pci_device),
+	.remove		= wrap_pnp_remove_pci_device,
 	.suspend	= wrap_pnp_suspend_pci_device,
 	.resume		= wrap_pnp_resume_pci_device,
 };
@@ -612,7 +612,7 @@ static struct usb_driver wrap_usb_driver = {
 	.name = DRIVER_NAME,
 	.id_table = wrap_usb_id_table,
 	.probe = wrap_pnp_start_usb_device,
-	.disconnect = __devexit_p(wrap_pnp_remove_usb_device),
+	.disconnect = wrap_pnp_remove_usb_device,
 	.suspend = wrap_pnp_suspend_usb_device,
 	.resume = wrap_pnp_resume_usb_device,
 };
