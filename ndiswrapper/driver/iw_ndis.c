@@ -13,7 +13,6 @@
  *
  */
 
-#include <linux/version.h>
 #include <linux/wireless.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
