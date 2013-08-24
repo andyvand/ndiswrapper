@@ -157,7 +157,7 @@ $(MODNAME)-objs := $(OBJS)
 
 
 config_check:
-	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
+	@if [ ! -f "$(VERSION_H)" ]; then \
 		echo; echo; \
 		echo "Cannot find kernel build files in $(KBUILD)"; \
 		echo "Please give the path to kernel build directory with" ; \
