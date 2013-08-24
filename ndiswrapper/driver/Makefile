@@ -28,6 +28,12 @@ ifeq (,$(wildcard $(KCONFIG)))
 $(error No .config found in $(KBUILD), please set KBUILD to configured kernel)
 endif
 
+ifneq (,$(wildcard $(KBUILD)/include/linux/version.h))
+ifneq (,$(wildcard $(KBUILD)/include/generated/uapi/linux/version.h))
+$(error Multiple copies of version.h found, please clean your build tree)
+endif
+endif
+
 # Kernel Makefile doesn't always know the exact kernel version, so we
 # get it from the kernel headers instead and pass it to make.
 VERSION_H := $(KBUILD)/include/generated/utsrelease.h
