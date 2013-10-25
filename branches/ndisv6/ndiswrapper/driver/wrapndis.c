@@ -603,9 +603,8 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 
 		/* called with rtnl lock held, so no need to lock */
 		if (likely(wnd->procfs_iface)) {
-			printk(KERN_INFO "%s: changing interface name from "
-			       "'%s' to '%s'\n", DRIVER_NAME,
-			       wnd->procfs_iface->name, net_dev->name);
+			printk(KERN_INFO "%s: interface renamed to '%s'\n",
+			       DRIVER_NAME, net_dev->name);
 			wrap_procfs_remove_ndis_device(wnd);
 			wrap_procfs_add_ndis_device(wnd);
 		}

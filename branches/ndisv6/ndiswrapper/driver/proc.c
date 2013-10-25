@@ -297,7 +297,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		return -ENOMEM;
 
 	if (wnd->procfs_iface) {
-		ERROR("%s already registered?", wnd->procfs_iface->name);
+		ERROR("%s already registered?", wnd->net_dev->name);
 		return -EINVAL;
 	}
 	wnd->procfs_iface = proc_mkdir(wnd->net_dev->name, wrap_procfs_entry);
