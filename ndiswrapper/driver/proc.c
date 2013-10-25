@@ -412,36 +412,33 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'hw'");
 		goto err_hw;
-	} else {
-		procfs_entry->uid = proc_kuid;
-		procfs_entry->gid = proc_kgid;
-		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_ndis_hw;
 	}
+	procfs_entry->uid = proc_kuid;
+	procfs_entry->gid = proc_kgid;
+	procfs_entry->data = wnd;
+	procfs_entry->read_proc = procfs_read_ndis_hw;
 
 	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
 					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'stats'");
 		goto err_stats;
-	} else {
-		procfs_entry->uid = proc_kuid;
-		procfs_entry->gid = proc_kgid;
-		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_ndis_stats;
 	}
+	procfs_entry->uid = proc_kuid;
+	procfs_entry->gid = proc_kgid;
+	procfs_entry->data = wnd;
+	procfs_entry->read_proc = procfs_read_ndis_stats;
 
 	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
 					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'encr'");
 		goto err_encr;
-	} else {
-		procfs_entry->uid = proc_kuid;
-		procfs_entry->gid = proc_kgid;
-		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_ndis_encr;
 	}
+	procfs_entry->uid = proc_kuid;
+	procfs_entry->gid = proc_kgid;
+	procfs_entry->data = wnd;
+	procfs_entry->read_proc = procfs_read_ndis_encr;
 
 	procfs_entry = create_proc_entry("settings", S_IFREG |
 					 S_IRUSR | S_IRGRP |
@@ -449,13 +446,13 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'settings'");
 		goto err_settings;
-	} else {
-		procfs_entry->uid = proc_kuid;
-		procfs_entry->gid = proc_kgid;
-		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_ndis_settings;
-		procfs_entry->write_proc = procfs_write_ndis_settings;
 	}
+	procfs_entry->uid = proc_kuid;
+	procfs_entry->gid = proc_kgid;
+	procfs_entry->data = wnd;
+	procfs_entry->read_proc = procfs_read_ndis_settings;
+	procfs_entry->write_proc = procfs_write_ndis_settings;
+
 	return 0;
 
 err_settings:
@@ -563,12 +560,12 @@ int wrap_procfs_init(void)
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'debug'");
 		return -ENOMEM;
-	} else {
-		procfs_entry->uid = proc_kuid;
-		procfs_entry->gid = proc_kgid;
-		procfs_entry->read_proc = procfs_read_debug;
-		procfs_entry->write_proc = procfs_write_debug;
 	}
+	procfs_entry->uid = proc_kuid;
+	procfs_entry->gid = proc_kgid;
+	procfs_entry->read_proc = procfs_read_debug;
+	procfs_entry->write_proc = procfs_write_debug;
+
 	return 0;
 }
 
