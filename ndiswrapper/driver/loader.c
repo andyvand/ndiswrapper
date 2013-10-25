@@ -94,7 +94,8 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		TRACE1("loading driver %s", wd->driver_name);
 		mutex_lock(&loader_mutex);
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env, 1);
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env,
+					  UMH_WAIT_EXEC);
 		if (ret) {
 			mutex_unlock(&loader_mutex);
 			ERROR("couldn't load driver %s; check system log "
@@ -249,7 +250,8 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		       driver->bin_files[i].name);
 		mutex_lock(&loader_mutex);
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env, 1);
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env,
+					  UMH_WAIT_EXEC);
 		if (ret) {
 			mutex_unlock(&loader_mutex);
 			ERROR("couldn't load file %s/%s; check system log "
@@ -687,7 +689,8 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 		       subvendor, subdevice, bus);
 		mutex_lock(&loader_mutex);
 		INIT_COMPLETION(loader_complete);
-		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env, 1);
+		ret = call_usermodehelper("/sbin/loadndis6driver", argv, env,
+					  UMH_WAIT_EXEC);
 		if (ret) {
 			mutex_unlock(&loader_mutex);
 			TRACE1("couldn't load device %04x:%04x; check system "
