@@ -539,7 +539,15 @@ int wrap_procfs_init(void)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
 	struct user_namespace *ns = current_user_ns();
 	proc_kuid = make_kuid(ns, proc_uid);
+	if (!uid_valid(proc_kuid)) {
+		ERROR("invalid UID\n");
+		return -EINVAL;
+	}
 	proc_kgid = make_kgid(ns, proc_gid);
+	if (!gid_valid(proc_kgid)) {
+		ERROR("invalid GID\n");
+		return -EINVAL;
+	}
 #endif
 
 	wrap_procfs_entry = proc_mkdir(DRIVER_NAME, proc_net_root);
