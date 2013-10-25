@@ -292,7 +292,6 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 {
 	struct proc_dir_entry *procfs_entry;
 
-	ENTER1("%p", wnd);
 	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
 
@@ -354,7 +353,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 	procfs_entry->read_proc = procfs_read_ndis_settings;
 	procfs_entry->write_proc = procfs_write_ndis_settings;
 
-	EXIT1(return 0);
+	return 0;
 
 err_settings:
 	remove_proc_entry("encr", wnd->procfs_iface);
