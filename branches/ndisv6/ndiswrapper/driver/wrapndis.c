@@ -626,9 +626,9 @@ static void update_wireless_stats(struct ndis_device *wnd)
 	int n;
 
 	ENTER2("%p", wnd);
-	if (wnd->stats_enabled == FALSE || !netif_carrier_ok(wnd->net_dev)) {
+	if (wnd->iw_stats_enabled == FALSE || !netif_carrier_ok(wnd->net_dev)) {
 		memset(iw_stats, 0, sizeof(*iw_stats));
-//		EXIT2(return);
+		EXIT2(return);
 	}
 	n = sizeof(*ndis_stats) +
 		sizeof(*phy_stats) * (wnd->phy_types->num_entries - 1);
@@ -1694,7 +1694,7 @@ static NTSTATUS ndis_add_device(struct driver_object *drv_obj,
 	wnd->hw_status = 0;
 
 	wnd->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
-	wnd->stats_enabled = TRUE;
+	wnd->iw_stats_enabled = TRUE;
 	wnd->wrap_timer_slist.next = NULL;
 
 	/* dispatch routines are called as Windows functions */

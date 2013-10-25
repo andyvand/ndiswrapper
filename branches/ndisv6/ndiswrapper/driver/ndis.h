@@ -1299,7 +1299,7 @@ struct ndis_device {
 
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
-	BOOLEAN stats_enabled;
+	BOOLEAN iw_stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 
 	struct work_struct tx_work;
