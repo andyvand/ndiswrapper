@@ -32,6 +32,8 @@ static kgid_t proc_kgid;
 #define proc_kgid proc_gid
 #endif
 
+#define add_text(p, fmt, ...) (p += sprintf(p, fmt, ##__VA_ARGS__))
+
 static struct proc_dir_entry *wrap_procfs_entry;
 
 static int procfs_read_ndis_stats(char *page, char **start, off_t off,
@@ -50,25 +52,22 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 
 	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
-		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
+		add_text(p, "signal_level=%d dBm\n", (s32)rssi);
 
 	res = mp_query(wnd, OID_802_11_STATISTICS, &stats, sizeof(stats));
 	if (!res) {
-
-		p += sprintf(p, "tx_frames=%llu\n", stats.tx_frag);
-		p += sprintf(p, "tx_multicast_frames=%llu\n",
-			     stats.tx_multi_frag);
-		p += sprintf(p, "tx_failed=%llu\n", stats.failed);
-		p += sprintf(p, "tx_retry=%llu\n", stats.retry);
-		p += sprintf(p, "tx_multi_retry=%llu\n", stats.multi_retry);
-		p += sprintf(p, "tx_rtss_success=%llu\n", stats.rtss_succ);
-		p += sprintf(p, "tx_rtss_fail=%llu\n", stats.rtss_fail);
-		p += sprintf(p, "ack_fail=%llu\n", stats.ack_fail);
-		p += sprintf(p, "frame_duplicates=%llu\n", stats.frame_dup);
-		p += sprintf(p, "rx_frames=%llu\n", stats.rx_frag);
-		p += sprintf(p, "rx_multicast_frames=%llu\n",
-			     stats.rx_multi_frag);
-		p += sprintf(p, "fcs_errors=%llu\n", stats.fcs_err);
+		add_text(p, "tx_frames=%llu\n", stats.tx_frag);
+		add_text(p, "tx_multicast_frames=%llu\n", stats.tx_multi_frag);
+		add_text(p, "tx_failed=%llu\n", stats.failed);
+		add_text(p, "tx_retry=%llu\n", stats.retry);
+		add_text(p, "tx_multi_retry=%llu\n", stats.multi_retry);
+		add_text(p, "tx_rtss_success=%llu\n", stats.rtss_succ);
+		add_text(p, "tx_rtss_fail=%llu\n", stats.rtss_fail);
+		add_text(p, "ack_fail=%llu\n", stats.ack_fail);
+		add_text(p, "frame_duplicates=%llu\n", stats.frame_dup);
+		add_text(p, "rx_frames=%llu\n", stats.rx_frag);
+		add_text(p, "rx_multicast_frames=%llu\n", stats.rx_multi_frag);
+		add_text(p, "fcs_errors=%llu\n", stats.fcs_err);
 	}
 
 	if (p - page > count) {
@@ -99,36 +98,35 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		       &ap_address, sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
-	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
+	add_text(p, "ap_address=%2.2X", ap_address[0]);
 	for (i = 1; i < ETH_ALEN; i++)
-		p += sprintf(p, ":%2.2X", ap_address[i]);
-	p += sprintf(p, "\n");
+		add_text(p, ":%2.2X", ap_address[i]);
+	add_text(p, "\n");
 
 	res = mp_query(wnd, OID_802_11_SSID, &essid, sizeof(essid));
 	if (!res)
-		p += sprintf(p, "essid=%.*s\n", essid.length, essid.essid);
+		add_text(p, "essid=%.*s\n", essid.length, essid.essid);
 
 	res = mp_query_int(wnd, OID_802_11_ENCRYPTION_STATUS, &encr_status);
 	if (!res) {
 		typeof(&wnd->encr_info.keys[0]) tx_key;
-		p += sprintf(p, "tx_key=%u\n", wnd->encr_info.tx_key_index);
-		p += sprintf(p, "key=");
+		add_text(p, "tx_key=%u\n", wnd->encr_info.tx_key_index);
+		add_text(p, "key=");
 		tx_key = &wnd->encr_info.keys[wnd->encr_info.tx_key_index];
 		if (tx_key->length > 0)
 			for (i = 0; i < tx_key->length; i++)
-				p += sprintf(p, "%2.2X", tx_key->key[i]);
+				add_text(p, "%2.2X", tx_key->key[i]);
 		else
-			p += sprintf(p, "off");
-		p += sprintf(p, "\n");
-		p += sprintf(p, "encr_mode=%d\n", encr_status);
+			add_text(p, "off");
+		add_text(p, "\n");
+		add_text(p, "encr_mode=%d\n", encr_status);
 	}
 	res = mp_query_int(wnd, OID_802_11_AUTHENTICATION_MODE, &auth_mode);
 	if (!res)
-		p += sprintf(p, "auth_mode=%d\n", auth_mode);
+		add_text(p, "auth_mode=%d\n", auth_mode);
 	res = mp_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, &infra_mode);
-	p += sprintf(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ?
-		     "adhoc" : (infra_mode == Ndis802_11Infrastructure) ?
-		     "managed" : "auto");
+	add_text(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ? "adhoc" :
+		 (infra_mode == Ndis802_11Infrastructure) ? "managed" : "auto");
 	if (p - page > count) {
 		WARNING("wrote %td bytes (limit is %u)",
 			p - page, count);
@@ -164,90 +162,85 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 
 	res = mp_query_int(wnd, OID_GEN_HARDWARE_STATUS, &n);
 	if (res == NDIS_STATUS_SUCCESS && n >= 0 && n < ARRAY_SIZE(hw_status))
-		p += sprintf(p, "status=%s\n", hw_status[n]);
+		add_text(p, "status=%s\n", hw_status[n]);
 
 	res = mp_query(wnd, OID_802_3_CURRENT_ADDRESS, mac, sizeof(mac));
 	if (!res)
-		p += sprintf(p, "mac: " MACSTRSEP "\n", MAC2STR(mac));
+		add_text(p, "mac: " MACSTRSEP "\n", MAC2STR(mac));
 	res = mp_query(wnd, OID_802_11_CONFIGURATION, &config, sizeof(config));
 	if (!res) {
-		p += sprintf(p, "beacon_period=%u msec\n",
-			     config.beacon_period);
-		p += sprintf(p, "atim_window=%u msec\n", config.atim_window);
-		p += sprintf(p, "frequency=%u kHz\n", config.ds_config);
-		p += sprintf(p, "hop_pattern=%u\n",
-			     config.fh_config.hop_pattern);
-		p += sprintf(p, "hop_set=%u\n",
-			     config.fh_config.hop_set);
-		p += sprintf(p, "dwell_time=%u msec\n",
-			     config.fh_config.dwell_time);
+		add_text(p, "beacon_period=%u msec\n", config.beacon_period);
+		add_text(p, "atim_window=%u msec\n", config.atim_window);
+		add_text(p, "frequency=%u kHz\n", config.ds_config);
+		add_text(p, "hop_pattern=%u\n", config.fh_config.hop_pattern);
+		add_text(p, "hop_set=%u\n", config.fh_config.hop_set);
+		add_text(p, "dwell_time=%u msec\n",
+			 config.fh_config.dwell_time);
 	}
 
 	res = mp_query(wnd, OID_802_11_TX_POWER_LEVEL,
 		       &tx_power, sizeof(tx_power));
 	if (!res)
-		p += sprintf(p, "tx_power=%u mW\n", tx_power);
+		add_text(p, "tx_power=%u mW\n", tx_power);
 
 	res = mp_query(wnd, OID_GEN_LINK_SPEED, &bit_rate, sizeof(bit_rate));
 	if (!res)
-		p += sprintf(p, "bit_rate=%u kBps\n", (u32)bit_rate / 10);
+		add_text(p, "bit_rate=%u kBps\n", (u32)bit_rate / 10);
 
 	res = mp_query(wnd, OID_802_11_RTS_THRESHOLD,
 		       &rts_threshold, sizeof(rts_threshold));
 	if (!res)
-		p += sprintf(p, "rts_threshold=%u bytes\n", rts_threshold);
+		add_text(p, "rts_threshold=%u bytes\n", rts_threshold);
 
 	res = mp_query(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
 		       &frag_threshold, sizeof(frag_threshold));
 	if (!res)
-		p += sprintf(p, "frag_threshold=%u bytes\n", frag_threshold);
+		add_text(p, "frag_threshold=%u bytes\n", frag_threshold);
 
 	res = mp_query_int(wnd, OID_802_11_POWER_MODE, &power_mode);
 	if (!res)
-		p += sprintf(p, "power_mode=%s\n",
-			     (power_mode == NDIS_POWER_OFF) ? "always_on" :
-			     (power_mode == NDIS_POWER_MAX) ?
-			     "max_savings" : "min_savings");
+		add_text(p, "power_mode=%s\n",
+			 (power_mode == NDIS_POWER_OFF) ? "always_on" :
+			 (power_mode == NDIS_POWER_MAX) ? "max_savings" :
+							  "min_savings");
 
 	res = mp_query(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
 		       &antenna, sizeof(antenna));
 	if (!res)
-		p += sprintf(p, "num_antennas=%u\n", antenna);
+		add_text(p, "num_antennas=%u\n", antenna);
 
 	res = mp_query(wnd, OID_802_11_TX_ANTENNA_SELECTED,
 		       &antenna, sizeof(antenna));
 	if (!res)
-		p += sprintf(p, "tx_antenna=%u\n", antenna);
+		add_text(p, "tx_antenna=%u\n", antenna);
 
 	res = mp_query(wnd, OID_802_11_RX_ANTENNA_SELECTED,
 		       &antenna, sizeof(antenna));
 	if (!res)
-		p += sprintf(p, "rx_antenna=%u\n", antenna);
+		add_text(p, "rx_antenna=%u\n", antenna);
 
-	p += sprintf(p, "encryption_modes=%s%s%s%s%s%s%s\n",
-		     test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr) ?
-		     "WEP" : "none",
-
-		     test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ?
-		     "; TKIP with WPA" : "",
-		     test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
-		     ", WPA2" : "",
-		     test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
-		     ", WPA2PSK" : "",
-
-		     test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr) ?
-		     "; AES/CCMP with WPA" : "",
-		     test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
-		     ", WPA2" : "",
-		     test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
-		     ", WPA2PSK" : "");
+	add_text(p, "encryption_modes=%s%s%s%s%s%s%s\n",
+		 test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr) ?
+		 "WEP" : "none",
+		 test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ?
+		 "; TKIP with WPA" : "",
+		 test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
+		 ", WPA2" : "",
+		 test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
+		 ", WPA2PSK" : "",
+		 test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr) ?
+		 "; AES/CCMP with WPA" : "",
+		 test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
+		 ", WPA2" : "",
+		 test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
+		 ", WPA2PSK" : "");
 
 	res = mp_query_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, &packet_filter);
 	if (!res) {
 		if (packet_filter != wnd->packet_filter)
 			WARNING("wrong packet_filter? 0x%08x, 0x%08x\n",
 				packet_filter, wnd->packet_filter);
-		p += sprintf(p, "packet_filter: 0x%08x\n", packet_filter);
+		add_text(p, "packet_filter: 0x%08x\n", packet_filter);
 	}
 	if (p - page > count) {
 		WARNING("wrote %td bytes (limit is %u)",
@@ -270,16 +263,15 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	p += sprintf(p, "hangcheck_interval=%d\n",
-		     hangcheck_interval == 0 ?
-		     (wnd->hangcheck_interval / HZ) : -1);
+	add_text(p, "hangcheck_interval=%d\n", (hangcheck_interval == 0) ?
+		 (wnd->hangcheck_interval / HZ) : -1);
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {
-		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
+		add_text(p, "%s=%s\n", setting->name, setting->value);
 	}
 
 	list_for_each_entry(setting, &wnd->wd->driver->settings, list) {
-		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
+		add_text(p, "%s=%s\n", setting->name, setting->value);
 	}
 
 	return p - page;
@@ -493,11 +485,11 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		*eof = 1;
 		return 0;
 	}
-	p += sprintf(p, "%d\n", debug);
+	add_text(p, "%d\n", debug);
 #if ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		p += sprintf(p, "total size of allocations in %s: %d\n",
-			     alloc_type_name[type], alloc_size(type));
+		add_text(p, "total size of allocations in %s: %d\n",
+			 alloc_type_name[type], alloc_size(type));
 #endif
 	return p - page;
 }
