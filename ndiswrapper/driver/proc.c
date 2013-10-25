@@ -32,6 +32,8 @@ static kgid_t proc_kgid;
 #define proc_kgid proc_gid
 #endif
 
+#define add_text(p, fmt, ...) (p += sprintf(p, fmt, ##__VA_ARGS__))
+
 static struct proc_dir_entry *wrap_procfs_entry;
 
 static int procfs_read_ndis_stats(char *page, char **start, off_t off,
@@ -50,25 +52,22 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 
 	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
-		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
+		add_text(p, "signal_level=%d dBm\n", (s32)rssi);
 
 	res = mp_query(wnd, OID_802_11_STATISTICS, &stats, sizeof(stats));
 	if (!res) {
-
-		p += sprintf(p, "tx_frames=%llu\n", stats.tx_frag);
-		p += sprintf(p, "tx_multicast_frames=%llu\n",
-			     stats.tx_multi_frag);
-		p += sprintf(p, "tx_failed=%llu\n", stats.failed);
-		p += sprintf(p, "tx_retry=%llu\n", stats.retry);
-		p += sprintf(p, "tx_multi_retry=%llu\n", stats.multi_retry);
-		p += sprintf(p, "tx_rtss_success=%llu\n", stats.rtss_succ);
-		p += sprintf(p, "tx_rtss_fail=%llu\n", stats.rtss_fail);
-		p += sprintf(p, "ack_fail=%llu\n", stats.ack_fail);
-		p += sprintf(p, "frame_duplicates=%llu\n", stats.frame_dup);
-		p += sprintf(p, "rx_frames=%llu\n", stats.rx_frag);
-		p += sprintf(p, "rx_multicast_frames=%llu\n",
-			     stats.rx_multi_frag);
-		p += sprintf(p, "fcs_errors=%llu\n", stats.fcs_err);
+		add_text(p, "tx_frames=%llu\n", stats.tx_frag);
+		add_text(p, "tx_multicast_frames=%llu\n", stats.tx_multi_frag);
+		add_text(p, "tx_failed=%llu\n", stats.failed);
+		add_text(p, "tx_retry=%llu\n", stats.retry);
+		add_text(p, "tx_multi_retry=%llu\n", stats.multi_retry);
+		add_text(p, "tx_rtss_success=%llu\n", stats.rtss_succ);
+		add_text(p, "tx_rtss_fail=%llu\n", stats.rtss_fail);
+		add_text(p, "ack_fail=%llu\n", stats.ack_fail);
+		add_text(p, "frame_duplicates=%llu\n", stats.frame_dup);
+		add_text(p, "rx_frames=%llu\n", stats.rx_frag);
+		add_text(p, "rx_multicast_frames=%llu\n", stats.rx_multi_frag);
+		add_text(p, "fcs_errors=%llu\n", stats.fcs_err);
 	}
 
 	if (p - page > count) {
@@ -117,30 +116,30 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "phy_id=%d\n", i);
+		add_text(p, "phy_id=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_NIC_POWER_STATE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "nic_power=%d\n", i);
+		add_text(p, "nic_power=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_HARDWARE_PHY_STATE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "phy_power=%d\n", i);
+		add_text(p, "phy_power=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_POWER_MGMT_REQUEST, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "power_mgmt=%d\n", i);
+		add_text(p, "power_mgmt=%d\n", i);
 	op_mode = (void *)buf;
 	status = mp_query(wnd, OID_DOT11_CURRENT_OPERATION_MODE,
 			  op_mode, sizeof(*op_mode));
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "op_mode=0x%x\n", op_mode->mode);
+		add_text(p, "op_mode=0x%x\n", op_mode->mode);
 	status = mp_query_int(wnd, OID_DOT11_RF_USAGE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "rf_usage=%d\n", i);
+		add_text(p, "rf_usage=%d\n", i);
 	status = mp_query_int(wnd, OID_DOT11_AUTO_CONFIG_ENABLED, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		p += sprintf(p, "auto_config=0x%x\n", i);
+		add_text(p, "auto_config=0x%x\n", i);
 
 	if (p - page > count) {
 		WARNING("wrote %td bytes (limit is %u)",
@@ -163,16 +162,15 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	p += sprintf(p, "hangcheck_interval=%d\n",
-		     hangcheck_interval == 0 ?
-		     (wnd->hangcheck_interval / HZ) : -1);
+	add_text(p, "hangcheck_interval=%d\n", (hangcheck_interval == 0) ?
+		 (wnd->hangcheck_interval / HZ) : -1);
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {
-		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
+		add_text(p, "%s=%s\n", setting->name, setting->value);
 	}
 
 	list_for_each_entry(setting, &wnd->wd->driver->settings, list) {
-		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
+		add_text(p, "%s=%s\n", setting->name, setting->value);
 	}
 
 	return p - page;
@@ -393,11 +391,11 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		*eof = 1;
 		return 0;
 	}
-	p += sprintf(p, "%d\n", debug);
+	add_text(p, "%d\n", debug);
 #if ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		p += sprintf(p, "total size of allocations in %s: %d\n",
-			     alloc_type_name[type], alloc_size(type));
+		add_text(p, "total size of allocations in %s: %d\n",
+			 alloc_type_name[type], alloc_size(type));
 #endif
 	return p - page;
 }
