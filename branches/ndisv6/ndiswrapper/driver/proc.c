@@ -32,6 +32,14 @@ static kgid_t proc_kgid;
 #define proc_kgid proc_gid
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+void proc_set_user(struct proc_dir_entry *de, kuid_t uid, kgid_t gid)
+{
+	de->uid = uid;
+	de->gid = gid;
+}
+#endif
+
 #define add_text(p, fmt, ...) (p += sprintf(p, fmt, ##__VA_ARGS__))
 
 static struct proc_dir_entry *wrap_procfs_entry;
@@ -302,8 +310,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		ERROR("couldn't create proc directory");
 		return -ENOMEM;
 	}
-	wnd->procfs_iface->uid = proc_kuid;
-	wnd->procfs_iface->gid = proc_kgid;
+	proc_set_user(wnd->procfs_iface, proc_kuid, proc_kgid);
 
 	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
 					 wnd->procfs_iface);
@@ -311,8 +318,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		ERROR("couldn't create proc entry for 'hw'");
 		goto err_hw;
 	}
-	procfs_entry->uid = proc_kuid;
-	procfs_entry->gid = proc_kgid;
+	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
 	procfs_entry->data = wnd;
 	procfs_entry->read_proc = procfs_read_ndis_hw;
 
@@ -322,8 +328,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		ERROR("couldn't create proc entry for 'stats'");
 		goto err_stats;
 	}
-	procfs_entry->uid = proc_kuid;
-	procfs_entry->gid = proc_kgid;
+	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
 	procfs_entry->data = wnd;
 	procfs_entry->read_proc = procfs_read_ndis_stats;
 
@@ -333,8 +338,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		ERROR("couldn't create proc entry for 'encr'");
 		goto err_encr;
 	}
-	procfs_entry->uid = proc_kuid;
-	procfs_entry->gid = proc_kgid;
+	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
 	procfs_entry->data = wnd;
 	procfs_entry->read_proc = procfs_read_ndis_encr;
 
@@ -345,8 +349,7 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 		ERROR("couldn't create proc entry for 'settings'");
 		goto err_settings;
 	}
-	procfs_entry->uid = proc_kuid;
-	procfs_entry->gid = proc_kgid;
+	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
 	procfs_entry->data = wnd;
 	procfs_entry->read_proc = procfs_read_ndis_settings;
 	procfs_entry->write_proc = procfs_write_ndis_settings;
@@ -450,8 +453,7 @@ int wrap_procfs_init(void)
 		ERROR("couldn't create procfs directory");
 		return -ENOMEM;
 	}
-	wrap_procfs_entry->uid = proc_kuid;
-	wrap_procfs_entry->gid = proc_kgid;
+	proc_set_user(wrap_procfs_entry, proc_kuid, proc_kgid);
 
 	procfs_entry = create_proc_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
 					 wrap_procfs_entry);
@@ -459,8 +461,7 @@ int wrap_procfs_init(void)
 		ERROR("couldn't create proc entry for 'debug'");
 		return -ENOMEM;
 	}
-	procfs_entry->uid = proc_kuid;
-	procfs_entry->gid = proc_kgid;
+	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
 	procfs_entry->read_proc = procfs_read_debug;
 	procfs_entry->write_proc = procfs_write_debug;
 
