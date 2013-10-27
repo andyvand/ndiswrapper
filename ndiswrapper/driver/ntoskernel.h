@@ -310,6 +310,10 @@ static inline void netif_poll_disable(struct net_device *dev)
 #define proc_net_root proc_net
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0)
+#define netdev_notifier_info_to_dev(x) (x)
+#endif
+
 /* TICK is 100ns */
 #define TICKSPERSEC		10000000
 #define TICKSPERMSEC		10000
