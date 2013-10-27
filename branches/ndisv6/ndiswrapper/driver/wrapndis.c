@@ -594,7 +594,7 @@ static struct ethtool_ops ndis_ethtool_ops = {
 static int notifier_event(struct notifier_block *notifier, unsigned long event,
 			  void *ptr)
 {
-	struct net_device *net_dev = ptr;
+	struct net_device *net_dev = netdev_notifier_info_to_dev(ptr);
 
 	ENTER2("0x%lx", event);
 	if (net_dev->ethtool_ops == &ndis_ethtool_ops
