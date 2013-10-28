@@ -552,7 +552,7 @@ int wrap_procfs_init(void)
 			      wrap_procfs_entry, procfs_read_debug,
 			      procfs_write_debug, proc_kuid, proc_kgid, NULL);
 
-	return 0;
+	return ret;
 }
 
 void wrap_procfs_remove(void)
