@@ -33,13 +33,13 @@ static kgid_t proc_kgid;
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-void proc_set_user(struct proc_dir_entry *de, kuid_t uid, kgid_t gid)
+static void proc_set_user(struct proc_dir_entry *de, kuid_t uid, kgid_t gid)
 {
 	de->uid = uid;
 	de->gid = gid;
 }
 
-void proc_remove(struct proc_dir_entry *de)
+static void proc_remove(struct proc_dir_entry *de)
 {
 	if (de)
 		remove_proc_entry(de->name, de->parent);
