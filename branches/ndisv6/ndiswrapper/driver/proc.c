@@ -46,14 +46,15 @@ void proc_remove(struct proc_dir_entry *de)
 }
 #endif
 
-#define add_text(p, fmt, ...) (p += sprintf(p, fmt, ##__VA_ARGS__))
+#define add_text(fmt, ...) \
+	(len += scnprintf(page + len, count - len, fmt, ##__VA_ARGS__))
 
 static struct proc_dir_entry *wrap_procfs_entry;
 
 static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 				  int count, int *eof, void *data)
 {
-	char *p = page;
+	int len = 0;
 	struct ndis_device *wnd = (struct ndis_device *)data;
 	struct ndis_wireless_stats stats;
 	NDIS_STATUS res;
@@ -66,56 +67,44 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 
 	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
-		add_text(p, "signal_level=%d dBm\n", (s32)rssi);
+		add_text("signal_level=%d dBm\n", (s32)rssi);
 
 	res = mp_query(wnd, OID_802_11_STATISTICS, &stats, sizeof(stats));
 	if (!res) {
-		add_text(p, "tx_frames=%llu\n", stats.tx_frag);
-		add_text(p, "tx_multicast_frames=%llu\n", stats.tx_multi_frag);
-		add_text(p, "tx_failed=%llu\n", stats.failed);
-		add_text(p, "tx_retry=%llu\n", stats.retry);
-		add_text(p, "tx_multi_retry=%llu\n", stats.multi_retry);
-		add_text(p, "tx_rtss_success=%llu\n", stats.rtss_succ);
-		add_text(p, "tx_rtss_fail=%llu\n", stats.rtss_fail);
-		add_text(p, "ack_fail=%llu\n", stats.ack_fail);
-		add_text(p, "frame_duplicates=%llu\n", stats.frame_dup);
-		add_text(p, "rx_frames=%llu\n", stats.rx_frag);
-		add_text(p, "rx_multicast_frames=%llu\n", stats.rx_multi_frag);
-		add_text(p, "fcs_errors=%llu\n", stats.fcs_err);
+		add_text("tx_frames=%llu\n", stats.tx_frag);
+		add_text("tx_multicast_frames=%llu\n", stats.tx_multi_frag);
+		add_text("tx_failed=%llu\n", stats.failed);
+		add_text("tx_retry=%llu\n", stats.retry);
+		add_text("tx_multi_retry=%llu\n", stats.multi_retry);
+		add_text("tx_rtss_success=%llu\n", stats.rtss_succ);
+		add_text("tx_rtss_fail=%llu\n", stats.rtss_fail);
+		add_text("ack_fail=%llu\n", stats.ack_fail);
+		add_text("frame_duplicates=%llu\n", stats.frame_dup);
+		add_text("rx_frames=%llu\n", stats.rx_frag);
+		add_text("rx_multicast_frames=%llu\n", stats.rx_multi_frag);
+		add_text("fcs_errors=%llu\n", stats.fcs_err);
 	}
 
-	if (p - page > count) {
-		ERROR("wrote %td bytes (limit is %u)\n",
-		      p - page, count);
-		*eof = 1;
-	}
-
-	return p - page;
+	return len;
 }
 
 static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 				 int count, int *eof, void *data)
 {
-	char *p = page;
+	int len = 0;
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
 
-	if (p - page > count) {
-		WARNING("wrote %td bytes (limit is %u)",
-			p - page, count);
-		*eof = 1;
-	}
-
-	return p - page;
+	return len;
 }
 
 static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 			       int count, int *eof, void *data)
 {
-	char *p = page;
+	int len = 0;
 	struct ndis_device *wnd = (struct ndis_device *)data;
 	int i;
 	NDIS_STATUS status;
@@ -130,44 +119,38 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "phy_id=%d\n", i);
+		add_text("phy_id=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_NIC_POWER_STATE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "nic_power=%d\n", i);
+		add_text("nic_power=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_HARDWARE_PHY_STATE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "phy_power=%d\n", i);
+		add_text("phy_power=%d\n", i);
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_POWER_MGMT_REQUEST, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "power_mgmt=%d\n", i);
+		add_text("power_mgmt=%d\n", i);
 	op_mode = (void *)buf;
 	status = mp_query(wnd, OID_DOT11_CURRENT_OPERATION_MODE,
 			  op_mode, sizeof(*op_mode));
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "op_mode=0x%x\n", op_mode->mode);
+		add_text("op_mode=0x%x\n", op_mode->mode);
 	status = mp_query_int(wnd, OID_DOT11_RF_USAGE, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "rf_usage=%d\n", i);
+		add_text("rf_usage=%d\n", i);
 	status = mp_query_int(wnd, OID_DOT11_AUTO_CONFIG_ENABLED, &i);
 	if (status == NDIS_STATUS_SUCCESS)
-		add_text(p, "auto_config=0x%x\n", i);
+		add_text("auto_config=0x%x\n", i);
 
-	if (p - page > count) {
-		WARNING("wrote %td bytes (limit is %u)",
-			p - page, count);
-		*eof = 1;
-	}
-
-	return p - page;
+	return len;
 }
 
 static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 				     int count, int *eof, void *data)
 {
-	char *p = page;
+	int len = 0;
 	struct ndis_device *wnd = (struct ndis_device *)data;
 	struct wrap_device_setting *setting;
 
@@ -176,18 +159,18 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	add_text(p, "hangcheck_interval=%d\n", (hangcheck_interval == 0) ?
+	add_text("hangcheck_interval=%d\n", (hangcheck_interval == 0) ?
 		 (wnd->hangcheck_interval / HZ) : -1);
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {
-		add_text(p, "%s=%s\n", setting->name, setting->value);
+		add_text("%s=%s\n", setting->name, setting->value);
 	}
 
 	list_for_each_entry(setting, &wnd->wd->driver->settings, list) {
-		add_text(p, "%s=%s\n", setting->name, setting->value);
+		add_text("%s=%s\n", setting->name, setting->value);
 	}
 
-	return p - page;
+	return len;
 }
 
 static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
@@ -391,7 +374,7 @@ void wrap_procfs_remove_ndis_device(struct ndis_device *wnd)
 static int procfs_read_debug(char *page, char **start, off_t off,
 			     int count, int *eof, void *data)
 {
-	char *p = page;
+	int len = 0;
 #if ALLOC_DEBUG
 	enum alloc_type type;
 #endif
@@ -400,13 +383,13 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		*eof = 1;
 		return 0;
 	}
-	add_text(p, "%d\n", debug);
+	add_text("%d\n", debug);
 #if ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		add_text(p, "total size of allocations in %s: %d\n",
+		add_text("total size of allocations in %s: %d\n",
 			 alloc_type_name[type], alloc_size(type));
 #endif
-	return p - page;
+	return len;
 }
 
 static int procfs_write_debug(struct file *file, const char __user *buf,
