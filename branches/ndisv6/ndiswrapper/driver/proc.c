@@ -45,15 +45,22 @@ static void proc_remove(struct proc_dir_entry *de)
 		remove_proc_entry(de->name, de->parent);
 }
 
-typedef int (*proc_read_fn)(char *page, char **start, off_t off, int count,
-			   int *eof, void *data);
-typedef int (*proc_write_fn)(struct file *file, const char __user *buf,
-			     unsigned long count, void *data);
+#define READ_RET int
+#define READ_ARGS \
+	char *page, char **start, off_t off, int count, int *eof, void *data
+#define READ_PRIV (struct ndis_device *)data
+#define WRITE_RET int
+#define WRITE_ARGS \
+	struct file *file, const char __user *buf, unsigned long count, void *data
+#define WRITE_PRIV (struct ndis_device *)data
 
-static int proc_make_entry(const char *name, umode_t mode,
-			   struct proc_dir_entry *parent,
-			   proc_read_fn rfunc, proc_write_fn wfunc,
-			   kuid_t uid, kgid_t gid, struct ndis_device *wnd)
+typedef READ_RET (*proc_read_fn)(READ_ARGS);
+typedef WRITE_RET (*proc_write_fn)(WRITE_ARGS);
+
+static int do_proc_make_entry(const char *name, umode_t mode,
+			     struct proc_dir_entry *parent,
+			     proc_read_fn rfunc, proc_write_fn wfunc,
+			     kuid_t uid, kgid_t gid, struct ndis_device *wnd)
 {
 	struct proc_dir_entry *de;
 
@@ -68,27 +75,38 @@ static int proc_make_entry(const char *name, umode_t mode,
 	de->write_proc = wfunc;
 	de->data = wnd;
 	return 0;
+
+#define proc_make_entry_ro(name, parent, wnd) \
+	do_proc_make_entry(#name, S_IFREG | S_IRUSR | S_IRGRP, parent, \
+			   proc_##name##_read, NULL, proc_kuid, proc_kgid, wnd)
+#define proc_make_entry_rw(name, parent, wnd) \
+	do_proc_make_entry(#name, \
+			   S_IFREG | S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, \
+			   parent, proc_##name##_read, proc_##name##_write, \
+			   proc_kuid, proc_kgid, wnd)
 }
-#endif
+
+#define offset_check() \
+	if (off != 0) { \
+		*eof = 1; \
+		return 0; \
+	}
 
 #define add_text(fmt, ...) \
 	(len += scnprintf(page + len, count - len, fmt, ##__VA_ARGS__))
+#endif
 
 static struct proc_dir_entry *wrap_procfs_entry;
 
-static int procfs_read_ndis_stats(char *page, char **start, off_t off,
-				  int count, int *eof, void *data)
+static READ_RET proc_stats_read(READ_ARGS)
 {
 	int len = 0;
-	struct ndis_device *wnd = (struct ndis_device *)data;
+	struct ndis_device *wnd = READ_PRIV;
 	struct ndis_wireless_stats stats;
 	NDIS_STATUS res;
 	ndis_rssi rssi;
 
-	if (off != 0) {
-		*eof = 1;
-		return 0;
-	}
+	offset_check();
 
 	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
@@ -113,33 +131,25 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 	return len;
 }
 
-static int procfs_read_ndis_encr(char *page, char **start, off_t off,
-				 int count, int *eof, void *data)
+static READ_RET proc_encr_read(READ_ARGS)
 {
 	int len = 0;
 
-	if (off != 0) {
-		*eof = 1;
-		return 0;
-	}
+	offset_check();
 
 	return len;
 }
 
-static int procfs_read_ndis_hw(char *page, char **start, off_t off,
-			       int count, int *eof, void *data)
+static READ_RET proc_hw_read(READ_ARGS)
 {
 	int len = 0;
-	struct ndis_device *wnd = (struct ndis_device *)data;
+	struct ndis_device *wnd = READ_PRIV;
 	int i;
 	NDIS_STATUS status;
 	char buf[100];
 	struct ndis_dot11_current_operation_mode *op_mode;
 
-	if (off != 0) {
-		*eof = 1;
-		return 0;
-	}
+	offset_check();
 
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
@@ -172,17 +182,13 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	return len;
 }
 
-static int procfs_read_ndis_settings(char *page, char **start, off_t off,
-				     int count, int *eof, void *data)
+static READ_RET proc_settings_read(READ_ARGS)
 {
 	int len = 0;
-	struct ndis_device *wnd = (struct ndis_device *)data;
+	struct ndis_device *wnd = READ_PRIV;
 	struct wrap_device_setting *setting;
 
-	if (off != 0) {
-		*eof = 1;
-		return 0;
-	}
+	offset_check();
 
 	add_text("hangcheck_interval=%d\n", (hangcheck_interval == 0) ?
 		 (wnd->hangcheck_interval / HZ) : -1);
@@ -198,10 +204,9 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 	return len;
 }
 
-static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
-				      unsigned long count, void *data)
+static WRITE_RET proc_settings_write(WRITE_ARGS)
 {
-	struct ndis_device *wnd = (struct ndis_device *)data;
+	struct ndis_device *wnd = WRITE_PRIV;
 	char setting[MAX_PROC_STR_LEN], *p;
 	unsigned int i;
 	NDIS_STATUS res;
@@ -326,29 +331,19 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 	}
 	proc_set_user(wnd->procfs_iface, proc_kuid, proc_kgid);
 
-	ret = proc_make_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
-			      wnd->procfs_iface, procfs_read_ndis_hw, NULL,
-			      proc_kuid, proc_kgid, wnd);
+	ret = proc_make_entry_ro(hw, wnd->procfs_iface, wnd);
 	if (ret)
 		goto err_hw;
 
-	ret = proc_make_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
-			      wnd->procfs_iface, procfs_read_ndis_stats, NULL,
-			      proc_kuid, proc_kgid, wnd);
+	ret = proc_make_entry_ro(stats, wnd->procfs_iface, wnd);
 	if (ret)
 		goto err_stats;
 
-	ret = proc_make_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
-			      wnd->procfs_iface, procfs_read_ndis_encr, NULL,
-			      proc_kuid, proc_kgid, wnd);
+	ret = proc_make_entry_ro(encr, wnd->procfs_iface, wnd);
 	if (ret)
 		goto err_encr;
 
-	ret = proc_make_entry("settings",
-			      S_IFREG | S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP,
-			      wnd->procfs_iface, procfs_read_ndis_settings,
-			      procfs_write_ndis_settings, proc_kuid, proc_kgid,
-			      wnd);
+	ret = proc_make_entry_rw(settings, wnd->procfs_iface, wnd);
 	if (ret)
 		goto err_settings;
 
@@ -380,18 +375,15 @@ void wrap_procfs_remove_ndis_device(struct ndis_device *wnd)
 		proc_remove(procfs_iface);
 }
 
-static int procfs_read_debug(char *page, char **start, off_t off,
-			     int count, int *eof, void *data)
+static READ_RET proc_debug_read(READ_ARGS)
 {
 	int len = 0;
 #if ALLOC_DEBUG
 	enum alloc_type type;
 #endif
 
-	if (off != 0) {
-		*eof = 1;
-		return 0;
-	}
+	offset_check();
+
 	add_text("%d\n", debug);
 #if ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
@@ -401,8 +393,7 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 	return len;
 }
 
-static int procfs_write_debug(struct file *file, const char __user *buf,
-			      unsigned long count, void *data)
+static WRITE_RET proc_debug_write(WRITE_ARGS)
 {
 	int i;
 	char setting[MAX_PROC_STR_LEN], *p;
@@ -453,9 +444,7 @@ int wrap_procfs_init(void)
 	}
 	proc_set_user(wrap_procfs_entry, proc_kuid, proc_kgid);
 
-	ret = proc_make_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
-			      wrap_procfs_entry, procfs_read_debug,
-			      procfs_write_debug, proc_kuid, proc_kgid, NULL);
+	ret = proc_make_entry_rw(debug, wrap_procfs_entry, NULL);
 
 	return ret;
 }
