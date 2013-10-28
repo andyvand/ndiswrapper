@@ -44,6 +44,31 @@ static void proc_remove(struct proc_dir_entry *de)
 	if (de)
 		remove_proc_entry(de->name, de->parent);
 }
+
+typedef int (*proc_read_fn)(char *page, char **start, off_t off, int count,
+			   int *eof, void *data);
+typedef int (*proc_write_fn)(struct file *file, const char __user *buf,
+			     unsigned long count, void *data);
+
+static int proc_make_entry(const char *name, umode_t mode,
+			   struct proc_dir_entry *parent,
+			   proc_read_fn rfunc, proc_write_fn wfunc,
+			   kuid_t uid, kgid_t gid, struct ndis_device *wnd)
+{
+	struct proc_dir_entry *de;
+
+	de = create_proc_entry(name, mode, parent);
+	if (de == NULL) {
+		ERROR("couldn't create proc entry for '%s'", name);
+		return -ENOMEM;
+	}
+	de->uid = uid;
+	de->gid = gid;
+	de->read_proc = rfunc;
+	de->write_proc = wfunc;
+	de->data = wnd;
+	return 0;
+}
 #endif
 
 #define add_text(fmt, ...) \
@@ -380,7 +405,7 @@ static int procfs_write_ndis_settings(struct file *file, const char __user *buf,
 
 int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 {
-	struct proc_dir_entry *procfs_entry;
+	int ret;
 
 	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
@@ -396,47 +421,31 @@ int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 	}
 	proc_set_user(wnd->procfs_iface, proc_kuid, proc_kgid);
 
-	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
-					 wnd->procfs_iface);
-	if (procfs_entry == NULL) {
-		ERROR("couldn't create proc entry for 'hw'");
+	ret = proc_make_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
+			      wnd->procfs_iface, procfs_read_ndis_hw, NULL,
+			      proc_kuid, proc_kgid, wnd);
+	if (ret)
 		goto err_hw;
-	}
-	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
-	procfs_entry->data = wnd;
-	procfs_entry->read_proc = procfs_read_ndis_hw;
 
-	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
-					 wnd->procfs_iface);
-	if (procfs_entry == NULL) {
-		ERROR("couldn't create proc entry for 'stats'");
+	ret = proc_make_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
+			      wnd->procfs_iface, procfs_read_ndis_stats, NULL,
+			      proc_kuid, proc_kgid, wnd);
+	if (ret)
 		goto err_stats;
-	}
-	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
-	procfs_entry->data = wnd;
-	procfs_entry->read_proc = procfs_read_ndis_stats;
 
-	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
-					 wnd->procfs_iface);
-	if (procfs_entry == NULL) {
-		ERROR("couldn't create proc entry for 'encr'");
+	ret = proc_make_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
+			      wnd->procfs_iface, procfs_read_ndis_encr, NULL,
+			      proc_kuid, proc_kgid, wnd);
+	if (ret)
 		goto err_encr;
-	}
-	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
-	procfs_entry->data = wnd;
-	procfs_entry->read_proc = procfs_read_ndis_encr;
 
-	procfs_entry = create_proc_entry("settings", S_IFREG |
-					 S_IRUSR | S_IRGRP |
-					 S_IWUSR | S_IWGRP, wnd->procfs_iface);
-	if (procfs_entry == NULL) {
-		ERROR("couldn't create proc entry for 'settings'");
+	ret = proc_make_entry("settings",
+			      S_IFREG | S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP,
+			      wnd->procfs_iface, procfs_read_ndis_settings,
+			      procfs_write_ndis_settings, proc_kuid, proc_kgid,
+			      wnd);
+	if (ret)
 		goto err_settings;
-	}
-	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
-	procfs_entry->data = wnd;
-	procfs_entry->read_proc = procfs_read_ndis_settings;
-	procfs_entry->write_proc = procfs_write_ndis_settings;
 
 	return 0;
 
@@ -516,7 +525,7 @@ static int procfs_write_debug(struct file *file, const char __user *buf,
 
 int wrap_procfs_init(void)
 {
-	struct proc_dir_entry *procfs_entry;
+	int ret;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
 	struct user_namespace *ns = current_user_ns();
@@ -539,15 +548,9 @@ int wrap_procfs_init(void)
 	}
 	proc_set_user(wrap_procfs_entry, proc_kuid, proc_kgid);
 
-	procfs_entry = create_proc_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
-					 wrap_procfs_entry);
-	if (procfs_entry == NULL) {
-		ERROR("couldn't create proc entry for 'debug'");
-		return -ENOMEM;
-	}
-	proc_set_user(procfs_entry, proc_kuid, proc_kgid);
-	procfs_entry->read_proc = procfs_read_debug;
-	procfs_entry->write_proc = procfs_write_debug;
+	ret = proc_make_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
+			      wrap_procfs_entry, procfs_read_debug,
+			      procfs_write_debug, proc_kuid, proc_kgid, NULL);
 
 	return 0;
 }
