@@ -38,6 +38,12 @@ void proc_set_user(struct proc_dir_entry *de, kuid_t uid, kgid_t gid)
 	de->uid = uid;
 	de->gid = gid;
 }
+
+void proc_remove(struct proc_dir_entry *de)
+{
+	if (de)
+		remove_proc_entry(de->name, de->parent);
+}
 #endif
 
 #define add_text(p, fmt, ...) (p += sprintf(p, fmt, ##__VA_ARGS__))
@@ -457,7 +463,7 @@ err_encr:
 err_stats:
 	remove_proc_entry("hw", wnd->procfs_iface);
 err_hw:
-	remove_proc_entry(wnd->procfs_iface->name, wrap_procfs_entry);
+	proc_remove(wnd->procfs_iface);
 	wnd->procfs_iface = NULL;
 	return -ENOMEM;
 }
@@ -473,7 +479,7 @@ void wrap_procfs_remove_ndis_device(struct ndis_device *wnd)
 	remove_proc_entry("encr", procfs_iface);
 	remove_proc_entry("settings", procfs_iface);
 	if (wrap_procfs_entry)
-		remove_proc_entry(procfs_iface->name, wrap_procfs_entry);
+		proc_remove(procfs_iface);
 }
 
 static int procfs_read_debug(char *page, char **start, off_t off,
@@ -567,5 +573,5 @@ void wrap_procfs_remove(void)
 	if (wrap_procfs_entry == NULL)
 		return;
 	remove_proc_entry("debug", wrap_procfs_entry);
-	remove_proc_entry(DRIVER_NAME, proc_net_root);
+	proc_remove(wrap_procfs_entry);
 }
