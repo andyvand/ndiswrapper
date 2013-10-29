@@ -13,6 +13,7 @@
  *
  */
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <linux/module.h>
 #include <asm/uaccess.h>
 
@@ -76,6 +77,9 @@ static int do_proc_make_entry(const char *name, umode_t mode,
 	de->data = wnd;
 	return 0;
 
+#define PROC_DECLARE_RO(name)
+#define PROC_DECLARE_RW(name)
+
 #define proc_make_entry_ro(name, parent, wnd) \
 	do_proc_make_entry(#name, S_IFREG | S_IRUSR | S_IRGRP, parent, \
 			   proc_##name##_read, NULL, proc_kuid, proc_kgid, wnd)
@@ -94,6 +98,72 @@ static int do_proc_make_entry(const char *name, umode_t mode,
 
 #define add_text(fmt, ...) \
 	(len += scnprintf(page + len, count - len, fmt, ##__VA_ARGS__))
+#else
+#define READ_RET int
+#define READ_ARGS struct seq_file *sf, void *v
+#define READ_PRIV (struct ndis_device *)sf->private
+#define WRITE_RET ssize_t
+#define WRITE_ARGS \
+	struct file *file, const char __user *buf, size_t count, loff_t *ppos
+#define WRITE_PRIV (struct ndis_device *)PDE_DATA(file_inode(file))
+
+typedef READ_RET (*proc_read_fn)(READ_ARGS);
+typedef WRITE_RET (*proc_write_fn)(WRITE_ARGS);
+
+static int do_proc_make_entry(const char *name, umode_t mode,
+			      struct proc_dir_entry *parent,
+			      const struct file_operations *fops,
+			      kuid_t uid, kgid_t gid, struct ndis_device *wnd)
+{
+	struct proc_dir_entry *de;
+
+	de = proc_create_data(name, mode, parent, fops, wnd);
+	if (de == NULL) {
+		ERROR("couldn't create proc entry for '%s'", name);
+		return -ENOMEM;
+	}
+	proc_set_user(de, uid, gid);
+	return 0;
+}
+
+#define PROC_DECLARE_RO(name) \
+	static int proc_##name##_open(struct inode *inode, struct file *file) \
+	{ \
+		return single_open(file, proc_##name##_read, PDE_DATA(inode)); \
+	} \
+	static const struct file_operations name##_fops = { \
+		.owner = THIS_MODULE, \
+		.open = proc_##name##_open, \
+		.read = seq_read, \
+		.llseek = seq_lseek, \
+		.release = single_release, \
+	};
+
+#define PROC_DECLARE_RW(name) \
+	static int proc_##name##_open(struct inode *inode, struct file *file) \
+	{ \
+		return single_open(file, proc_##name##_read, PDE_DATA(inode)); \
+	} \
+	static const struct file_operations name##_fops = { \
+		.owner = THIS_MODULE, \
+		.open = proc_##name##_open, \
+		.read = seq_read, \
+		.llseek = seq_lseek, \
+		.release = single_release, \
+		.write = proc_##name##_write, \
+	};
+
+#define proc_make_entry_ro(name, parent, wnd) \
+	do_proc_make_entry(#name, S_IFREG | S_IRUSR | S_IRGRP, parent, \
+			   &name##_fops, proc_kuid, proc_kgid, wnd)
+#define proc_make_entry_rw(name, parent, wnd) \
+	do_proc_make_entry(#name, \
+			   S_IFREG | S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, \
+			   parent, &name##_fops, proc_kuid, proc_kgid, wnd)
+
+#define offset_check()
+
+#define add_text(fmt, ...) seq_printf(sf, fmt, ##__VA_ARGS__)
 #endif
 
 static struct proc_dir_entry *wrap_procfs_entry;
@@ -130,6 +200,8 @@ static READ_RET proc_stats_read(READ_ARGS)
 
 	return len;
 }
+
+PROC_DECLARE_RO(stats)
 
 static READ_RET proc_encr_read(READ_ARGS)
 {
@@ -178,6 +250,8 @@ static READ_RET proc_encr_read(READ_ARGS)
 
 	return len;
 }
+
+PROC_DECLARE_RO(encr)
 
 static READ_RET proc_hw_read(READ_ARGS)
 {
@@ -283,6 +357,8 @@ static READ_RET proc_hw_read(READ_ARGS)
 
 	return len;
 }
+
+PROC_DECLARE_RO(hw)
 
 static READ_RET proc_settings_read(READ_ARGS)
 {
@@ -408,6 +484,8 @@ static WRITE_RET proc_settings_write(WRITE_ARGS)
 	return count;
 }
 
+PROC_DECLARE_RW(settings)
+
 int wrap_procfs_add_ndis_device(struct ndis_device *wnd)
 {
 	int ret;
@@ -513,6 +591,8 @@ static WRITE_RET proc_debug_write(WRITE_ARGS)
 		return -EINVAL;
 	return count;
 }
+
+PROC_DECLARE_RW(debug)
 
 int wrap_procfs_init(void)
 {
