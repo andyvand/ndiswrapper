@@ -44,11 +44,6 @@ struct load_device {
 	char driver_name[MAX_DRIVER_NAME_LEN];
 };
 
-struct load_devices {
-	int count;
-	struct load_device *devices;
-};
-
 struct load_driver {
 	char name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
