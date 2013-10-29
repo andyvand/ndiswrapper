@@ -245,8 +245,8 @@ static inline void (INIT_WORK)(struct work_struct *work, work_func_t func)
 #define IRQF_SHARED SA_SHIRQ
 #endif
 
-#ifndef UMH_WAIT_EXEC
-#define UMH_WAIT_EXEC 1
+#ifndef UMH_WAIT_PROC
+#define UMH_WAIT_PROC 1
 #endif
 
 #define memcpy_skb(skb, from, length)			\
