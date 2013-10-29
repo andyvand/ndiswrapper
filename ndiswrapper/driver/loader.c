@@ -748,7 +748,7 @@ static long wrapper_ioctl(struct file *file, unsigned int cmd,
 	int ret;
 	void __user *addr = (void __user *)arg;
 
-	ENTER1("cmd: %u", cmd);
+	ENTER1("cmd: 0x%x", cmd);
 
 	ret = 0;
 	switch (cmd) {
@@ -804,7 +804,7 @@ static long wrapper_ioctl(struct file *file, unsigned int cmd,
 			ret = add_bin_file(&load_bin_file);
 		break;
 	default:
-		ERROR("unknown ioctl %u", cmd);
+		ERROR("unknown ioctl 0x%x", cmd);
 		ret = -EINVAL;
 		break;
 	}
