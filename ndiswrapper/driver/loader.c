@@ -739,13 +739,8 @@ struct wrap_device *get_wrap_device(void *dev, int bus)
 }
 
 /* called with loader_mutex is down */
-#ifdef HAVE_UNLOCKED_IOCTL
-static long wrapper_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
-#else
-static int wrapper_ioctl(struct inode *inode, struct file *file,
-			 unsigned int cmd, unsigned long arg)
-#endif
+static long wrapper_ioctl(struct file *file, unsigned int cmd,
+			  unsigned long arg)
 {
 	struct load_driver *load_driver;
 	struct load_device load_device;
@@ -825,11 +820,7 @@ static int wrapper_ioctl_release(struct inode *inode, struct file *file)
 
 static struct file_operations wrapper_fops = {
 	.owner		= THIS_MODULE,
-#ifdef HAVE_UNLOCKED_IOCTL
 	.unlocked_ioctl	= wrapper_ioctl,
-#else
-	.ioctl		= wrapper_ioctl,
-#endif
 	.release	= wrapper_ioctl_release,
 };
 
