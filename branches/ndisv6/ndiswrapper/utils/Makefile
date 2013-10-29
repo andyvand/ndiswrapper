@@ -2,6 +2,7 @@ sbindir = /sbin
 usrsbindir = /usr/sbin
 
 DRIVER_DIR ?= ../driver
+HEADERS = $(DRIVER_DIR)/loader.h $(DRIVER_DIR)/ndiswrapper.h
 
 CC = gcc
 CFLAGS = -g -Wall -I$(DRIVER_DIR)
@@ -10,7 +11,7 @@ DISTFILES=Makefile ndis6wrapper loadndisdriver.c ndiswrapper-buginfo
 
 all: loadndis6driver
 
-loadndis6driver: loadndisdriver.c
+loadndis6driver: loadndisdriver.c $(HEADERS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
