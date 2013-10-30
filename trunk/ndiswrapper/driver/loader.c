@@ -812,6 +812,104 @@ static long wrapper_ioctl(struct file *file, unsigned int cmd,
 	EXIT1(return ret);
 }
 
+#ifdef CONFIG_COMPAT
+static int copy_load_driver_file32(struct load_driver_file *k,
+				   struct load_driver_file32 __user *u)
+{
+	u32 data;
+
+	if (copy_from_user(&k->driver_name, &u->driver_name,
+			   sizeof(u->driver_name) + sizeof(u->name)))
+		return -EFAULT;
+
+	if (get_user(k->size, &u->size))
+		return -EFAULT;
+	if (get_user(data, &u->data))
+		return -EFAULT;
+
+	k->data = compat_ptr(data);
+	return 0;
+}
+
+static int copy_load_driver32(struct load_driver *k,
+			      struct load_driver32 __user *u)
+{
+	int i;
+
+	if (copy_from_user(&k->name, &u->name,
+			   sizeof(u->name) + sizeof(u->conf_file_name)))
+		return -EFAULT;
+
+	if (get_user(k->num_sys_files, &u->num_sys_files))
+		return -EFAULT;
+
+	for (i = 0; i < k->num_sys_files; i++)
+		if (copy_load_driver_file32(&k->sys_files[i], &u->sys_files[i]))
+			return -EFAULT;
+
+	if (get_user(k->num_settings, &u->num_settings))
+		return -EFAULT;
+
+	if (copy_from_user(&k->settings, &u->settings,
+			   sizeof(u->settings[0]) * k->num_settings))
+		return -EFAULT;
+
+	if (get_user(k->num_bin_files, &u->num_bin_files))
+		return -EFAULT;
+
+	for (i = 0; i < k->num_bin_files; i++)
+		if (copy_load_driver_file32(&k->bin_files[i], &u->bin_files[i]))
+			return -EFAULT;
+
+	return 0;
+}
+
+static long wrapper_ioctl_compat(struct file *file, unsigned int cmd,
+				 unsigned long arg)
+{
+	int ret = 0;
+	void __user *addr = compat_ptr(arg);
+	struct load_driver *kdriver;
+	struct load_driver32 __user *udriver = addr;
+	struct load_driver_file kfile;
+	struct load_driver_file32 __user *ufile = addr;
+
+	ENTER1("cmd: 0x%x", cmd);
+
+	switch (cmd) {
+	case WRAP_IOCTL_LOAD_DEVICE32:
+		return wrapper_ioctl(file, WRAP_IOCTL_LOAD_DEVICE, arg);
+	case WRAP_IOCTL_LOAD_DRIVER32:
+		TRACE1("loading driver at %p", addr);
+		kdriver = vmalloc(sizeof(*kdriver));
+		if (!kdriver) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		ret = copy_load_driver32(kdriver, udriver);
+		if (!ret)
+			ret = load_user_space_driver(kdriver);
+
+		vfree(kdriver);
+		break;
+	case WRAP_IOCTL_LOAD_BIN_FILE32:
+		ret = copy_load_driver_file32(&kfile, ufile);
+		if (ret)
+			break;
+
+		ret = add_bin_file(&kfile);
+		break;
+	default:
+		ERROR("unknown ioctl 0x%x", cmd);
+		ret = -EINVAL;
+		break;
+	}
+	complete(&loader_complete);
+	EXIT1(return ret);
+}
+#endif
+
 static int wrapper_ioctl_release(struct inode *inode, struct file *file)
 {
 	ENTER1("");
@@ -821,6 +919,9 @@ static int wrapper_ioctl_release(struct inode *inode, struct file *file)
 static struct file_operations wrapper_fops = {
 	.owner		= THIS_MODULE,
 	.unlocked_ioctl	= wrapper_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= wrapper_ioctl_compat,
+#endif
 	.release	= wrapper_ioctl_release,
 };
 
