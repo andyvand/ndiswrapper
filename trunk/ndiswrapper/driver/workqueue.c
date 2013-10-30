@@ -189,7 +189,7 @@ struct workqueue_struct *wrap_create_wq(const char *name, u8 singlethread,
 		struct workq_thread_data thread_data;
 		spin_lock_init(&workq->threads[i].lock);
 		INIT_LIST_HEAD(&workq->threads[i].work_list);
-		INIT_COMPLETION(started);
+		reinit_completion(&started);
 		workq->threads[i].completion = &started;
 		thread_data.workq = workq;
 		thread_data.index = i;

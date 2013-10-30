@@ -93,7 +93,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 
 		TRACE1("loading driver %s", wd->driver_name);
 		mutex_lock(&loader_mutex);
-		INIT_COMPLETION(loader_complete);
+		reinit_completion(&loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env,
 					  UMH_WAIT_PROC);
 		if (ret) {
@@ -249,7 +249,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		TRACE1("loading bin file %s/%s", driver->name,
 		       driver->bin_files[i].name);
 		mutex_lock(&loader_mutex);
-		INIT_COMPLETION(loader_complete);
+		reinit_completion(&loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env,
 					  UMH_WAIT_PROC);
 		if (ret) {
@@ -688,7 +688,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 		TRACE2("%s, %s, %s, %s, %s", vendor, device,
 		       subvendor, subdevice, bus);
 		mutex_lock(&loader_mutex);
-		INIT_COMPLETION(loader_complete);
+		reinit_completion(&loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env,
 					  UMH_WAIT_PROC);
 		if (ret) {
