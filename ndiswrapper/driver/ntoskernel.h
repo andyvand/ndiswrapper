@@ -327,6 +327,13 @@ static inline void netif_poll_disable(struct net_device *dev)
 #define netdev_notifier_info_to_dev(x) (x)
 #endif
 
+#ifdef INIT_COMPLETION
+static inline void reinit_completion(struct completion *x)
+{
+	INIT_COMPLETION(*x);
+}
+#endif
+
 /* TICK is 100ns */
 #define TICKSPERSEC		10000000
 #define TICKSPERMSEC		10000
