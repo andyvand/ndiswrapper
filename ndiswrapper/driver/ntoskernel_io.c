@@ -1150,3 +1150,12 @@ wstdcall NTSTATUS WIN_FUNC(IoWMIQueryAllData,3)
 	TODO();
 	IOEXIT(return STATUS_NOT_IMPLEMENTED);
 }
+
+wstdcall void WIN_FUNC(IoGetStackLimits,2)
+	(ULONG_PTR *LowLimit, ULONG_PTR *HighLimit)
+{
+	*LowLimit = (ULONG_PTR)&LowLimit & ~(THREAD_SIZE - 1);
+	*HighLimit = *LowLimit + THREAD_SIZE;
+	IOTRACE("LowLimit: 0x%lx, HighLimit: 0x%lx", *LowLimit, *HighLimit);
+	IOEXIT(return);
+}
