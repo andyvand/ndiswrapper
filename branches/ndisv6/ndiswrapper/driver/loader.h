@@ -62,6 +62,30 @@ struct load_driver {
 #define WRAP_IOCTL_LOAD_BIN_FILE _IOW(('N' + 'd' + 'i' + 'S'), 2,	\
 				      struct load_driver_file *)
 
+#ifdef CONFIG_COMPAT
+struct load_driver_file32 {
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	char name[MAX_DRIVER_NAME_LEN];
+	u32 size;
+	u32 data;
+};
+
+struct load_driver32 {
+	char name[MAX_DRIVER_NAME_LEN];
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
+	u32 num_sys_files;
+	struct load_driver_file32 sys_files[MAX_DRIVER_PE_IMAGES];
+	u32 num_settings;
+	struct load_device_setting settings[MAX_DEVICE_SETTINGS];
+	u32 num_bin_files;
+	struct load_driver_file32 bin_files[MAX_DRIVER_BIN_FILES];
+} __packed;
+
+#define WRAP_IOCTL_LOAD_DEVICE32 _IOW(('N' + 'd' + 'i' + 'S'), 0, u32)
+#define WRAP_IOCTL_LOAD_DRIVER32 _IOW(('N' + 'd' + 'i' + 'S'), 1, u32)
+#define WRAP_IOCTL_LOAD_BIN_FILE32 _IOW(('N' + 'd' + 'i' + 'S'), 2, u32)
+#endif
+
 #define WRAP_CMD_LOAD_DEVICE "load_device"
 #define WRAP_CMD_LOAD_DRIVER "load_driver"
 #define WRAP_CMD_LOAD_BIN_FILE "load_bin_file"
