@@ -35,6 +35,7 @@ my $confdir = "/etc/ndis6wrapper";
 my $src_dir;
 my $driver_name;
 my @source_disks_files;
+my $modconf;
 
 my $re_dev_id = "([[:xdigit:]]{4})";
 my $re_sub_dev_conf = "$re_dev_id:$re_dev_id:$re_dev_id:$re_dev_id" .
@@ -47,64 +48,6 @@ my %param_fixlist = ("EnableRadio|0" => "1",
 		     "PrivacyMode|0" => "2",
 		     "MapRegisters|256" => "64",
 		     "AdhocGMode|1" => "0");
-
-if (@ARGV < 1) {
-	usage();
-	exit(1);
-}
-
-my $modconf;
-if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
-    if ($2 > 4) {
-	if (-d "/etc/modprobe.d") {
-	    $modconf = "/etc/modprobe.d/ndis6wrapper.conf";
-	} else {
-	    $modconf = "/etc/modprobe.conf";
-	}
-    } else {
-	if (-d "/etc/modutils") {
-	    $modconf = "/etc/modutils/ndis6wrapper";
-	} else {
-	    $modconf = "/etc/modules.conf";
-	}
-    }
-}
-
-my $res;
-my $dbg_file;
-
-$dbg_file = "/dev/null";
-
-# "-D" is for development/debugging only
-if ($ARGV[0] eq "-D") {
-    $dbg_file = "/tmp/ndis6wrapper.dbg";
-    $confdir = "/tmp/ndis6wrapper";
-    shift;
-}
-
-open(DBG, "> $dbg_file") or die "couldn't open $dbg_file: $!";
-
-if ($ARGV[0] eq "-i" and @ARGV == 2) {
-    $res = install($ARGV[1]);
-} elsif (($ARGV[0] eq "-a" or $ARGV[0] eq "-d") and @ARGV == 3) {
-    $res = device_driver_alias($ARGV[1], $ARGV[2]);
-} elsif (($ARGV[0] eq "-e" or $ARGV[0] eq "-r") and @ARGV == 2) {
-    $res = remove_driver($ARGV[1]);
-} elsif ($ARGV[0] eq "-l" and @ARGV == 1) {
-    $res = list_drivers();
-} elsif ($ARGV[0] eq "-m" and @ARGV == 1) {
-    $res = add_module_alias();
-} elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
-    $res = check_version();
-} elsif ($ARGV[0] eq "-ma" and @ARGV == 1) {
-    $res = generate_module_device_map(0);
-} elsif ($ARGV[0] eq "-mi" and @ARGV == 1) {
-    $res = generate_module_device_map(1);
-} else {
-    usage();
-}
-close(DBG);
-exit($res);
 
 sub usage() {
     print "install/manage Windows drivers for ndis6wrapper\n\n" .
@@ -1020,6 +963,63 @@ sub install_status {
     printf DBG "driver: $driver, $ret\n";
     return $ret;
 }
+
+if (@ARGV < 1) {
+	usage();
+	exit(1);
+}
+
+if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
+    if ($2 > 4) {
+	if (-d "/etc/modprobe.d") {
+	    $modconf = "/etc/modprobe.d/ndis6wrapper.conf";
+	} else {
+	    $modconf = "/etc/modprobe.conf";
+	}
+    } else {
+	if (-d "/etc/modutils") {
+	    $modconf = "/etc/modutils/ndis6wrapper";
+	} else {
+	    $modconf = "/etc/modules.conf";
+	}
+    }
+}
+
+my $res;
+my $dbg_file;
+
+$dbg_file = "/dev/null";
+
+# "-D" is for development/debugging only
+if ($ARGV[0] eq "-D") {
+    $dbg_file = "/tmp/ndis6wrapper.dbg";
+    $confdir = "/tmp/ndis6wrapper";
+    shift;
+}
+
+open(DBG, "> $dbg_file") or die "couldn't open $dbg_file: $!";
+
+if ($ARGV[0] eq "-i" and @ARGV == 2) {
+    $res = install($ARGV[1]);
+} elsif (($ARGV[0] eq "-a" or $ARGV[0] eq "-d") and @ARGV == 3) {
+    $res = device_driver_alias($ARGV[1], $ARGV[2]);
+} elsif (($ARGV[0] eq "-e" or $ARGV[0] eq "-r") and @ARGV == 2) {
+    $res = remove_driver($ARGV[1]);
+} elsif ($ARGV[0] eq "-l" and @ARGV == 1) {
+    $res = list_drivers();
+} elsif ($ARGV[0] eq "-m" and @ARGV == 1) {
+    $res = add_module_alias();
+} elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
+    $res = check_version();
+} elsif ($ARGV[0] eq "-ma" and @ARGV == 1) {
+    $res = generate_module_device_map(0);
+} elsif ($ARGV[0] eq "-mi" and @ARGV == 1) {
+    $res = generate_module_device_map(1);
+} else {
+    usage();
+}
+close(DBG);
+exit($res);
 
 ## Local Variables: ##
 ## cperl-indent-level: 4 ##
