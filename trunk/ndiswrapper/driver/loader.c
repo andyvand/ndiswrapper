@@ -827,7 +827,7 @@ static int copy_load_driver_file32(struct load_driver_file *k,
 	if (get_user(data, &u->data))
 		return -EFAULT;
 
-	k->data = compat_ptr(data);
+	k->data = (void __user *)(unsigned long)data;
 	return 0;
 }
 
@@ -868,7 +868,7 @@ static long wrapper_ioctl_compat(struct file *file, unsigned int cmd,
 				 unsigned long arg)
 {
 	int ret = 0;
-	void __user *addr = compat_ptr(arg);
+	void __user *addr = (void __user *)arg;
 	struct load_driver *kdriver;
 	struct load_driver32 __user *udriver = addr;
 	struct load_driver_file kfile;
