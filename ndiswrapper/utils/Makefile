@@ -5,6 +5,7 @@ DRIVER_DIR ?= ../driver
 HEADERS = $(DRIVER_DIR)/loader.h $(DRIVER_DIR)/ndiswrapper.h
 
 CC = gcc
+HOSTCC = $(CC)
 CFLAGS = -g -Wall -I$(DRIVER_DIR)
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
@@ -12,7 +13,7 @@ DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
 all: loadndisdriver
 
 loadndisdriver: loadndisdriver.c $(HEADERS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(HOSTCC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
 	rm -f *~ *.o loadndisdriver
