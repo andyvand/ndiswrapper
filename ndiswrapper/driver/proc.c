@@ -31,6 +31,8 @@ static kgid_t proc_kgid;
 #else
 #define proc_kuid proc_uid
 #define proc_kgid proc_gid
+#define kuid_t uid_t
+#define kgid_t gid_t
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
