@@ -76,6 +76,7 @@
 #define set_cpus_allowed_ptr(task, mask) set_cpus_allowed(task, *mask)
 #endif /* Linux < 2.6.26 */
 
+#ifdef CONFIG_SMP
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
 #define cpumask_copy(dst, src) do { *dst = *src; } while (0)
 #define cpumask_equal(mask1, mask2) cpus_equal(*mask1, *mask2)
@@ -87,6 +88,7 @@ static cpumask_t cpumasks[NR_CPUS];
 	&cpumasks[cpu];				\
 })
 #endif /* Linux < 2.6.28 */
+#endif /* CONFIG_SMP */
 
 #ifndef tsk_cpus_allowed
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
