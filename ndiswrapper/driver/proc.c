@@ -35,6 +35,18 @@ static kgid_t proc_kgid;
 #define kgid_t gid_t
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+static inline struct inode *file_inode(struct file *f)
+{
+	return f->f_dentry->d_inode;
+}
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
+static inline struct inode *file_inode(struct file *f)
+{
+	return f->f_path.dentry->d_inode;
+}
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 static inline void proc_set_user(struct proc_dir_entry *de, kuid_t uid,
 				 kgid_t gid)
@@ -49,74 +61,33 @@ static inline void proc_remove(struct proc_dir_entry *de)
 		remove_proc_entry(de->name, de->parent);
 }
 
-#define READ_RET int
-#define READ_ARGS \
-	char *page, char **start, off_t off, int count, int *eof, void *data
-#define READ_PRIV (struct ndis_device *)data
-#define WRITE_RET int
-#define WRITE_ARGS \
-	struct file *file, const char __user *buf, unsigned long count, void *data
-#define WRITE_PRIV (struct ndis_device *)data
+static inline void *PDE_DATA(const struct inode *inode)
+{
+	return PDE(inode)->data;
+}
+#endif
 
-typedef READ_RET (*proc_read_fn)(READ_ARGS);
-typedef WRITE_RET (*proc_write_fn)(WRITE_ARGS);
-
-static int do_proc_make_entry(const char *name, umode_t mode,
-			     struct proc_dir_entry *parent,
-			     proc_read_fn rfunc, proc_write_fn wfunc,
-			     kuid_t uid, kgid_t gid, struct ndis_device *wnd)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)
+static inline struct proc_dir_entry *proc_create_data(const char *name,
+	umode_t mode, struct proc_dir_entry *parent,
+	struct file_operations *fops, void *data)
 {
 	struct proc_dir_entry *de;
 
 	de = create_proc_entry(name, mode, parent);
-	if (de == NULL) {
-		ERROR("couldn't create proc entry for '%s'", name);
-		return -ENOMEM;
+	if (de) {
+		de->data = data;
+		de->proc_fops = fops;
 	}
-	de->uid = uid;
-	de->gid = gid;
-	de->read_proc = rfunc;
-	de->write_proc = wfunc;
-	de->data = wnd;
-	return 0;
 
-#define PROC_DECLARE_RO(name)
-#define PROC_DECLARE_RW(name)
-
-#define proc_make_entry_ro(name, parent, wnd) \
-	do_proc_make_entry(#name, S_IFREG | S_IRUSR | S_IRGRP, parent, \
-			   proc_##name##_read, NULL, proc_kuid, proc_kgid, wnd)
-#define proc_make_entry_rw(name, parent, wnd) \
-	do_proc_make_entry(#name, \
-			   S_IFREG | S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, \
-			   parent, proc_##name##_read, proc_##name##_write, \
-			   proc_kuid, proc_kgid, wnd)
+	return de;
 }
-
-#define offset_check() \
-	if (off != 0) { \
-		*eof = 1; \
-		return 0; \
-	}
-
-#define add_text(fmt, ...) \
-	(len += scnprintf(page + len, count - len, fmt, ##__VA_ARGS__))
-#else
-#define READ_RET int
-#define READ_ARGS struct seq_file *sf, void *v
-#define READ_PRIV (struct ndis_device *)sf->private
-#define WRITE_RET ssize_t
-#define WRITE_ARGS \
-	struct file *file, const char __user *buf, size_t count, loff_t *ppos
-#define WRITE_PRIV (struct ndis_device *)PDE_DATA(file_inode(file))
-
-typedef READ_RET (*proc_read_fn)(READ_ARGS);
-typedef WRITE_RET (*proc_write_fn)(WRITE_ARGS);
+#endif
 
 static int do_proc_make_entry(const char *name, umode_t mode,
 			      struct proc_dir_entry *parent,
-			      const struct file_operations *fops,
-			      kuid_t uid, kgid_t gid, struct ndis_device *wnd)
+			      struct file_operations *fops, kuid_t uid,
+			      kgid_t gid, struct ndis_device *wnd)
 {
 	struct proc_dir_entry *de;
 
@@ -134,7 +105,7 @@ static int do_proc_make_entry(const char *name, umode_t mode,
 	{ \
 		return single_open(file, proc_##name##_read, PDE_DATA(inode)); \
 	} \
-	static const struct file_operations name##_fops = { \
+	static struct file_operations name##_fops = { \
 		.owner = THIS_MODULE, \
 		.open = proc_##name##_open, \
 		.read = seq_read, \
@@ -147,7 +118,7 @@ static int do_proc_make_entry(const char *name, umode_t mode,
 	{ \
 		return single_open(file, proc_##name##_read, PDE_DATA(inode)); \
 	} \
-	static const struct file_operations name##_fops = { \
+	static struct file_operations name##_fops = { \
 		.owner = THIS_MODULE, \
 		.open = proc_##name##_open, \
 		.read = seq_read, \
@@ -164,22 +135,16 @@ static int do_proc_make_entry(const char *name, umode_t mode,
 			   S_IFREG | S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, \
 			   parent, &name##_fops, proc_kuid, proc_kgid, wnd)
 
-#define offset_check()
-
 #define add_text(fmt, ...) seq_printf(sf, fmt, ##__VA_ARGS__)
-#endif
 
 static struct proc_dir_entry *wrap_procfs_entry;
 
-static READ_RET proc_stats_read(READ_ARGS)
+static int proc_stats_read(struct seq_file *sf, void *v)
 {
-	int len = 0;
-	struct ndis_device *wnd = READ_PRIV;
+	struct ndis_device *wnd = (struct ndis_device *)sf->private;
 	struct ndis_wireless_stats stats;
 	NDIS_STATUS res;
 	ndis_rssi rssi;
-
-	offset_check();
 
 	res = mp_query(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
@@ -201,32 +166,26 @@ static READ_RET proc_stats_read(READ_ARGS)
 		add_text("fcs_errors=%llu\n", stats.fcs_err);
 	}
 
-	return len;
+	return 0;
 }
 
 PROC_DECLARE_RO(stats)
 
-static READ_RET proc_encr_read(READ_ARGS)
+static int proc_encr_read(struct seq_file *sf, void *v)
 {
-	int len = 0;
-
-	offset_check();
-
-	return len;
+	/* Not implemented */
+	return 0;
 }
 
 PROC_DECLARE_RO(encr)
 
-static READ_RET proc_hw_read(READ_ARGS)
+static int proc_hw_read(struct seq_file *sf, void *v)
 {
-	int len = 0;
-	struct ndis_device *wnd = READ_PRIV;
+	struct ndis_device *wnd = (struct ndis_device *)sf->private;
 	int i;
 	NDIS_STATUS status;
 	char buf[100];
 	struct ndis_dot11_current_operation_mode *op_mode;
-
-	offset_check();
 
 	i = 0;
 	status = mp_query_int(wnd, OID_DOT11_CURRENT_PHY_ID, &i);
@@ -256,18 +215,15 @@ static READ_RET proc_hw_read(READ_ARGS)
 	if (status == NDIS_STATUS_SUCCESS)
 		add_text("auto_config=0x%x\n", i);
 
-	return len;
+	return 0;
 }
 
 PROC_DECLARE_RO(hw)
 
-static READ_RET proc_settings_read(READ_ARGS)
+static int proc_settings_read(struct seq_file *sf, void *v)
 {
-	int len = 0;
-	struct ndis_device *wnd = READ_PRIV;
+	struct ndis_device *wnd = (struct ndis_device *)sf->private;
 	struct wrap_device_setting *setting;
-
-	offset_check();
 
 	add_text("hangcheck_interval=%d\n", (hangcheck_interval == 0) ?
 		 (wnd->hangcheck_interval / HZ) : -1);
@@ -280,12 +236,13 @@ static READ_RET proc_settings_read(READ_ARGS)
 		add_text("%s=%s\n", setting->name, setting->value);
 	}
 
-	return len;
+	return 0;
 }
 
-static WRITE_RET proc_settings_write(WRITE_ARGS)
+static ssize_t proc_settings_write(struct file *file, const char __user *buf,
+				   size_t count, loff_t *ppos)
 {
-	struct ndis_device *wnd = WRITE_PRIV;
+	struct ndis_device *wnd = PDE_DATA(file_inode(file));
 	char setting[MAX_PROC_STR_LEN], *p;
 	unsigned int i;
 	NDIS_STATUS res;
@@ -456,14 +413,11 @@ void wrap_procfs_remove_ndis_device(struct ndis_device *wnd)
 		proc_remove(procfs_iface);
 }
 
-static READ_RET proc_debug_read(READ_ARGS)
+static int proc_debug_read(struct seq_file *sf, void *v)
 {
-	int len = 0;
 #if ALLOC_DEBUG
 	enum alloc_type type;
 #endif
-
-	offset_check();
 
 	add_text("%d\n", debug);
 #if ALLOC_DEBUG
@@ -471,10 +425,11 @@ static READ_RET proc_debug_read(READ_ARGS)
 		add_text("total size of allocations in %s: %d\n",
 			 alloc_type_name[type], alloc_size(type));
 #endif
-	return len;
+	return 0;
 }
 
-static WRITE_RET proc_debug_write(WRITE_ARGS)
+static ssize_t proc_debug_write(struct file *file, const char __user *buf,
+				size_t count, loff_t *ppos)
 {
 	int i;
 	char setting[MAX_PROC_STR_LEN], *p;
