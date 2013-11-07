@@ -183,10 +183,7 @@ static int proc_encr_read(struct seq_file *sf, void *v)
 		       &ap_address, sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
-	add_text("ap_address=%2.2X", ap_address[0]);
-	for (i = 1; i < ETH_ALEN; i++)
-		add_text(":%2.2X", ap_address[i]);
-	add_text("\n");
+	add_text("ap_address=" MACSTRSEP "\n", MAC2STR(ap_address));
 
 	res = mp_query(wnd, OID_802_11_SSID, &essid, sizeof(essid));
 	if (!res)
