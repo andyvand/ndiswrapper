@@ -1,4 +1,4 @@
-* Added support for Linux kernels up to 3.12
+* Support for Linux kernels from 2.6.13 to 3.12
 * 32-bit userspace on 64-bit kernel is supported now
 * Fixed kernel hang if loadndisdriver exits with an error
 
