@@ -313,7 +313,7 @@ static inline void netif_poll_disable(struct net_device *dev)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0)
-#define netdev_notifier_info_to_dev(x) (x)
+#define netdev_notifier_info_to_dev(x) ((struct net_device *)(x))
 #endif
 
 #ifdef INIT_COMPLETION
