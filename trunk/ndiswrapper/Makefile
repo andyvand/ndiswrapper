@@ -15,8 +15,6 @@ else
 mandir = /usr/share/man
 endif
 
-KVERS ?= $(shell uname -r)
-
 .PHONY: all
 all: $(SUBDIRS)
 
