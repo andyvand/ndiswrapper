@@ -59,6 +59,20 @@
 
 #include "winnt_types.h"
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
+#define gfp_t unsigned int __nocast
+
+static inline void *_kzalloc(size_t size, gfp_t flags)
+{
+	void *p = kmalloc(size, flags);
+	if (likely(p != NULL))
+		memset(p, 0, size);
+	return p;
+}
+
+#define kzalloc(size, flags) _kzalloc(size, flags)
+#endif
+
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
