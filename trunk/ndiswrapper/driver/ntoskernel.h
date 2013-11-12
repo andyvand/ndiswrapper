@@ -286,6 +286,10 @@ static inline void (INIT_WORK)(struct work_struct *work, work_func_t func)
 #define usb_free_coherent(dev, size, addr, dma) (usb_buffer_free((dev), (size), (addr), (dma)))
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0)
+#define daemonize(name, ...) do {} while (0)
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
 #define add_taint(flag, lockdep_ok) add_taint(flag)
 #endif
