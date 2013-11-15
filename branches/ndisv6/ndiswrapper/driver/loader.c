@@ -913,6 +913,7 @@ static long wrapper_ioctl_compat(struct file *file, unsigned int cmd,
 static int wrapper_ioctl_release(struct inode *inode, struct file *file)
 {
 	ENTER1("");
+	complete(&loader_complete);
 	return 0;
 }
 
