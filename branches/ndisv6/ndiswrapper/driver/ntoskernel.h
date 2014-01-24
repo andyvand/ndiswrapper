@@ -789,9 +789,8 @@ do {									\
 #define nt_spin_unlock_irqrestore(lock, flags)				\
 do {									\
 	nt_spin_unlock(lock);						\
-	preempt_enable_no_resched();					\
+	preempt_enable();						\
 	local_irq_restore(flags);					\
-	preempt_check_resched();					\
 } while (0)
 
 #define atomic_insert_list_head(oldhead, head, newhead)			\
