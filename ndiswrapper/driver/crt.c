@@ -467,7 +467,7 @@ noregparm int WIN_FUNC(_win_memcmp,3)
 noregparm void WIN_FUNC(_win_srand,1)
 	(UINT seed)
 {
-	net_srandom(seed);
+	prandom_seed(seed);
 }
 
 noregparm int WIN_FUNC(rand,0)
