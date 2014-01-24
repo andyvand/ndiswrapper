@@ -334,7 +334,7 @@ static inline void netif_poll_disable(struct net_device *dev)
 #define netdev_notifier_info_to_dev(x) ((struct net_device *)(x))
 #endif
 
-#ifdef INIT_COMPLETION
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static inline void reinit_completion(struct completion *x)
 {
 	INIT_COMPLETION(*x);
